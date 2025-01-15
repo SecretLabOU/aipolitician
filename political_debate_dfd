@@ -1,0 +1,12 @@
+digraph "Political Debate Data Flow Diagram" {
+	rankdir=TB splines=polyline
+	Initialize [label="Initialize Agent with Knowledge" color=black fillcolor=gray92 shape=box style="rounded,filled"]
+	Receive [label="Receive Input from User" color=black fillcolor=gray92 shape=box style="rounded,filled"]
+	Fetch [label="Fetch Data (API, Memory)" color=black fillcolor=gray92 shape=box style="rounded,filled"]
+	Debate [label="Real-Time Debate Among Agents" color=black fillcolor=gray92 shape=box style="rounded,filled"]
+	Update [label="Update Knowledge Base" color=black fillcolor=gray92 shape=box style="rounded,filled"]
+	Initialize -> Receive
+	Receive -> Fetch
+	Fetch -> Debate
+	Debate -> Update
+}
