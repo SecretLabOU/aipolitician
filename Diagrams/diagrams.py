@@ -1,8 +1,12 @@
 from graphviz import Digraph
+import os
+
+output_dir = "Diagrams/Output"
+os.makedirs(output_dir, exist_ok=True)
 
 # Create a Data Flow Diagram (DFD) for real-time debate functionality
 def create_political_debate_dfd():
-    dfd = Digraph("Political Debate Data Flow Diagram", filename="political_debate_dfd", format="png", engine="dot")
+    dfd = Digraph("Political Debate Data Flow Diagram", filename=os.path.join(output_dir, "political_debate_dfd"), format="png", engine="dot")
     dfd.attr(rankdir="TB", splines="polyline")
 
     # Nodes
@@ -19,11 +23,11 @@ def create_political_debate_dfd():
     dfd.edge("Debate", "Update")
 
     # Render Diagram
-    dfd.render("political_debate_dfd", view=True)
+    dfd.render(view=True)
 
 # Create a Swarm Architecture diagram reflecting real-time debate functionality
 def create_political_debate_swarm_architecture():
-    swarm = Digraph("Political Debate Swarm Architecture", filename="political_debate_swarm_architecture", format="png", engine="dot")
+    swarm = Digraph("Political Debate Swarm Architecture", filename=os.path.join(output_dir, "political_debate_swarm_architecture"), format="png", engine="dot")
     swarm.attr(rankdir="TB", splines="polyline")
 
     # Nodes
@@ -46,7 +50,7 @@ def create_political_debate_swarm_architecture():
     swarm.edge("Debate", "Output")
 
     # Render Diagram
-    swarm.render("political_debate_swarm_architecture", view=True)
+    swarm.render(view=True)
 
 # Generate updated diagrams
 if __name__ == "__main__":
