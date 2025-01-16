@@ -1,0 +1,8 @@
+# Hide environment variables
+.env
+
+# Hide virtual environment
+venv/
+
+# Hide agent workspace directory
+agent_workspace/
