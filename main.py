@@ -1,18 +1,21 @@
 from dotenv import load_dotenv
 import os
+from agents import agent
 
-# Load environment variables from the .env file
+# Load environment variables
 load_dotenv()
 
-# Retrieve the API key from environment variables
+# Retrieve the OpenAI API key 
 api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
     raise ValueError("API key not found! Ensure OPENAI_API_KEY is set in the .env file.")
 
-# Placeholder for the main logic
+# Main function to run the agent
 def main():
-    print(f"Successfully loaded API key")
+    print("Running Stock-Analysis-Agent...")
+    # Execute the agent with a predefined query
+    agent.run("What is the current market trend for tech stocks?")
 
 if __name__ == "__main__":
     main()
