@@ -1,26 +1,18 @@
 # Project Setup and Execution
 
-This README provides the steps to set up and run the `test.py` script.&#x20;
-
----
-
 ## Prerequisites
 
-### Python Version
+### Docker
 
-Ensure that you have **Python 3.10** installed on your system.
+Ensure Docker is installed and running on your system. Follow the official installation guide for your operating system:
 
-> **Note:** Using Python 3.12 may cause compatibility issues.
+- [Install Docker](https://www.docker.com/products/docker-desktop)
 
-### Install `pip`
-
-`pip` is required to manage Python packages. Most Python installations include it by default, but verify by running:
+To verify the installation, run:
 
 ```bash
-pip --version
+docker --version
 ```
-
-If not installed, follow the official instructions [here](https://pip.pypa.io/en/stable/installation/).
 
 ---
 
@@ -31,58 +23,63 @@ If not installed, follow the official instructions [here](https://pip.pypa.io/en
 Clone this repository to your local machine:
 
 ```bash
-git clone <repository_url>
-cd <repository_name>
+git clone https://github.com/natalie-a-1/PoliticianAI.git
+cd PoliticianAI
 ```
 
-### 2. Set Up Virtual Environment
+### 2. Create a `.env` File
 
-To isolate the dependencies, create and activate a virtual environment:
-
-```bash
-python3.10 -m venv venv
-source venv/bin/activate  # For Linux/Mac
-venv\Scripts\activate   # For Windows
-```
-
-### 3. Install Dependencies
-
-Install the required dependencies from the existing `requirements.txt` file:
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Create `.env` File
-
-Create a `.env` file in the root directory of the project and add the following variables:
+Create a `.env` file in the root directory of the project to store your API key securely. Add the following content:
 
 ```dotenv
-WORKSPACE_DIR=agent_workspace
 OPENAI_API_KEY=your_openai_api_key
 ```
 
 Replace `your_openai_api_key` with your actual OpenAI API key.
 
-### 5. Verify Directory Structure
+> **Important:** The `.env` file is excluded from version control via `.gitignore` to protect your API key.
 
-Ensure the following directory structure exists:
+### 3. Build the Docker Image
+
+Build the Docker image using the `Dockerfile` provided in the repository:
+
+```bash
+docker build -t politician-ai .
+```
+
+This command will create a Docker image named `politician-ai`.
+
+### 4. Run the Docker Container
+
+Run the application in a container while securely passing the `.env` file:
+
+```bash
+docker run -it --rm --env-file .env politician-ai
+```
+
+---
+
+## Directory Structure
+
+Ensure your project structure looks like this:
 
 ```
 .
-├── agent_workspace
-├── venv
-├── .env
-├── .gitignore
-├── requirements.txt
-├── README.md
-└── test.py
+├── agent_workspace/       # Optional workspace directory (if needed)
+├── .env                   # Contains environment variables (e.g., API key)
+├── .gitignore             # Excludes .env from version control
+├── Dockerfile             # Defines the Docker image
+├── requirements.txt       # Python dependencies
+├── README.md              # Project documentation
+└── main.py                # Main script to run
 ```
 
-### 6. Run the Script
+---
 
-To run `test.py`, execute the following command:
+## Troubleshooting
 
-```bash
-python test.py
-```
+### Common Issues
+- **Docker not found**: Ensure Docker is installed and running.
+- **API key not set**: Verify that the `.env` file exists and contains the correct `OPENAI_API_KEY`.
+
+For additional support, consult the [Docker documentation](https://docs.docker.com/).

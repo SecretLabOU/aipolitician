@@ -1,11 +1,18 @@
-from swarms import Agent
+from dotenv import load_dotenv
+import os
 
-agent = Agent(
-    agent_name="Stock-Analysis-Agent",
-    model_name="gpt-4o-mini",
-    max_loops="auto",
-    interactive=True,
-    streaming_on=True,
-)
+# Load environment variables from the .env file
+load_dotenv()
 
-agent.run("What is the current market trend for tech stocks?")
+# Retrieve the API key from environment variables
+api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
+    raise ValueError("API key not found! Ensure OPENAI_API_KEY is set in the .env file.")
+
+# Placeholder for the main logic
+def main():
+    print(f"Successfully loaded API key")
+
+if __name__ == "__main__":
+    main()
