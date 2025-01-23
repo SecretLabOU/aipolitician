@@ -1,3 +1,4 @@
+from Agents.WorkflowManager.agent import WorkflowManager
 from dotenv import load_dotenv
 import os
 from agents import agent
@@ -5,7 +6,7 @@ from agents import agent
 # Load environment variables
 load_dotenv()
 
-# Retrieve the OpenAI API key 
+# Retrieve the OpenAI API key
 api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
@@ -13,9 +14,11 @@ if not api_key:
 
 # Main function to run the agent
 def main():
-    print("Running Stock-Analysis-Agent...")
-    # Execute the agent with a predefined query
-    agent.run("What is the current market trend for tech stocks?")
+    print("Running Workflow Manager...")
+    user_input = "Tell me about Donald Trump's policies on trade."
+    workflow_manager = WorkflowManager()
+    final_response = workflow_manager.multi_agent_workflow(user_input)
+    print(final_response)
 
 if __name__ == "__main__":
     main()
