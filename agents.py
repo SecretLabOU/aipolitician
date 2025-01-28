@@ -1,4 +1,5 @@
-from swarms import Agent, HuggingFace
+from swarms import Agent
+from swarm_models import HuggingFaceLLM
 from dotenv import load_dotenv
 import os
 import torch
@@ -7,23 +8,18 @@ import torch
 load_dotenv()
 
 # Check for GPU availability
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cuda" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
     print("CUDA is available!")
     print(f"Using device: {torch.cuda.get_device_name(0)}")
 else:
     print("CUDA is not available. Using CPU.")
 
-# Get Hugging Face API token
-huggingface_token = os.getenv("HUGGINGFACE_API_KEY")
-
-# Initialize a smaller Hugging Face model for testing
-llm = HuggingFace(
-    model_name="distilbert-base-uncased",  # Smaller, lightweight model
-    temperature=0.5,  # Adjust creativity
-    max_length=100,   # Smaller token limit for testing
-    huggingface_token=huggingface_token,  # Optional for non-gated models
-    device=device  # Use GPU if available
+# Initialize the Hugging Face model
+llm = HuggingFaceLLM(
+    model_id="distilbert-base-uncased",  # Smaller, lightweight model
+    device=device,                      # Use GPU if available
+    max_length=100                      # Maximum token limit for generation
 )
 
 # Create the agent
