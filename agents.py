@@ -1,5 +1,5 @@
 from swarms import Agent
-from swarm_models import HuggingFaceLLM
+from swarms.models import HuggingfaceLLM
 from dotenv import load_dotenv
 import os
 import torch
@@ -16,7 +16,7 @@ else:
     print("CUDA is not available. Using CPU.")
 
 # Initialize the Hugging Face model
-llm = HuggingFaceLLM(
+llm = HuggingfaceLLM(
     model_id="distilbert-base-uncased",  # Smaller, lightweight model
     device=device,                      # Use GPU if available
     max_length=100                      # Maximum token limit for generation
