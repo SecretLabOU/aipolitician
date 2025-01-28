@@ -33,11 +33,9 @@
 
 # # Run the agent
 # agent.run("Who is Donald Trump?")
-from swarm_models import HuggingFaceLLM
+from swarm_models import Anthropic
 
-model_id = "gpt2"
-hugging_face_model = HuggingFaceLLM(model_id=model_id)
-
+anthropic = Anthropic()
 prompt = "Once upon a time"
-generated_text = hugging_face_model.run(prompt)
+generated_text = anthropic.run(prompt)
 print(generated_text)
