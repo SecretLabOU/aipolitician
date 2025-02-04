@@ -53,7 +53,7 @@ check_conda() {
         print_color $GREEN "Found existing conda environment: $env_name"
     else
         print_color $YELLOW "Creating new conda environment: $env_name"
-        conda create -y -n "$env_name" python=3.8
+        conda create -y -n "$env_name" python=3.8 pip
         if [ $? -ne 0 ]; then
             print_color $RED "Failed to create conda environment"
             exit 1
@@ -113,13 +113,37 @@ setup_gpu() {
 # Install dependencies
 install_deps() {
     print_color $YELLOW "Installing dependencies..."
-    pip install -r requirements.txt
     
-    if [ $? -eq 0 ]; then
+    # Upgrade pip first
+    print_color $YELLOW "Upgrading pip..."
+    pip install --upgrade pip
+    
+    # Install PyTorch with CUDA support first
+    print_color $YELLOW "Installing PyTorch with CUDA support..."
+    pip install torch==2.1.1 --extra-index-url https://download.pytorch.org/whl/cu118
+    
+    # Install other dependencies
+    print_color $YELLOW "Installing other dependencies..."
+    if pip install -r requirements.txt; then
         print_color $GREEN "Dependencies installed successfully"
     else
         print_color $RED "Error installing dependencies"
-        exit 1
+        print_color $YELLOW "Attempting to install dependencies one by one..."
+        
+        # Read requirements.txt line by line
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Skip comments and empty lines
+            [[ $line =~ ^#.*$ ]] && continue
+            [[ -z "${line// }" ]] && continue
+            
+            print_color $YELLOW "Installing $line"
+            if ! pip install "$line"; then
+                print_color $RED "Failed to install $line"
+                exit 1
+            fi
+        done < requirements.txt
+        
+        print_color $GREEN "Dependencies installed successfully"
     fi
 }
 
