@@ -26,14 +26,28 @@ git clone https://github.com/yourusername/PoliticianAI.git
 cd PoliticianAI
 ```
 
-3. Run the GPU setup script:
+3. Initialize genv shell environment:
 ```bash
-./scripts/run_on_gpu.sh <your-session-name>
+# Run the initialization script
+./scripts/init_genv.sh
+
+# Source your bashrc to apply changes
+source ~/.bashrc
+```
+
+4. Run the GPU setup script with conda environment:
+```bash
+# If you want to use an existing conda environment:
+./scripts/run_on_gpu.sh existing-env-name your-session-name
+
+# Or to create a new conda environment:
+./scripts/run_on_gpu.sh politician-ai your-session-name
 ```
 
 The script will:
+- Initialize genv shell environment
 - Check GPU availability
-- Set up a virtual environment
+- Set up/activate conda environment
 - Install dependencies
 - Download required models
 - Initialize data
@@ -73,26 +87,51 @@ This script will:
 - Let you deactivate specific or all sessions
 - Display final GPU status
 
-2. Or manually deactivate your session:
+2. Deactivate your conda environment:
 ```bash
-genv deactivate --id <your-session-name>
+conda deactivate
 ```
+
+### Troubleshooting GPU Setup
+
+If you encounter issues:
+
+1. Shell Initialization:
+   - Ensure genv shell is initialized: `./scripts/init_genv.sh`
+   - Verify initialization in ~/.bashrc
+   - Try opening a new terminal session
+
+2. Conda Environment Issues:
+   - List environments: `conda env list`
+   - Try creating a new environment: `conda create -n new-env python=3.8`
+   - Check if conda is in PATH: `which conda`
+
+3. GPU Session Issues:
+   - Check GPU availability: `nvidia-smi`
+   - List active sessions: `genv devices`
+   - Try cleaning up old sessions: `./scripts/cleanup_gpu.sh`
+
+4. Common Problems:
+   - "Shell not properly initialized": Run `./scripts/init_genv.sh`
+   - "Not running in active environment": Ensure conda environment is activated
+   - "No GPUs available": Check if all GPUs are in use
+   - "Conda command not found": Source your conda initialization
 
 ### Best Practices for GPU Usage
 
-1. Resource Management:
+1. Environment Management:
+   - Use conda environments for isolation
+   - Keep environments clean and focused
+   - Document environment dependencies
+
+2. Resource Management:
    - Always clean up your GPU sessions when done
    - Monitor GPU memory usage with `nvidia-smi`
    - Use only the GPUs you need
 
-2. Performance Optimization:
+3. Performance Optimization:
    - Set appropriate batch sizes based on GPU memory
    - Enable mixed precision training when possible
    - Monitor GPU utilization to ensure efficient use
-
-3. Troubleshooting:
-   - If GPU memory issues occur, try reducing batch size
-   - Check for orphaned sessions with `genv devices`
-   - Use `nvidia-smi` to monitor GPU health
 
 [Rest of the README content remains the same]

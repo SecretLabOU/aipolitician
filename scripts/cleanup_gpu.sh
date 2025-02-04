@@ -13,6 +13,30 @@ print_color() {
     printf "${color}%s${NC}\n" "$message"
 }
 
+# Initialize genv shell
+init_genv() {
+    print_color $YELLOW "Initializing genv shell environment..."
+    
+    # Check if genv shell is initialized
+    if ! command -v genv >/dev/null 2>&1; then
+        print_color $RED "genv command not found. Please ensure it's installed."
+        exit 1
+    fi
+    
+    # Initialize genv shell
+    eval "$(genv shell --init)"
+    
+    if [ $? -eq 0 ]; then
+        print_color $GREEN "genv shell initialized successfully"
+    else
+        print_color $RED "Failed to initialize genv shell"
+        exit 1
+    fi
+}
+
+# Initialize genv shell first
+init_genv
+
 # Show current GPU status
 print_color $YELLOW "Current GPU Status:"
 nvidia-smi
@@ -29,13 +53,25 @@ if [ "$session_name" = "all" ]; then
     # Get list of active sessions
     active_sessions=$(genv devices | grep -oE '[^ ]+$' | sort -u)
     
-    # Deactivate each session
-    for session in $active_sessions; do
-        print_color $YELLOW "Deactivating session: $session"
-        genv deactivate --id "$session"
-    done
+    if [ -z "$active_sessions" ]; then
+        print_color $YELLOW "No active sessions found"
+    else
+        # Deactivate each session
+        for session in $active_sessions; do
+            if [ ! -z "$session" ]; then
+                print_color $YELLOW "Deactivating session: $session"
+                genv deactivate --id "$session"
+                
+                if [ $? -eq 0 ]; then
+                    print_color $GREEN "Session $session deactivated successfully"
+                else
+                    print_color $RED "Error deactivating session: $session"
+                fi
+            fi
+        done
+    fi
     
-    print_color $GREEN "All sessions deactivated"
+    print_color $GREEN "All sessions processed"
 else
     print_color $YELLOW "Deactivating session: $session_name"
     genv deactivate --id "$session_name"
@@ -56,5 +92,6 @@ print_color $YELLOW "\nRemaining GPU Sessions:"
 genv devices
 
 print_color $GREEN "\nCleanup complete!"
-print_color $YELLOW "Note: Don't forget to deactivate your virtual environment:"
-echo "deactivate"
+print_color $YELLOW "Note: Don't forget to:"
+echo "1. Deactivate conda environment: conda deactivate"
+echo "2. Add to your ~/.bashrc if you haven't: eval \"\$(genv shell --init)\""
