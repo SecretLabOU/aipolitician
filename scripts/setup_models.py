@@ -22,6 +22,23 @@ from src.utils import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
+def get_torch_dtype(precision: str) -> torch.dtype:
+    """
+    Convert precision string to torch dtype.
+    
+    Args:
+        precision: Precision string ('float16', 'float32', etc.)
+        
+    Returns:
+        torch.dtype
+    """
+    dtype_map = {
+        'float16': torch.float16,
+        'float32': torch.float32,
+        'bfloat16': torch.bfloat16
+    }
+    return dtype_map.get(precision.lower(), torch.float32)
+
 def setup_model_directory():
     """Create model directory if it doesn't exist."""
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -50,7 +67,7 @@ def download_model(model_name: str, model_type: str):
         model = AutoModel.from_pretrained(
             model_name,
             cache_dir=MODELS_DIR,
-            torch_dtype=MODEL_PRECISION,
+            torch_dtype=get_torch_dtype(MODEL_PRECISION),
             device_map=DEVICE if torch.cuda.is_available() else None
         )
         logger.info(f"Downloaded {model_type} model")
