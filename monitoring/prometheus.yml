@@ -1,0 +1,55 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'politician_ai'
+    static_configs:
+      - targets: ['app:8000']
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # System monitoring
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # GPU monitoring
+  - job_name: 'gpu'
+    static_configs:
+      - targets: ['dcgm-exporter:9400']
+
+# Alerting rules
+rule_files:
+  - 'alerts.yml'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - 'alertmanager:9093'
+
+# Recording rules for common queries
+rules:
+  - name: recording_rules
+    interval: 5m
+    rules:
+      # Model latency
+      - record: model_latency:avg_5m
+        expr: rate(model_inference_duration_seconds_sum[5m]) / rate(model_inference_duration_seconds_count[5m])
+      
+      # Request rate
+      - record: http_requests:rate_5m
+        expr: rate(http_requests_total[5m])
+      
+      # Error rate
+      - record: http_errors:rate_5m
+        expr: rate(http_requests_total{status=~"5.."}[5m])
+      
+      # GPU utilization
+      - record: gpu:utilization_5m
+        expr: avg_over_time(DCGM_FI_DEV_GPU_UTIL[5m])

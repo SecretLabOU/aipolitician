@@ -1,0 +1,102 @@
+groups:
+  - name: PoliticianAI
+    rules:
+      # High Model Latency
+      - alert: HighModelLatency
+        expr: model_latency:avg_5m > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High model inference latency
+          description: "Model latency is above 2 seconds (current value: {{ $value }}s)"
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High error rate detected
+          description: "Error rate is above 10% (current value: {{ $value }})"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High memory usage
+          description: "Memory usage is above 90% (current value: {{ $value }}%)"
+
+      # High GPU Memory Usage
+      - alert: HighGPUMemoryUsage
+        expr: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_TOTAL * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High GPU memory usage
+          description: "GPU memory usage is above 90% (current value: {{ $value }}%)"
+
+      # High GPU Utilization
+      - alert: HighGPUUtilization
+        expr: DCGM_FI_DEV_GPU_UTIL > 95
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: High GPU utilization
+          description: "GPU utilization is above 95% for 15 minutes (current value: {{ $value }}%)"
+
+      # Service Down
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Service is down
+          description: "{{ $labels.job }} service is down"
+
+      # High Request Rate
+      - alert: HighRequestRate
+        expr: rate(http_requests_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High request rate
+          description: "Request rate is above 100 req/s (current value: {{ $value }})"
+
+      # Database Connection Issues
+      - alert: DatabaseConnectionIssues
+        expr: rate(database_connection_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Database connection issues detected
+          description: "Database connection errors detected (current rate: {{ $value }})"
+
+      # Model Loading Failures
+      - alert: ModelLoadingFailures
+        expr: rate(model_loading_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Model loading failures detected
+          description: "Failed to load AI models (current rate: {{ $value }})"
+
+      # Cache Miss Rate
+      - alert: HighCacheMissRate
+        expr: rate(cache_misses_total[5m]) / rate(cache_requests_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: High cache miss rate
+          description: "Cache miss rate is above 50% (current value: {{ $value }})"
