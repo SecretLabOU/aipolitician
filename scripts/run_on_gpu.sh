@@ -6,6 +6,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Get project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Print with color
 print_color() {
     color=$1
@@ -169,11 +172,38 @@ install_deps() {
         
         print_color $GREEN "Dependencies installed successfully"
     fi
+    
+    # Install project in development mode
+    print_color $YELLOW "Installing project in development mode..."
+    cd "${PROJECT_ROOT}"
+    pip install -e .
+    if [ $? -ne 0 ]; then
+        print_color $RED "Failed to install project in development mode"
+        exit 1
+    fi
+    print_color $GREEN "Project installed in development mode"
+}
+
+# Setup Python environment
+setup_python_env() {
+    print_color $YELLOW "Setting up Python environment..."
+    
+    # Add project root to PYTHONPATH
+    export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
+    
+    # Verify Python can import the project
+    if ! python -c "import src.config" 2>/dev/null; then
+        print_color $RED "Failed to import project. Check Python path and installation."
+        exit 1
+    fi
+    
+    print_color $GREEN "Python environment ready"
 }
 
 # Download and set up models
 setup_models() {
     print_color $YELLOW "Setting up models..."
+    cd "${PROJECT_ROOT}"
     python scripts/setup_models.py
     
     if [ $? -eq 0 ]; then
@@ -187,6 +217,7 @@ setup_models() {
 # Initialize data
 init_data() {
     print_color $YELLOW "Initializing data..."
+    cd "${PROJECT_ROOT}"
     python scripts/collect_data.py
     
     if [ $? -eq 0 ]; then
@@ -227,8 +258,11 @@ main() {
     # Setup GPU environment
     setup_gpu "$session_name"
     
-    # Install dependencies
+    # Install dependencies and project
     install_deps
+    
+    # Setup Python environment
+    setup_python_env
     
     # Create .env if it doesn't exist
     if [ ! -f ".env" ]; then
@@ -244,6 +278,7 @@ main() {
     
     # Start the application
     print_color $GREEN "\nSetup complete! Starting application..."
+    cd "${PROJECT_ROOT}"
     python main.py
 }
 
@@ -273,6 +308,7 @@ show_help() {
     echo "- Set up/activate conda environment"
     echo "- Install Rust if needed"
     echo "- Install dependencies"
+    echo "- Set up Python environment"
     echo "- Download required models"
     echo "- Initialize data"
     echo "- Start the application"
