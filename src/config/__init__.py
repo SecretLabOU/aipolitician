@@ -28,7 +28,7 @@ CACHE_DATABASE_URL = os.getenv("CACHE_DATABASE_URL", f"sqlite:///{DATA_DIR}/cach
 
 # Model settings
 DEVICE = os.getenv("DEVICE", "cuda" if os.getenv("CUDA_VISIBLE_DEVICES") else "cpu")
-MODEL_PRECISION = os.getenv("MODEL_PRECISION", "float16")
+MODEL_PRECISION = os.getenv("MODEL_PRECISION", "auto")
 BATCH_SIZE = get_env_int("BATCH_SIZE", 1)
 
 # LangChain settings
