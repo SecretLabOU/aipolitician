@@ -6,18 +6,26 @@ from setuptools import find_packages, setup
 # Read requirements
 def read_requirements(filename):
     """Read requirements from file."""
-    with open(filename) as f:
-        return [
-            line.strip()
-            for line in f
-            if line.strip() and not line.startswith('#')
-        ]
+    requirements = []
+    try:
+        with open(filename) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    requirements.append(line)
+    except FileNotFoundError:
+        # Return empty list if file doesn't exist
+        pass
+    return requirements
 
 # Read long description
 def read_long_description():
     """Read README.md as long description."""
-    with open('README.md', encoding='utf-8') as f:
-        return f.read()
+    try:
+        with open('README.md', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
 
 # Project metadata
 NAME = 'politician_ai'
@@ -56,19 +64,26 @@ setup(
     # Dependencies
     install_requires=read_requirements('requirements.txt'),
     extras_require={
-        'dev': read_requirements('requirements-dev.txt'),
+        'dev': [
+            'black==23.11.0',
+            'isort==5.12.0',
+            'mypy==1.7.1',
+            'flake8==6.1.0',
+            'pylint==3.0.2',
+            'pre-commit==3.5.0'
+        ],
         'test': [
-            'pytest',
-            'pytest-cov',
-            'pytest-asyncio',
-            'pytest-mock',
-            'pytest-env',
+            'pytest==7.4.3',
+            'pytest-cov==4.1.0',
+            'pytest-asyncio==0.21.1',
+            'pytest-mock==3.12.0',
+            'pytest-env==1.0.1'
         ],
         'docs': [
-            'sphinx',
-            'sphinx-rtd-theme',
-            'sphinx-autodoc-typehints',
-        ],
+            'sphinx==7.2.6',
+            'sphinx-rtd-theme==1.3.0',
+            'sphinx-autodoc-typehints==1.24.0'
+        ]
     },
     
     # Entry points
