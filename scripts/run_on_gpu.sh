@@ -34,6 +34,30 @@ init_genv() {
     fi
 }
 
+# Check and install Rust
+check_rust() {
+    print_color $YELLOW "Checking Rust installation..."
+    
+    if ! command -v cargo >/dev/null 2>&1; then
+        print_color $YELLOW "Rust not found. Installing Rust..."
+        
+        # Download and run rustup-init
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        
+        # Source cargo environment
+        source "$HOME/.cargo/env"
+        
+        if [ $? -eq 0 ]; then
+            print_color $GREEN "Rust installed successfully"
+        else
+            print_color $RED "Failed to install Rust"
+            exit 1
+        fi
+    else
+        print_color $GREEN "Rust is already installed"
+    fi
+}
+
 # Check conda environment
 check_conda() {
     local env_name=$1
@@ -197,6 +221,9 @@ main() {
     # Setup and activate conda environment
     check_conda "$conda_env"
     
+    # Check and install Rust
+    check_rust
+    
     # Setup GPU environment
     setup_gpu "$session_name"
     
@@ -244,6 +271,7 @@ show_help() {
     echo "- Initialize genv shell environment"
     echo "- Check GPU availability"
     echo "- Set up/activate conda environment"
+    echo "- Install Rust if needed"
     echo "- Install dependencies"
     echo "- Download required models"
     echo "- Initialize data"

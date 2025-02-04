@@ -1,15 +1,17 @@
 # PoliticianAI
 
-[Previous content remains the same until the GPU Support section]
+[Previous content remains the same until Prerequisites section]
 
-## GPU Support
+## Prerequisites
 
-The system automatically detects and uses available GPUs. For optimal performance:
-- CUDA 11.4+
-- 8GB+ VRAM
-- Latest GPU drivers
+- Python 3.8+
+- CUDA-capable GPU (recommended)
+- 16GB+ RAM
+- 50GB+ disk space
+- Rust (will be installed automatically if needed)
+- Miniconda or Anaconda
 
-### Running on GPU Server
+## Installation
 
 1. SSH into the GPU server:
 ```bash
@@ -48,6 +50,7 @@ The script will:
 - Initialize genv shell environment
 - Check GPU availability
 - Set up/activate conda environment
+- Install Rust if needed (required for ChromaDB)
 - Install dependencies
 - Download required models
 - Initialize data
@@ -111,7 +114,12 @@ If you encounter issues:
    - List active sessions: `genv devices`
    - Try cleaning up old sessions: `./scripts/cleanup_gpu.sh`
 
-4. Common Problems:
+4. Dependency Issues:
+   - "Rust not found": The script will install it automatically
+   - "ChromaDB build failed": Make sure Rust is properly installed
+   - "CUDA not found": Check GPU drivers and CUDA installation
+
+5. Common Problems:
    - "Shell not properly initialized": Run `./scripts/init_genv.sh`
    - "Not running in active environment": Ensure conda environment is activated
    - "No GPUs available": Check if all GPUs are in use
