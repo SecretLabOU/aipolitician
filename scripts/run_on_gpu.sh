@@ -80,7 +80,7 @@ check_conda() {
         print_color $GREEN "Found existing conda environment: $env_name"
     else
         print_color $YELLOW "Creating new conda environment: $env_name"
-        conda create -y -n "$env_name" python=3.8 pip
+        conda create -y -n "$env_name" python=3.10.6 pip
         if [ $? -ne 0 ]; then
             print_color $RED "Failed to create conda environment"
             exit 1
