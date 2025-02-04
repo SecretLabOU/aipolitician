@@ -25,21 +25,21 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -55,14 +55,10 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           },
-          "unit": "s"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -75,8 +71,8 @@
       "id": 1,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
-          "displayMode": "table",
+          "calcs": [],
+          "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
         },
@@ -91,11 +87,11 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "model_latency:avg_5m",
+          "expr": "rate(http_requests_total[5m])",
           "refId": "A"
         }
       ],
-      "title": "Model Latency",
+      "title": "Request Rate",
       "type": "timeseries"
     },
     {
@@ -136,7 +132,9 @@
       "options": {
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -150,7 +148,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "gpu:utilization_5m",
+          "expr": "nvidia_gpu_utilization",
           "refId": "A"
         }
       ],
@@ -174,21 +172,21 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -207,7 +205,7 @@
               }
             ]
           },
-          "unit": "reqps"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -236,11 +234,11 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "http_requests:rate_5m",
+          "expr": "rate(model_inference_duration_seconds_sum[5m]) / rate(model_inference_duration_seconds_count[5m])",
           "refId": "A"
         }
       ],
-      "title": "Request Rate",
+      "title": "Model Inference Time",
       "type": "timeseries"
     },
     {
@@ -260,21 +258,21 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -322,18 +320,18 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(cache_misses_total[5m]) / rate(cache_requests_total[5m]) * 100",
+          "expr": "rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) * 100",
           "refId": "A"
         }
       ],
-      "title": "Cache Miss Rate",
+      "title": "Cache Hit Rate",
       "type": "timeseries"
     }
   ],
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["politician_ai"],
+  "tags": [],
   "templating": {
     "list": []
   },

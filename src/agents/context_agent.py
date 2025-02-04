@@ -1,185 +1,194 @@
-from typing import Dict, List, Optional
-from transformers import pipeline
-import torch
-from langchain.memory import ConversationBufferMemory
-from langchain.vectorstores import FAISS
+"""Context extraction agent for PoliticianAI."""
 
-from .base import BaseAgent
-from src.config import CONTEXT_MODEL, POLITICAL_TOPICS
+import logging
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from sqlalchemy.orm import Session
+from transformers import pipeline
+
+from src.agents.base import BaseAgent
+from src.config import CONTEXT_MODEL, DEVICE, MODEL_PRECISION, POLITICAL_TOPICS
+from src.database.models import Topic
+from src.utils import setup_logging
+
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 class ContextAgent(BaseAgent):
-    """Agent for extracting context and identifying topics in political discourse"""
+    """Agent for extracting context and topics from text."""
     
-    def __init__(
-        self,
-        memory: Optional[ConversationBufferMemory] = None,
-        verbose: bool = False,
-        threshold: float = 0.3
-    ):
-        super().__init__(
-            name="ContextAgent",
-            description="Extracts context and identifies topics in political discourse",
-            memory=memory,
-            verbose=verbose
-        )
+    def __init__(self):
+        """Initialize context agent."""
+        super().__init__()
         
         # Initialize zero-shot classification pipeline
-        self.classifier = pipeline(
-            "zero-shot-classification",
+        self.pipeline = pipeline(
+            task="zero-shot-classification",
             model=CONTEXT_MODEL,
-            device=0 if torch.cuda.is_available() else -1
+            device=DEVICE,
+            torch_dtype=MODEL_PRECISION
         )
         
-        self.threshold = threshold
-        self.topics = POLITICAL_TOPICS
-
-    async def arun(self, query: str) -> Dict:
+        # Cache topic mappings
+        self.topic_cache: Dict[str, int] = {}
+    
+    def validate_input(self, input_data: Any) -> bool:
         """
-        Asynchronously extract context
+        Validate input text.
         
         Args:
-            query: Text to analyze
+            input_data: Input text to validate
             
         Returns:
-            Dict containing context analysis results
+            True if valid, False otherwise
         """
-        return self.run(query)
-
-    def run(self, query: str) -> Dict:
+        if not isinstance(input_data, str):
+            return False
+        if not input_data.strip():
+            return False
+        return True
+    
+    def preprocess(
+        self,
+        input_data: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
-        Extract context and identify topics
+        Preprocess input text.
         
         Args:
-            query: Text to analyze
+            input_data: Input text to preprocess
+            context: Optional context dictionary
             
         Returns:
-            Dict containing:
-                - main_topic: Primary identified topic
-                - confidence: Confidence score for main topic
-                - related_topics: List of related topics with scores
-                - context: Relevant contextual information
+            Preprocessed text
         """
-        if not self._validate_input(query):
-            return {
-                'main_topic': 'general',
-                'confidence': 0.0,
-                'related_topics': [],
-                'context': []
-            }
-
-        try:
-            # Classify topics
-            result = self.classifier(
-                query,
-                candidate_labels=self.topics,
-                multi_label=True
-            )
-
-            # Filter topics above threshold
-            valid_topics = [
-                {'topic': label, 'score': score}
-                for label, score in zip(result['labels'], result['scores'])
-                if score > self.threshold
-            ]
-
-            # Get relevant context
-            context = self._get_relevant_context(query)
-
-            response = {
-                'main_topic': result['labels'][0],
-                'confidence': float(result['scores'][0]),
-                'related_topics': valid_topics[1:],  # Exclude main topic
-                'context': context
-            }
-
-            # Update memory if available
-            self._update_memory(query, str(response))
-
-            return response
-
-        except Exception as e:
-            if self.verbose:
-                print(f"Error in context extraction: {str(e)}")
-            return {
-                'main_topic': 'general',
-                'confidence': 0.0,
-                'related_topics': [],
-                'context': []
-            }
-
-    def extract_entities(self, text: str) -> List[Dict]:
+        # Clean and normalize text
+        text = input_data.strip()
+        
+        # Truncate if too long (model max length)
+        if len(text) > 512:
+            text = text[:512]
+        
+        return text
+    
+    def process(
+        self,
+        input_data: str,
+        context: Optional[Dict[str, Any]] = None,
+        db: Optional[Session] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        Extract political entities from text
+        Extract context and topics from input text.
         
         Args:
-            text: Input text
+            input_data: Input text to analyze
+            context: Optional context dictionary
+            db: Optional database session
+            **kwargs: Additional keyword arguments
             
         Returns:
-            List of dictionaries containing entity information
+            Dictionary containing:
+                - topics: List of identified topics
+                - topic_ids: List of topic IDs
+                - scores: Topic confidence scores
         """
         try:
-            # Use zero-shot classification for entity types
-            entity_types = ['politician', 'organization', 'location', 'policy', 'event']
+            # Get or create topics in database
+            topics = self._get_or_create_topics(db) if db else POLITICAL_TOPICS
             
-            result = self.classifier(
-                text,
-                candidate_labels=entity_types,
+            # Run zero-shot classification
+            result = self.pipeline(
+                input_data,
+                candidate_labels=topics,
                 multi_label=True
             )
             
-            entities = []
-            for label, score in zip(result['labels'], result['scores']):
-                if score > self.threshold:
-                    entities.append({
-                        'type': label,
-                        'value': text,  # In a real implementation, you'd want to extract the specific entity text
-                        'confidence': float(score)
-                    })
+            # Get topics above threshold (0.5)
+            identified_topics = []
+            topic_scores = []
+            for topic, score in zip(result["labels"], result["scores"]):
+                if score > 0.5:
+                    identified_topics.append(topic)
+                    topic_scores.append(score)
             
-            return entities
+            # Get topic IDs if database is available
+            topic_ids = []
+            if db and self.topic_cache:
+                topic_ids = [
+                    self.topic_cache[topic]
+                    for topic in identified_topics
+                    if topic in self.topic_cache
+                ]
+            
+            return {
+                "topics": identified_topics,
+                "topic_ids": topic_ids,
+                "scores": topic_scores
+            }
             
         except Exception as e:
-            if self.verbose:
-                print(f"Error in entity extraction: {str(e)}")
-            return []
-
-    def analyze_topic_relationships(self, topics: List[str]) -> List[Dict]:
+            self.logger.error(f"Error in context extraction: {str(e)}")
+            raise
+    
+    def postprocess(
+        self,
+        output_data: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
-        Analyze relationships between topics
+        Postprocess context extraction results.
         
         Args:
-            topics: List of topics to analyze
+            output_data: Context extraction results
+            context: Optional context dictionary
             
         Returns:
-            List of dictionaries containing topic relationships
+            Postprocessed results
         """
-        relationships = []
+        # Round scores to 3 decimal places
+        output_data["scores"] = [
+            round(score, 3) for score in output_data["scores"]
+        ]
+        
+        return output_data
+    
+    def _get_or_create_topics(self, db: Session) -> List[str]:
+        """
+        Get existing topics or create them in database.
+        
+        Args:
+            db: Database session
+            
+        Returns:
+            List of topic names
+        """
         try:
-            for i, topic1 in enumerate(topics):
-                for topic2 in topics[i+1:]:
-                    # Get context for both topics
-                    context1 = self._get_relevant_context(topic1)
-                    context2 = self._get_relevant_context(topic2)
+            # Clear cache if empty
+            if not self.topic_cache:
+                # Get existing topics
+                existing_topics = db.query(Topic).all()
+                
+                # Create missing topics
+                for topic in POLITICAL_TOPICS:
+                    topic_obj = next(
+                        (t for t in existing_topics if t.name == topic),
+                        None
+                    )
+                    if not topic_obj:
+                        topic_obj = Topic(name=topic)
+                        db.add(topic_obj)
+                        db.flush()  # Get ID without committing
                     
-                    # Analyze relationship using zero-shot classification
-                    if context1 and context2:
-                        combined_context = f"{context1[0]} {context2[0]}"
-                        result = self.classifier(
-                            combined_context,
-                            candidate_labels=['related', 'opposing', 'independent'],
-                            multi_label=False
-                        )
-                        
-                        relationships.append({
-                            'topic1': topic1,
-                            'topic2': topic2,
-                            'relationship': result['labels'][0],
-                            'confidence': float(result['scores'][0])
-                        })
+                    self.topic_cache[topic] = topic_obj.id
+                
+                db.commit()
             
-            return relationships
+            return list(self.topic_cache.keys())
             
         except Exception as e:
-            if self.verbose:
-                print(f"Error in relationship analysis: {str(e)}")
-            return relationships
+            self.logger.error(f"Error getting/creating topics: {str(e)}")
+            db.rollback()
+            return POLITICAL_TOPICS

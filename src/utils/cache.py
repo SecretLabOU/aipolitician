@@ -1,195 +1,305 @@
-"""Cache management for the PoliticianAI project."""
+"""Cache utilities for PoliticianAI."""
 
-import hashlib
-import json
+import logging
 import pickle
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Union
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from src.config import CACHE_DATABASE_URL, CACHE_EXPIRY_HOURS
-from src.utils.metrics import track_cache_access
+from src.config import CACHE_EXPIRY_HOURS, RESPONSE_CACHE_SIZE
+from src.database.models import Cache
+from src.utils import setup_logging
 
-class ResponseCache:
-    """Cache for storing and retrieving responses."""
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
+
+class CacheManager:
+    """Manager for handling response caching."""
     
-    def __init__(self, db_url: str = CACHE_DATABASE_URL):
+    def __init__(self, db: Session):
         """
-        Initialize cache with database connection.
+        Initialize cache manager.
         
         Args:
-            db_url: SQLite database URL
+            db: Database session
         """
-        self.engine = create_engine(db_url)
-        self._create_cache_table()
-
-    def _create_cache_table(self):
-        """Create cache table if it doesn't exist."""
-        with self.engine.connect() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS response_cache (
-                    query_hash TEXT PRIMARY KEY,
-                    response TEXT,
-                    metadata TEXT,
-                    timestamp DATETIME,
-                    expiry DATETIME
-                )
-            """)
-
-    def _compute_hash(self, data: Union[str, Dict]) -> str:
+        self.db = db
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    def get(self, key: str) -> Optional[Any]:
         """
-        Compute hash for cache key.
+        Get value from cache.
         
         Args:
-            data: Data to hash
+            key: Cache key
             
         Returns:
-            str: Hash value
+            Cached value if found and not expired, None otherwise
         """
-        if isinstance(data, dict):
-            # Sort dictionary to ensure consistent hashing
-            data = json.dumps(data, sort_keys=True)
-        return hashlib.sha256(data.encode()).hexdigest()
-
-    def get(self, query: Union[str, Dict]) -> Optional[Dict[str, Any]]:
-        """
-        Get cached response.
-        
-        Args:
-            query: Query to look up
+        try:
+            # Get cache entry
+            entry = (
+                self.db.query(Cache)
+                .filter(Cache.key == key)
+                .first()
+            )
             
-        Returns:
-            Optional[Dict]: Cached response or None
-        """
-        query_hash = self._compute_hash(query)
-        track_cache_access()  # Track cache request
-        
-        with Session(self.engine) as session:
-            result = session.execute("""
-                SELECT response, metadata, expiry
-                FROM response_cache
-                WHERE query_hash = :query_hash
-            """, {"query_hash": query_hash}).fetchone()
+            # Check if entry exists and is not expired
+            if entry and entry.expires_at > datetime.utcnow():
+                try:
+                    return pickle.loads(entry.value.encode())
+                except Exception as e:
+                    self.logger.error(f"Error deserializing cache value: {str(e)}")
+                    return None
             
-            if result is None:
-                track_cache_access(hit=False)
-                return None
+            return None
             
-            response, metadata, expiry = result
-            expiry = datetime.fromisoformat(expiry)
-            
-            # Check if cached response has expired
-            if datetime.now() > expiry:
-                self.delete(query)
-                track_cache_access(hit=False)
-                return None
-            
-            track_cache_access(hit=True)
-            return {
-                "response": json.loads(response),
-                "metadata": json.loads(metadata)
-            }
-
+        except Exception as e:
+            self.logger.error(f"Error getting from cache: {str(e)}")
+            return None
+    
     def set(
         self,
-        query: Union[str, Dict],
-        response: Dict[str, Any],
+        key: str,
+        value: Any,
         expiry_hours: Optional[int] = None
     ) -> bool:
         """
-        Cache a response.
+        Set value in cache.
         
         Args:
-            query: Query to cache
-            response: Response to cache
-            expiry_hours: Cache expiry time in hours
+            key: Cache key
+            value: Value to cache
+            expiry_hours: Optional custom expiry time in hours
             
         Returns:
-            bool: True if cached successfully
+            True if successful, False otherwise
         """
-        query_hash = self._compute_hash(query)
-        expiry_hours = expiry_hours or CACHE_EXPIRY_HOURS
-        expiry = datetime.now() + timedelta(hours=expiry_hours)
-        
         try:
-            with Session(self.engine) as session:
-                session.execute("""
-                    INSERT OR REPLACE INTO response_cache
-                    (query_hash, response, metadata, timestamp, expiry)
-                    VALUES (:query_hash, :response, :metadata, :timestamp, :expiry)
-                """, {
-                    "query_hash": query_hash,
-                    "response": json.dumps(response.get("response", {})),
-                    "metadata": json.dumps(response.get("metadata", {})),
-                    "timestamp": datetime.now().isoformat(),
-                    "expiry": expiry.isoformat()
-                })
-                session.commit()
+            # Serialize value
+            try:
+                serialized = pickle.dumps(value).decode()
+            except Exception as e:
+                self.logger.error(f"Error serializing cache value: {str(e)}")
+                return False
+            
+            # Calculate expiry time
+            expiry = datetime.utcnow() + timedelta(
+                hours=expiry_hours or CACHE_EXPIRY_HOURS
+            )
+            
+            # Create or update cache entry
+            entry = (
+                self.db.query(Cache)
+                .filter(Cache.key == key)
+                .first()
+            )
+            
+            if entry:
+                entry.value = serialized
+                entry.expires_at = expiry
+                entry.updated_at = datetime.utcnow()
+            else:
+                entry = Cache(
+                    key=key,
+                    value=serialized,
+                    expires_at=expiry
+                )
+                self.db.add(entry)
+            
+            # Enforce cache size limit
+            self._enforce_cache_limit()
+            
+            self.db.commit()
             return True
+            
         except Exception as e:
-            print(f"Error caching response: {str(e)}")
+            self.logger.error(f"Error setting cache: {str(e)}")
+            self.db.rollback()
             return False
-
-    def delete(self, query: Union[str, Dict]) -> bool:
+    
+    def delete(self, key: str) -> bool:
         """
-        Delete cached response.
+        Delete value from cache.
         
         Args:
-            query: Query to delete
+            key: Cache key
             
         Returns:
-            bool: True if deleted successfully
+            True if successful, False otherwise
         """
-        query_hash = self._compute_hash(query)
-        
         try:
-            with Session(self.engine) as session:
-                session.execute("""
-                    DELETE FROM response_cache
-                    WHERE query_hash = :query_hash
-                """, {"query_hash": query_hash})
-                session.commit()
+            # Delete cache entry
+            (
+                self.db.query(Cache)
+                .filter(Cache.key == key)
+                .delete()
+            )
+            
+            self.db.commit()
             return True
+            
         except Exception as e:
-            print(f"Error deleting cached response: {str(e)}")
+            self.logger.error(f"Error deleting from cache: {str(e)}")
+            self.db.rollback()
             return False
-
-    def clear_expired(self) -> int:
+    
+    def clear(self) -> bool:
         """
-        Clear expired cache entries.
+        Clear all cached values.
         
         Returns:
-            int: Number of entries cleared
+            True if successful, False otherwise
         """
         try:
-            with Session(self.engine) as session:
-                result = session.execute("""
-                    DELETE FROM response_cache
-                    WHERE expiry < :now
-                """, {"now": datetime.now().isoformat()})
-                session.commit()
-                return result.rowcount
+            # Delete all cache entries
+            self.db.query(Cache).delete()
+            self.db.commit()
+            return True
+            
         except Exception as e:
-            print(f"Error clearing expired cache: {str(e)}")
-            return 0
+            self.logger.error(f"Error clearing cache: {str(e)}")
+            self.db.rollback()
+            return False
+    
+    def _enforce_cache_limit(self):
+        """Enforce cache size limit by removing oldest entries."""
+        try:
+            # Get current cache size
+            cache_size = self.db.query(Cache).count()
+            
+            if cache_size > RESPONSE_CACHE_SIZE:
+                # Get oldest entries to remove
+                to_remove = cache_size - RESPONSE_CACHE_SIZE
+                oldest_entries = (
+                    self.db.query(Cache)
+                    .order_by(Cache.updated_at)
+                    .limit(to_remove)
+                )
+                
+                # Delete oldest entries
+                for entry in oldest_entries:
+                    self.db.delete(entry)
+                
+        except Exception as e:
+            self.logger.error(f"Error enforcing cache limit: {str(e)}")
 
-    def clear_all(self) -> bool:
+class Cache:
+    """Simple in-memory cache with expiry."""
+    
+    def __init__(self, expiry_hours: Optional[int] = None):
         """
-        Clear all cache entries.
+        Initialize cache.
+        
+        Args:
+            expiry_hours: Optional custom expiry time in hours
+        """
+        self.cache: Dict[str, Dict[str, Union[Any, datetime]]] = {}
+        self.expiry_hours = expiry_hours or CACHE_EXPIRY_HOURS
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Get value from cache.
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Cached value if found and not expired, None otherwise
+        """
+        try:
+            # Check if key exists and is not expired
+            if key in self.cache:
+                entry = self.cache[key]
+                if entry["expires"] > datetime.utcnow():
+                    return entry["value"]
+                else:
+                    # Remove expired entry
+                    del self.cache[key]
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting from cache: {str(e)}")
+            return None
+    
+    def set(
+        self,
+        key: str,
+        value: Any,
+        expiry_hours: Optional[int] = None
+    ) -> bool:
+        """
+        Set value in cache.
+        
+        Args:
+            key: Cache key
+            value: Value to cache
+            expiry_hours: Optional custom expiry time in hours
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Calculate expiry time
+            expiry = datetime.utcnow() + timedelta(
+                hours=expiry_hours or self.expiry_hours
+            )
+            
+            # Store value with expiry
+            self.cache[key] = {
+                "value": value,
+                "expires": expiry
+            }
+            
+            # Enforce cache size limit
+            if len(self.cache) > RESPONSE_CACHE_SIZE:
+                # Remove oldest entry
+                oldest_key = min(
+                    self.cache.keys(),
+                    key=lambda k: self.cache[k]["expires"]
+                )
+                del self.cache[oldest_key]
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error setting cache: {str(e)}")
+            return False
+    
+    def delete(self, key: str) -> bool:
+        """
+        Delete value from cache.
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if key in self.cache:
+                del self.cache[key]
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error deleting from cache: {str(e)}")
+            return False
+    
+    def clear(self) -> bool:
+        """
+        Clear all cached values.
         
         Returns:
-            bool: True if cleared successfully
+            True if successful, False otherwise
         """
         try:
-            with Session(self.engine) as session:
-                session.execute("DELETE FROM response_cache")
-                session.commit()
+            self.cache.clear()
             return True
+            
         except Exception as e:
-            print(f"Error clearing cache: {str(e)}")
+            self.logger.error(f"Error clearing cache: {str(e)}")
             return False
-
-# Global cache instance
-cache = ResponseCache()

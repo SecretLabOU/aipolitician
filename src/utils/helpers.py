@@ -1,157 +1,180 @@
-"""Utility functions for the PoliticianAI project."""
+"""Helper utilities for PoliticianAI."""
 
-import logging
-from datetime import datetime
+import json
+import logging.config
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-
-import torch
-from sqlalchemy.orm import Session
+from typing import Any, Dict, Optional
 
 from src.config import LOGGING_CONFIG
 
-# Configure logging
-logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger(__name__)
-
-def setup_gpu() -> torch.device:
+def setup_logging(
+    config: Optional[Dict[str, Any]] = None,
+    log_file: Optional[str] = None
+) -> None:
     """
-    Set up GPU if available, otherwise use CPU.
+    Set up logging configuration.
+    
+    Args:
+        config: Optional custom logging configuration
+        log_file: Optional log file path
+    """
+    try:
+        # Use provided config or default
+        log_config = config or LOGGING_CONFIG
+        
+        # Update log file path if provided
+        if log_file:
+            log_config["handlers"]["file"]["filename"] = log_file
+        
+        # Create log directory if needed
+        log_path = Path(log_config["handlers"]["file"]["filename"]).parent
+        log_path.mkdir(parents=True, exist_ok=True)
+        
+        # Configure logging
+        logging.config.dictConfig(log_config)
+        
+    except Exception as e:
+        # Fallback to basic configuration
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        )
+        logging.error(f"Error setting up logging: {str(e)}")
+
+def load_config(config_path: str) -> Dict[str, Any]:
+    """
+    Load configuration from JSON file.
+    
+    Args:
+        config_path: Path to configuration file
+        
+    Returns:
+        Configuration dictionary
+        
+    Raises:
+        FileNotFoundError: If config file doesn't exist
+        json.JSONDecodeError: If config file is invalid JSON
+    """
+    with open(config_path) as f:
+        return json.load(f)
+
+def ensure_directory(path: str) -> None:
+    """
+    Ensure directory exists, create if needed.
+    
+    Args:
+        path: Directory path
+    """
+    Path(path).mkdir(parents=True, exist_ok=True)
+
+def get_project_root() -> Path:
+    """
+    Get project root directory.
     
     Returns:
-        torch.device: Device to use for computations
+        Path to project root
     """
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-    else:
-        device = torch.device("cpu")
-        logger.info("GPU not available, using CPU")
-    return device
+    return Path(__file__).parent.parent.parent
 
-def get_memory_usage() -> Dict[str, float]:
+def format_error(error: Exception) -> Dict[str, str]:
     """
-    Get current memory usage statistics.
+    Format exception for API response.
     
+    Args:
+        error: Exception to format
+        
     Returns:
-        Dict containing memory usage information
+        Formatted error dictionary
     """
-    memory_stats = {
-        "cpu_percent": 0.0,
-        "ram_used_gb": 0.0,
-        "gpu_memory_used_gb": 0.0
+    return {
+        "error": str(error),
+        "error_type": error.__class__.__name__
     }
+
+def truncate_text(text: str, max_length: int = 512) -> str:
+    """
+    Truncate text to maximum length.
     
+    Args:
+        text: Text to truncate
+        max_length: Maximum length
+        
+    Returns:
+        Truncated text
+    """
+    if len(text) <= max_length:
+        return text
+    return text[:max_length-3] + "..."
+
+def clean_text(text: str) -> str:
+    """
+    Clean and normalize text.
+    
+    Args:
+        text: Text to clean
+        
+    Returns:
+        Cleaned text
+    """
+    # Remove extra whitespace
+    text = " ".join(text.split())
+    
+    # Remove special characters
+    text = text.replace("\n", " ").replace("\t", " ")
+    
+    return text.strip()
+
+def get_env_bool(key: str, default: bool = False) -> bool:
+    """
+    Get boolean environment variable.
+    
+    Args:
+        key: Environment variable key
+        default: Default value if not set
+        
+    Returns:
+        Boolean value
+    """
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.lower() in ("true", "1", "t", "yes", "y")
+
+def get_env_int(key: str, default: int = 0) -> int:
+    """
+    Get integer environment variable.
+    
+    Args:
+        key: Environment variable key
+        default: Default value if not set
+        
+    Returns:
+        Integer value
+    """
+    value = os.getenv(key)
+    if value is None:
+        return default
     try:
-        import psutil
-        process = psutil.Process()
-        memory_stats["cpu_percent"] = process.cpu_percent()
-        memory_stats["ram_used_gb"] = process.memory_info().rss / (1024 ** 3)
-        
-        if torch.cuda.is_available():
-            memory_stats["gpu_memory_used_gb"] = (
-                torch.cuda.memory_allocated() / (1024 ** 3)
-            )
-    except Exception as e:
-        logger.warning(f"Error getting memory stats: {str(e)}")
-    
-    return memory_stats
+        return int(value)
+    except ValueError:
+        return default
 
-def safe_db_commit(session: Session, error_msg: str = "Database error") -> bool:
+def get_env_float(key: str, default: float = 0.0) -> float:
     """
-    Safely commit database changes with error handling.
+    Get float environment variable.
     
     Args:
-        session: SQLAlchemy session
-        error_msg: Custom error message
+        key: Environment variable key
+        default: Default value if not set
         
     Returns:
-        bool: True if commit successful, False otherwise
+        Float value
     """
+    value = os.getenv(key)
+    if value is None:
+        return default
     try:
-        session.commit()
-        return True
-    except Exception as e:
-        session.rollback()
-        logger.error(f"{error_msg}: {str(e)}")
-        return False
-
-def create_directory(path: Union[str, Path]) -> bool:
-    """
-    Create directory if it doesn't exist.
-    
-    Args:
-        path: Directory path to create
-        
-    Returns:
-        bool: True if directory exists or was created
-    """
-    try:
-        Path(path).mkdir(parents=True, exist_ok=True)
-        return True
-    except Exception as e:
-        logger.error(f"Error creating directory {path}: {str(e)}")
-        return False
-
-def format_timestamp(dt: Optional[datetime] = None) -> str:
-    """
-    Format timestamp for logging and display.
-    
-    Args:
-        dt: Datetime object (uses current time if None)
-        
-    Returns:
-        str: Formatted timestamp
-    """
-    if dt is None:
-        dt = datetime.now()
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-def batch_process(items: List[Any], batch_size: int) -> List[List[Any]]:
-    """
-    Split list into batches for processing.
-    
-    Args:
-        items: List of items to batch
-        batch_size: Size of each batch
-        
-    Returns:
-        List of batches
-    """
-    return [
-        items[i:i + batch_size]
-        for i in range(0, len(items), batch_size)
-    ]
-
-def log_execution_time(func: callable) -> callable:
-    """
-    Decorator to log function execution time.
-    
-    Args:
-        func: Function to wrap
-        
-    Returns:
-        Wrapped function
-    """
-    def wrapper(*args, **kwargs):
-        start_time = datetime.now()
-        result = func(*args, **kwargs)
-        execution_time = (datetime.now() - start_time).total_seconds()
-        logger.debug(f"{func.__name__} executed in {execution_time:.2f} seconds")
-        return result
-    return wrapper
-
-def sanitize_input(text: str) -> str:
-    """
-    Sanitize user input for safety.
-    
-    Args:
-        text: Input text to sanitize
-        
-    Returns:
-        str: Sanitized text
-    """
-    # Remove any potentially harmful characters
-    text = ''.join(char for char in text if char.isprintable())
-    # Limit length
-    return text[:1000]  # Arbitrary limit for safety
+        return float(value)
+    except ValueError:
+        return default

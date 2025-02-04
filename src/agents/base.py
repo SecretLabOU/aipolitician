@@ -1,138 +1,146 @@
+"""Base agent class for PoliticianAI."""
+
+import logging
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from langchain.agents import Tool
-from langchain.schema import BaseMemory
-from langchain.callbacks.manager import CallbackManagerForLLMRun
-from langchain.llms.base import LLM
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
 
-from src.config import EMBEDDING_MODEL, FAISS_INDEX_PATH
+from sqlalchemy.orm import Session
 
-class BaseAgent:
-    """Base class for all agents in the system"""
+from src.utils import setup_logging
+
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
+
+class BaseAgent(ABC):
+    """Abstract base class for all agents."""
     
-    def __init__(
+    def __init__(self):
+        """Initialize the agent."""
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    @abstractmethod
+    def process(
         self,
-        name: str,
-        description: str,
-        tools: Optional[List[Tool]] = None,
-        memory: Optional[BaseMemory] = None,
-        verbose: bool = False
-    ):
-        self.name = name
-        self.description = description
-        self.tools = tools or []
-        self.memory = memory
-        self.verbose = verbose
-        
-        # Initialize embeddings
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL,
-            model_kwargs={'device': 'cuda'}
-        )
-        
-        # Initialize vector store if path exists
-        if FAISS_INDEX_PATH.exists():
-            self.vector_store = FAISS.load_local(
-                str(FAISS_INDEX_PATH),
-                self.embeddings
-            )
-        else:
-            self.vector_store = None
-
-    def add_tool(self, tool: Tool) -> None:
-        """Add a tool to the agent"""
-        self.tools.append(tool)
-
-    def add_tools(self, tools: List[Tool]) -> None:
-        """Add multiple tools to the agent"""
-        self.tools.extend(tools)
-
-    def set_memory(self, memory: BaseMemory) -> None:
-        """Set the agent's memory"""
-        self.memory = memory
-
-    async def arun(self, query: str) -> str:
+        input_data: Any,
+        context: Optional[Dict[str, Any]] = None,
+        db: Optional[Session] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        Asynchronously run the agent
+        Process input data and return results.
         
         Args:
-            query: The input query to process
+            input_data: Input data to process
+            context: Optional context dictionary
+            db: Optional database session
+            **kwargs: Additional keyword arguments
             
         Returns:
-            str: The agent's response
+            Dictionary containing processing results
         """
-        raise NotImplementedError("Subclasses must implement arun method")
-
-    def run(self, query: str) -> str:
+        raise NotImplementedError
+    
+    def validate_input(self, input_data: Any) -> bool:
         """
-        Synchronously run the agent
+        Validate input data.
         
         Args:
-            query: The input query to process
+            input_data: Input data to validate
             
         Returns:
-            str: The agent's response
+            True if valid, False otherwise
         """
-        raise NotImplementedError("Subclasses must implement run method")
-
-    def _validate_input(self, query: str) -> bool:
-        """
-        Validate the input query
-        
-        Args:
-            query: The input query to validate
-            
-        Returns:
-            bool: Whether the input is valid
-        """
-        if not query or not isinstance(query, str):
-            return False
         return True
-
-    def _format_response(self, response: Any) -> str:
+    
+    def preprocess(
+        self,
+        input_data: Any,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Any:
         """
-        Format the response for output
+        Preprocess input data before main processing.
         
         Args:
-            response: The raw response to format
+            input_data: Input data to preprocess
+            context: Optional context dictionary
             
         Returns:
-            str: The formatted response
+            Preprocessed input data
         """
-        if isinstance(response, str):
-            return response
-        elif isinstance(response, dict):
-            return str(response.get('output', response))
-        return str(response)
-
-    def _get_relevant_context(self, query: str, k: int = 3) -> List[str]:
+        return input_data
+    
+    def postprocess(
+        self,
+        output_data: Any,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Any:
         """
-        Get relevant context from the vector store
+        Postprocess output data after main processing.
         
         Args:
-            query: The query to find context for
-            k: Number of relevant documents to retrieve
+            output_data: Output data to postprocess
+            context: Optional context dictionary
             
         Returns:
-            List[str]: List of relevant context strings
+            Postprocessed output data
         """
-        if not self.vector_store:
-            return []
-            
-        docs = self.vector_store.similarity_search(query, k=k)
-        return [doc.page_content for doc in docs]
-
-    def _update_memory(self, query: str, response: str) -> None:
+        return output_data
+    
+    def handle_error(self, error: Exception) -> Dict[str, Any]:
         """
-        Update the agent's memory with the interaction
+        Handle processing errors.
         
         Args:
-            query: The input query
-            response: The agent's response
+            error: Exception that occurred
+            
+        Returns:
+            Error response dictionary
         """
-        if self.memory:
-            self.memory.save_context(
-                {"input": query},
-                {"output": response}
-            )
+        self.logger.error(f"Error in {self.__class__.__name__}: {str(error)}")
+        return {
+            "success": False,
+            "error": str(error),
+            "error_type": error.__class__.__name__
+        }
+    
+    def __call__(
+        self,
+        input_data: Any,
+        context: Optional[Dict[str, Any]] = None,
+        db: Optional[Session] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Process input data with error handling.
+        
+        Args:
+            input_data: Input data to process
+            context: Optional context dictionary
+            db: Optional database session
+            **kwargs: Additional keyword arguments
+            
+        Returns:
+            Processing results or error response
+        """
+        try:
+            # Validate input
+            if not self.validate_input(input_data):
+                raise ValueError("Invalid input data")
+            
+            # Preprocess
+            preprocessed_data = self.preprocess(input_data, context)
+            
+            # Process
+            result = self.process(preprocessed_data, context, db, **kwargs)
+            
+            # Postprocess
+            final_result = self.postprocess(result, context)
+            
+            return {
+                "success": True,
+                "result": final_result
+            }
+            
+        except Exception as e:
+            return self.handle_error(e)

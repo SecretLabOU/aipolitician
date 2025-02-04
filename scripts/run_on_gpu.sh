@@ -189,11 +189,37 @@ setup_python_env() {
     print_color $YELLOW "Setting up Python environment..."
     
     # Add project root to PYTHONPATH
-    export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
+    cd "${PROJECT_ROOT}"
+    export PYTHONPATH="${PROJECT_ROOT}"
     
-    # Verify Python can import the project
-    if ! python -c "import src.config" 2>/dev/null; then
-        print_color $RED "Failed to import project. Check Python path and installation."
+    # Debug information
+    print_color $YELLOW "Current directory: $(pwd)"
+    print_color $YELLOW "PYTHONPATH: ${PYTHONPATH}"
+    print_color $YELLOW "Project structure:"
+    ls -la
+    print_color $YELLOW "\nSource directory structure:"
+    ls -la src/
+    
+    # Show Python environment
+    print_color $YELLOW "\nPython environment:"
+    which python
+    python --version
+    pip --version
+    
+    # Show installed packages
+    print_color $YELLOW "\nInstalled packages:"
+    pip list
+    
+    # Try importing with verbose output
+    print_color $YELLOW "\nAttempting to import project..."
+    if ! PYTHONPATH="${PROJECT_ROOT}" python -v -c "import src.config; print('Import successful')" 2>&1; then
+        print_color $RED "\nFailed to import project. Debug information:"
+        print_color $RED "\nPython path:"
+        python -c "import sys; print('\n'.join(sys.path))"
+        print_color $RED "\nProject root: ${PROJECT_ROOT}"
+        print_color $RED "Current directory: $(pwd)"
+        print_color $RED "\nTrying to locate config.py:"
+        find . -name "config.py"
         exit 1
     fi
     

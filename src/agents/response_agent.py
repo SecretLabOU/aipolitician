@@ -1,217 +1,217 @@
-from typing import Dict, List, Optional
-from datetime import datetime
-import json
-from sqlalchemy.orm import Session
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain.llms import LlamaCpp
+"""Response generation agent for PoliticianAI."""
 
-from .base import BaseAgent
-from src.database.models import Politician, PolicyPosition, VotingRecord, Statement
-from src.config import MODEL_DIR, RESPONSE_TEMPLATES
+import logging
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
+from transformers import pipeline
+
+from src.agents.base import BaseAgent
+from src.config import DEVICE, MODEL_PRECISION
+from src.database.models import ChatHistory, Politician, Statement, Topic
+from src.utils import setup_logging
+
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 class ResponseAgent(BaseAgent):
-    """Agent for generating contextual responses in political discourse"""
+    """Agent for generating contextual responses."""
     
-    def __init__(
+    def __init__(self):
+        """Initialize response agent."""
+        super().__init__()
+        
+        # Initialize text generation pipeline
+        self.pipeline = pipeline(
+            task="text2text-generation",
+            model="facebook/bart-large",  # Using BART for now, can be replaced with fine-tuned model
+            device=DEVICE,
+            torch_dtype=MODEL_PRECISION
+        )
+    
+    def validate_input(self, input_data: Any) -> bool:
+        """
+        Validate input text.
+        
+        Args:
+            input_data: Input text to validate
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        if not isinstance(input_data, str):
+            return False
+        if not input_data.strip():
+            return False
+        return True
+    
+    def preprocess(
         self,
-        db_session: Session,
-        memory: Optional[ConversationBufferMemory] = None,
-        verbose: bool = False
-    ):
-        super().__init__(
-            name="ResponseAgent",
-            description="Generates contextual responses based on political data",
-            memory=memory,
-            verbose=verbose
-        )
-        
-        self.db = db_session
-        
-        # Initialize LLaMA model for response generation
-        self.llm = LlamaCpp(
-            model_path=str(MODEL_DIR / "llama-2-7b-chat.gguf"),
-            temperature=0.7,
-            max_tokens=2048,
-            top_p=0.95,
-            n_ctx=2048,
-            verbose=verbose
-        )
-        
-        # Initialize response chain
-        self.response_chain = self._create_response_chain()
-
-    def _create_response_chain(self) -> LLMChain:
-        """Create the response generation chain"""
-        template = """
-        Based on the following information, generate a response to the user's question.
-        
-        Context:
-        {context}
-        
-        Sentiment: {sentiment}
-        Topic: {topic}
-        
-        Policy Position: {policy_position}
-        Voting Record: {voting_record}
-        
-        Generate a response that:
-        1. Addresses the user's question directly
-        2. Uses appropriate emotional tone
-        3. Cites specific facts and sources
-        4. Maintains political neutrality
-        
-        Question: {question}
-        
-        Response:"""
-        
-        prompt = PromptTemplate(
-            template=template,
-            input_variables=[
-                "context",
-                "sentiment",
-                "topic",
-                "policy_position",
-                "voting_record",
-                "question"
-            ]
-        )
-        
-        return LLMChain(llm=self.llm, prompt=prompt)
-
-    async def arun(self, query: str, context: Dict, sentiment: Dict) -> str:
+        input_data: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
-        Asynchronously generate response
+        Preprocess input text.
         
         Args:
-            query: User's question
-            context: Context information from ContextAgent
-            sentiment: Sentiment information from SentimentAgent
+            input_data: Input text to preprocess
+            context: Optional context dictionary
             
         Returns:
-            str: Generated response
+            Preprocessed text with context
         """
-        return self.run(query, context, sentiment)
-
-    def run(self, query: str, context: Dict, sentiment: Dict) -> str:
+        # Clean and normalize text
+        text = input_data.strip()
+        
+        # Add context if available
+        if context:
+            # Add identified topics
+            topics = context.get("topics", [])
+            if topics:
+                text = f"Topics: {', '.join(topics)}\nQuestion: {text}"
+            
+            # Add sentiment context
+            sentiment = context.get("sentiment")
+            if sentiment is not None:
+                sentiment_label = "positive" if sentiment > 0 else "negative"
+                text = f"Tone: {sentiment_label}\n{text}"
+            
+            # Add chat history context
+            history = context.get("chat_history", [])
+            if history:
+                history_text = "\n".join([
+                    f"User: {entry['user_input']}\nSystem: {entry['system_response']}"
+                    for entry in history[-2:]  # Last 2 exchanges
+                ])
+                text = f"Previous conversation:\n{history_text}\n\nCurrent: {text}"
+        
+        return text
+    
+    def process(
+        self,
+        input_data: str,
+        context: Optional[Dict[str, Any]] = None,
+        db: Optional[Session] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        Generate response based on context and sentiment
+        Generate response based on input and context.
         
         Args:
-            query: User's question
-            context: Context information from ContextAgent
-            sentiment: Sentiment information from SentimentAgent
+            input_data: Input text to respond to
+            context: Optional context dictionary
+            db: Optional database session
+            **kwargs: Additional keyword arguments
             
         Returns:
-            str: Generated response
+            Dictionary containing:
+                - response: Generated response text
+                - sources: List of source statements used
         """
-        if not self._validate_input(query):
-            return RESPONSE_TEMPLATES["error"]
-
         try:
-            # Get relevant data from database
-            policy_data = self._get_policy_data(context['main_topic'])
-            voting_data = self._get_voting_data(context['main_topic'])
+            sources = []
             
-            if not policy_data and not voting_data:
-                return RESPONSE_TEMPLATES["not_found"].format(
-                    topic=context['main_topic'],
-                    politician="the politician"
+            # Get relevant statements from database if available
+            if db and context and "topic_ids" in context:
+                sources = self._get_relevant_statements(
+                    input_data,
+                    context["topic_ids"],
+                    db
                 )
-
+            
             # Generate response
-            response = self.response_chain.run(
-                context=json.dumps(context.get('context', [])),
-                sentiment=sentiment['tone'],
-                topic=context['main_topic'],
-                policy_position=json.dumps(policy_data),
-                voting_record=json.dumps(voting_data),
-                question=query
+            generation_input = input_data
+            if sources:
+                # Add source information to input
+                source_text = "\n".join([
+                    f"- {source.content}"
+                    for source in sources[:3]  # Use top 3 most relevant sources
+                ])
+                generation_input = f"Context:\n{source_text}\n\nQuestion: {input_data}"
+            
+            # Generate response with model
+            response = self.pipeline(
+                generation_input,
+                max_length=150,
+                min_length=50,
+                num_beams=4,
+                length_penalty=2.0,
+                no_repeat_ngram_size=3
+            )[0]["generated_text"]
+            
+            return {
+                "response": response,
+                "sources": [
+                    {
+                        "content": source.content,
+                        "politician": source.politician.name,
+                        "topic": source.topic.name
+                    }
+                    for source in sources
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error generating response: {str(e)}")
+            raise
+    
+    def postprocess(
+        self,
+        output_data: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Postprocess generated response.
+        
+        Args:
+            output_data: Response generation results
+            context: Optional context dictionary
+            
+        Returns:
+            Postprocessed results
+        """
+        # Clean up response text
+        response = output_data["response"].strip()
+        
+        # Remove any "Question:" or "Context:" prefixes
+        response = response.replace("Question:", "").replace("Context:", "").strip()
+        
+        output_data["response"] = response
+        return output_data
+    
+    def _get_relevant_statements(
+        self,
+        query: str,
+        topic_ids: List[int],
+        db: Session,
+        limit: int = 5
+    ) -> List[Statement]:
+        """
+        Get relevant statements from database.
+        
+        Args:
+            query: Input text to find relevant statements for
+            topic_ids: List of relevant topic IDs
+            db: Database session
+            limit: Maximum number of statements to return
+            
+        Returns:
+            List of relevant statements
+        """
+        try:
+            # For now, just get recent statements for the topics
+            # In a real implementation, this would use semantic search
+            statements = (
+                db.query(Statement)
+                .filter(Statement.topic_id.in_(topic_ids))
+                .order_by(Statement.date.desc())
+                .limit(limit)
+                .all()
             )
-
-            # Update memory if available
-            self._update_memory(query, response)
-
-            return response
-
-        except Exception as e:
-            if self.verbose:
-                print(f"Error in response generation: {str(e)}")
-            return RESPONSE_TEMPLATES["error"]
-
-    def _get_policy_data(self, topic: str) -> List[Dict]:
-        """Get relevant policy positions from database"""
-        try:
-            policies = self.db.query(PolicyPosition).filter(
-                PolicyPosition.topic == topic
-            ).all()
             
-            return [
-                {
-                    'position': policy.position,
-                    'source': policy.source,
-                    'date': policy.date_updated.isoformat() if policy.date_updated else None
-                }
-                for policy in policies
-            ]
+            return statements
+            
         except Exception as e:
-            if self.verbose:
-                print(f"Error fetching policy data: {str(e)}")
+            self.logger.error(f"Error getting relevant statements: {str(e)}")
             return []
-
-    def _get_voting_data(self, topic: str) -> List[Dict]:
-        """Get relevant voting records from database"""
-        try:
-            votes = self.db.query(VotingRecord).filter(
-                VotingRecord.topic == topic
-            ).all()
-            
-            return [
-                {
-                    'bill_name': vote.bill_name,
-                    'vote': vote.vote,
-                    'date': vote.date.isoformat() if vote.date else None,
-                    'source': vote.source
-                }
-                for vote in votes
-            ]
-        except Exception as e:
-            if self.verbose:
-                print(f"Error fetching voting data: {str(e)}")
-            return []
-
-    def _adjust_response_tone(self, response: str, sentiment: Dict) -> str:
-        """Adjust response tone based on sentiment"""
-        try:
-            # Use zero-shot classification to analyze current tone
-            result = self.classifier(
-                response,
-                candidate_labels=['formal', 'casual', 'empathetic', 'neutral'],
-                multi_label=False
-            )
-            
-            current_tone = result['labels'][0]
-            
-            # Adjust based on sentiment
-            if sentiment['tone'] == 'positive' and current_tone == 'formal':
-                # Make more casual and empathetic
-                response = self.response_chain.run(
-                    original_response=response,
-                    target_tone='empathetic',
-                    context="Make this response more friendly while maintaining professionalism"
-                )
-            elif sentiment['tone'] == 'negative' and current_tone == 'casual':
-                # Make more formal and neutral
-                response = self.response_chain.run(
-                    original_response=response,
-                    target_tone='formal',
-                    context="Make this response more formal and professional"
-                )
-            
-            return response
-            
-        except Exception as e:
-            if self.verbose:
-                print(f"Error adjusting response tone: {str(e)}")
-            return response

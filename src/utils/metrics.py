@@ -1,161 +1,184 @@
-"""Metrics collection and monitoring for the PoliticianAI project."""
+"""Metrics utilities for PoliticianAI."""
 
+import logging
 import time
 from functools import wraps
-from typing import Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from prometheus_client import Counter, Gauge, Histogram, Summary
+from sqlalchemy.orm import Session
 
-# Request metrics
-HTTP_REQUEST_COUNTER = Counter(
-    'http_requests_total',
-    'Total number of HTTP requests',
-    ['method', 'endpoint', 'status']
-)
+from src.utils import setup_logging
 
-REQUEST_LATENCY = Histogram(
-    'http_request_duration_seconds',
-    'HTTP request latency in seconds',
-    ['method', 'endpoint']
-)
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
-# Model metrics
-MODEL_INFERENCE_TIME = Summary(
-    'model_inference_duration_seconds',
-    'Time spent on model inference',
-    ['model_name']
-)
+# Metrics storage
+_metrics: Dict[str, Dict[str, Union[int, float, List[float]]]] = {
+    "requests": {
+        "total": 0,
+        "success": 0,
+        "error": 0,
+        "latencies": []
+    },
+    "models": {
+        "inference_count": 0,
+        "inference_time": 0.0,
+        "cache_hits": 0,
+        "cache_misses": 0
+    },
+    "database": {
+        "queries": 0,
+        "errors": 0,
+        "latencies": []
+    }
+}
 
-MODEL_LOADING_FAILURES = Counter(
-    'model_loading_failures_total',
-    'Number of model loading failures',
-    ['model_name']
-)
-
-# Database metrics
-DB_QUERY_TIME = Histogram(
-    'database_query_duration_seconds',
-    'Database query latency in seconds',
-    ['operation']
-)
-
-DB_CONNECTION_ERRORS = Counter(
-    'database_connection_errors_total',
-    'Number of database connection errors'
-)
-
-# Cache metrics
-CACHE_HITS = Counter('cache_hits_total', 'Number of cache hits')
-CACHE_MISSES = Counter('cache_misses_total', 'Number of cache misses')
-CACHE_REQUESTS = Counter('cache_requests_total', 'Total number of cache requests')
-
-# Resource metrics
-MEMORY_USAGE = Gauge('memory_usage_bytes', 'Memory usage in bytes')
-GPU_MEMORY_USAGE = Gauge('gpu_memory_usage_bytes', 'GPU memory usage in bytes')
-MODEL_MEMORY_USAGE = Gauge(
-    'model_memory_usage_bytes',
-    'Model memory usage in bytes',
-    ['model_name']
-)
-
-def track_request_metrics(endpoint: str):
+def track_request(success: bool = True, latency: Optional[float] = None) -> None:
     """
-    Decorator to track HTTP request metrics.
+    Track API request metrics.
     
     Args:
-        endpoint: API endpoint name
+        success: Whether request was successful
+        latency: Request latency in seconds
     """
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            start_time = time.time()
-            try:
-                response = await func(*args, **kwargs)
-                status = response.status_code
-            except Exception as e:
-                status = 500
-                raise e
-            finally:
-                duration = time.time() - start_time
-                HTTP_REQUEST_COUNTER.labels(
-                    method='POST',
-                    endpoint=endpoint,
-                    status=status
-                ).inc()
-                REQUEST_LATENCY.labels(
-                    method='POST',
-                    endpoint=endpoint
-                ).observe(duration)
-            return response
-        return wrapper
-    return decorator
+    _metrics["requests"]["total"] += 1
+    if success:
+        _metrics["requests"]["success"] += 1
+    else:
+        _metrics["requests"]["error"] += 1
+    
+    if latency is not None:
+        _metrics["requests"]["latencies"].append(latency)
 
-def track_model_inference(model_name: str):
+def track_model_inference(duration: float) -> None:
     """
-    Decorator to track model inference metrics.
+    Track model inference metrics.
     
     Args:
-        model_name: Name of the model
+        duration: Inference duration in seconds
     """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            with MODEL_INFERENCE_TIME.labels(model_name=model_name).time():
-                return func(*args, **kwargs)
-        return wrapper
-    return decorator
+    _metrics["models"]["inference_count"] += 1
+    _metrics["models"]["inference_time"] += duration
 
-def track_database_query(operation: str):
-    """
-    Decorator to track database query metrics.
-    
-    Args:
-        operation: Type of database operation
-    """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            try:
-                result = func(*args, **kwargs)
-                return result
-            finally:
-                duration = time.time() - start_time
-                DB_QUERY_TIME.labels(operation=operation).observe(duration)
-        return wrapper
-    return decorator
-
-def update_resource_metrics(memory_stats: Dict[str, float]):
-    """
-    Update resource usage metrics.
-    
-    Args:
-        memory_stats: Dictionary containing memory usage statistics
-    """
-    MEMORY_USAGE.set(memory_stats['ram_used_gb'] * 1024 * 1024 * 1024)  # Convert to bytes
-    if 'gpu_memory_used_gb' in memory_stats:
-        GPU_MEMORY_USAGE.set(memory_stats['gpu_memory_used_gb'] * 1024 * 1024 * 1024)
-
-def track_cache_access(hit: Optional[bool] = None):
+def track_cache_access(hit: bool) -> None:
     """
     Track cache access metrics.
     
     Args:
-        hit: True if cache hit, False if miss, None if just tracking requests
+        hit: Whether access was a cache hit
     """
-    CACHE_REQUESTS.inc()
-    if hit is not None:
-        if hit:
-            CACHE_HITS.inc()
-        else:
-            CACHE_MISSES.inc()
+    if hit:
+        _metrics["models"]["cache_hits"] += 1
+    else:
+        _metrics["models"]["cache_misses"] += 1
 
-def update_model_memory(model_name: str, memory_bytes: int):
+def track_database_query(success: bool = True, latency: Optional[float] = None) -> None:
     """
-    Update model memory usage metrics.
+    Track database query metrics.
     
     Args:
-        model_name: Name of the model
-        memory_bytes: Memory usage in bytes
+        success: Whether query was successful
+        latency: Query latency in seconds
     """
-    MODEL_MEMORY_USAGE.labels(model_name=model_name).set(memory_bytes)
+    _metrics["database"]["queries"] += 1
+    if not success:
+        _metrics["database"]["errors"] += 1
+    
+    if latency is not None:
+        _metrics["database"]["latencies"].append(latency)
+
+def calculate_metrics() -> Dict[str, Any]:
+    """
+    Calculate current metrics.
+    
+    Returns:
+        Dictionary containing:
+            - request_count: Total number of requests
+            - success_rate: Request success rate
+            - avg_latency: Average request latency
+            - model_inferences: Number of model inferences
+            - avg_inference_time: Average model inference time
+            - cache_hit_rate: Cache hit rate
+            - database_queries: Number of database queries
+            - database_error_rate: Database error rate
+            - avg_query_latency: Average database query latency
+    """
+    # Calculate request metrics
+    total_requests = _metrics["requests"]["total"]
+    success_rate = (
+        _metrics["requests"]["success"] / total_requests
+        if total_requests > 0 else 0.0
+    )
+    avg_latency = (
+        sum(_metrics["requests"]["latencies"]) / len(_metrics["requests"]["latencies"])
+        if _metrics["requests"]["latencies"] else 0.0
+    )
+    
+    # Calculate model metrics
+    inference_count = _metrics["models"]["inference_count"]
+    avg_inference_time = (
+        _metrics["models"]["inference_time"] / inference_count
+        if inference_count > 0 else 0.0
+    )
+    cache_hits = _metrics["models"]["cache_hits"]
+    cache_misses = _metrics["models"]["cache_misses"]
+    cache_hit_rate = (
+        cache_hits / (cache_hits + cache_misses)
+        if cache_hits + cache_misses > 0 else 0.0
+    )
+    
+    # Calculate database metrics
+    total_queries = _metrics["database"]["queries"]
+    error_rate = (
+        _metrics["database"]["errors"] / total_queries
+        if total_queries > 0 else 0.0
+    )
+    avg_query_latency = (
+        sum(_metrics["database"]["latencies"]) / len(_metrics["database"]["latencies"])
+        if _metrics["database"]["latencies"] else 0.0
+    )
+    
+    return {
+        "request_count": total_requests,
+        "success_rate": success_rate,
+        "avg_latency": avg_latency,
+        "model_inferences": inference_count,
+        "avg_inference_time": avg_inference_time,
+        "cache_hit_rate": cache_hit_rate,
+        "database_queries": total_queries,
+        "database_error_rate": error_rate,
+        "avg_query_latency": avg_query_latency
+    }
+
+def track_performance(metric_type: str) -> Callable:
+    """
+    Decorator to track function performance metrics.
+    
+    Args:
+        metric_type: Type of metric to track ("request", "model", or "database")
+        
+    Returns:
+        Decorator function
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            start_time = time.time()
+            success = True
+            try:
+                result = func(*args, **kwargs)
+                return result
+            except Exception:
+                success = False
+                raise
+            finally:
+                duration = time.time() - start_time
+                if metric_type == "request":
+                    track_request(success=success, latency=duration)
+                elif metric_type == "model":
+                    track_model_inference(duration=duration)
+                elif metric_type == "database":
+                    track_database_query(success=success, latency=duration)
+        return wrapper
+    return decorator

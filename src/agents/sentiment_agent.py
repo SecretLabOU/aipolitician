@@ -1,143 +1,132 @@
-from typing import Dict, Optional
-from transformers import pipeline
-import torch
-from langchain.callbacks.manager import CallbackManagerForLLMRun
-from langchain.memory import ConversationBufferMemory
+"""Sentiment analysis agent for PoliticianAI."""
 
-from .base import BaseAgent
-from src.config import SENTIMENT_MODEL
+import logging
+from typing import Any, Dict, Optional
+
+from sqlalchemy.orm import Session
+from transformers import pipeline
+
+from src.agents.base import BaseAgent
+from src.config import DEVICE, MODEL_PRECISION, SENTIMENT_MODEL
+from src.utils import setup_logging
+
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 class SentimentAgent(BaseAgent):
-    """Agent for analyzing sentiment in political discourse"""
+    """Agent for analyzing sentiment in text."""
     
-    def __init__(
-        self,
-        memory: Optional[ConversationBufferMemory] = None,
-        verbose: bool = False
-    ):
-        super().__init__(
-            name="SentimentAgent",
-            description="Analyzes sentiment and emotional tone in political discourse",
-            memory=memory,
-            verbose=verbose
-        )
+    def __init__(self):
+        """Initialize sentiment agent."""
+        super().__init__()
         
         # Initialize sentiment pipeline
-        self.sentiment_pipeline = pipeline(
-            "sentiment-analysis",
+        self.pipeline = pipeline(
+            task="sentiment-analysis",
             model=SENTIMENT_MODEL,
-            device=0 if torch.cuda.is_available() else -1
+            device=DEVICE,
+            torch_dtype=MODEL_PRECISION
         )
-        
-        # Sentiment score mapping
-        self.sentiment_mapping = {
-            'POSITIVE': {'score_modifier': 1.0, 'tone': 'positive'},
-            'NEGATIVE': {'score_modifier': -1.0, 'tone': 'negative'},
-            'NEUTRAL': {'score_modifier': 0.0, 'tone': 'neutral'}
-        }
-
-    async def arun(self, query: str) -> Dict:
+    
+    def validate_input(self, input_data: Any) -> bool:
         """
-        Asynchronously analyze sentiment
+        Validate input text.
         
         Args:
-            query: Text to analyze
+            input_data: Input text to validate
             
         Returns:
-            Dict containing sentiment analysis results
+            True if valid, False otherwise
         """
-        return self.run(query)
-
-    def run(self, query: str) -> Dict:
+        if not isinstance(input_data, str):
+            return False
+        if not input_data.strip():
+            return False
+        return True
+    
+    def preprocess(
+        self,
+        input_data: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
-        Analyze sentiment in the input text
+        Preprocess input text.
         
         Args:
-            query: Text to analyze
+            input_data: Input text to preprocess
+            context: Optional context dictionary
             
         Returns:
-            Dict containing:
-                - sentiment: Overall sentiment (positive/negative/neutral)
-                - confidence: Confidence score
-                - tone: Mapped tone category
-                - intensity: Normalized intensity score
+            Preprocessed text
         """
-        if not self._validate_input(query):
-            return {
-                'sentiment': 'NEUTRAL',
-                'confidence': 0.0,
-                'tone': 'neutral',
-                'intensity': 0.0
-            }
-
-        try:
-            # Get raw sentiment analysis
-            result = self.sentiment_pipeline(query)[0]
-            label = result['label']
-            score = float(result['score'])
-
-            # Map to our sentiment categories
-            sentiment_info = self.sentiment_mapping.get(
-                label,
-                self.sentiment_mapping['NEUTRAL']
-            )
-
-            # Calculate intensity
-            intensity = score * sentiment_info['score_modifier']
-
-            response = {
-                'sentiment': label,
-                'confidence': score,
-                'tone': sentiment_info['tone'],
-                'intensity': intensity
-            }
-
-            # Update memory if available
-            self._update_memory(query, str(response))
-
-            return response
-
-        except Exception as e:
-            if self.verbose:
-                print(f"Error in sentiment analysis: {str(e)}")
-            return {
-                'sentiment': 'NEUTRAL',
-                'confidence': 0.0,
-                'tone': 'neutral',
-                'intensity': 0.0
-            }
-
-    def _analyze_emotional_intensity(self, text: str) -> float:
+        # Clean and normalize text
+        text = input_data.strip()
+        
+        # Truncate if too long (model max length)
+        if len(text) > 512:
+            text = text[:512]
+        
+        return text
+    
+    def process(
+        self,
+        input_data: str,
+        context: Optional[Dict[str, Any]] = None,
+        db: Optional[Session] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        Analyze the emotional intensity of the text
+        Analyze sentiment of input text.
         
         Args:
-            text: Input text
+            input_data: Input text to analyze
+            context: Optional context dictionary
+            db: Optional database session
+            **kwargs: Additional keyword arguments
             
         Returns:
-            float: Normalized intensity score (-1 to 1)
+            Dictionary containing:
+                - score: Sentiment score (-1 to 1)
+                - label: Sentiment label (POSITIVE/NEGATIVE)
+                - confidence: Model confidence score
         """
         try:
-            # Get relevant emotional context
-            context = self._get_relevant_context(text, k=1)
+            # Run sentiment analysis
+            result = self.pipeline(input_data)[0]
             
-            # If we have context, compare with it
-            if context:
-                context_sentiment = self.sentiment_pipeline(context[0])[0]
-                context_score = float(context_sentiment['score'])
-                
-                # Compare current sentiment with context
-                current_sentiment = self.sentiment_pipeline(text)[0]
-                current_score = float(current_sentiment['score'])
-                
-                # Return difference in intensity
-                return current_score - context_score
+            # Convert score to -1 to 1 range
+            score = result["score"]
+            if result["label"] == "NEGATIVE":
+                score = -score
             
-            # If no context, just return current sentiment intensity
-            result = self.sentiment_pipeline(text)[0]
-            return float(result['score']) * (1 if result['label'] == 'POSITIVE' else -1)
+            return {
+                "score": score,
+                "label": result["label"],
+                "confidence": result["score"]
+            }
             
         except Exception as e:
-            if self.verbose:
-                print(f"Error in intensity analysis: {str(e)}")
-            return 0.0
+            self.logger.error(f"Error in sentiment analysis: {str(e)}")
+            raise
+    
+    def postprocess(
+        self,
+        output_data: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Postprocess sentiment results.
+        
+        Args:
+            output_data: Sentiment analysis results
+            context: Optional context dictionary
+            
+        Returns:
+            Postprocessed results
+        """
+        # Round scores to 3 decimal places
+        output_data["score"] = round(output_data["score"], 3)
+        output_data["confidence"] = round(output_data["confidence"], 3)
+        
+        return output_data

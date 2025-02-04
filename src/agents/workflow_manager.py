@@ -1,194 +1,158 @@
-from typing import Dict, Optional
-from langchain.memory import ConversationBufferMemory
-from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent
-from langchain.prompts import StringPromptTemplate
-from langchain.chains import LLMChain
-from langchain.llms import LlamaCpp
+"""Workflow manager for orchestrating agent interactions."""
+
+import logging
+import uuid
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
 
-from .sentiment_agent import SentimentAgent
-from .context_agent import ContextAgent
-from .response_agent import ResponseAgent
-from src.config import MODEL_DIR
+from src.agents.base import BaseAgent
+from src.agents.context_agent import ContextAgent
+from src.agents.response_agent import ResponseAgent
+from src.agents.sentiment_agent import SentimentAgent
+from src.database.models import ChatHistory, Topic
+from src.utils import setup_logging
+
+# Configure logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 class WorkflowManager:
-    """Orchestrates the interaction between different agents in the system"""
+    """Manages the workflow between different agents."""
     
-    def __init__(
-        self,
-        db_session: Session,
-        memory: Optional[ConversationBufferMemory] = None,
-        verbose: bool = False
-    ):
-        self.verbose = verbose
-        self.memory = memory or ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True
-        )
+    def __init__(self):
+        """Initialize workflow manager."""
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Initialize agents
-        self.sentiment_agent = SentimentAgent(
-            memory=self.memory,
-            verbose=verbose
-        )
-        
-        self.context_agent = ContextAgent(
-            memory=self.memory,
-            verbose=verbose
-        )
-        
-        self.response_agent = ResponseAgent(
-            db_session=db_session,
-            memory=self.memory,
-            verbose=verbose
-        )
-        
-        # Initialize LLM for agent coordination
-        self.llm = LlamaCpp(
-            model_path=str(MODEL_DIR / "llama-2-7b-chat.gguf"),
-            temperature=0.1,  # Lower temperature for more focused coordination
-            max_tokens=512,
-            top_p=0.95,
-            n_ctx=2048,
-            verbose=verbose
-        )
-        
-        # Set up tools
-        self.tools = self._setup_tools()
-        
-        # Create agent executor
-        self.agent_executor = self._create_agent_executor()
-
-    def _setup_tools(self) -> list:
-        """Set up tools for the agent"""
-        return [
-            Tool(
-                name="SentimentAnalysis",
-                func=self.sentiment_agent.run,
-                description="Analyze sentiment and emotional tone of text"
-            ),
-            Tool(
-                name="ContextExtraction",
-                func=self.context_agent.run,
-                description="Extract context and identify topics"
-            ),
-            Tool(
-                name="ResponseGeneration",
-                func=lambda x: self.response_agent.run(
-                    x,
-                    self.context_agent.run(x),
-                    self.sentiment_agent.run(x)
-                ),
-                description="Generate contextual response"
-            )
-        ]
-
-    def _create_agent_executor(self) -> AgentExecutor:
-        """Create the agent executor with custom prompt"""
-        prompt_template = """
-        Process the user's input through the following steps:
-        1. Analyze sentiment to understand emotional context
-        2. Extract topics and context
-        3. Generate appropriate response
-        
-        Previous conversation context:
-        {chat_history}
-        
-        User input: {input}
-        
-        Think through the steps:
-        1) First, determine if we need sentiment analysis
-        2) Then, consider what context we need
-        3) Finally, decide how to generate the response
-        
-        Available tools:
-        {tools}
-        
-        Action: """
-        
-        # Create prompt template
-        prompt = StringPromptTemplate(
-            template=prompt_template,
-            input_variables=["input", "chat_history", "tools"]
-        )
-        
-        # Create LLM chain for the agent
-        llm_chain = LLMChain(llm=self.llm, prompt=prompt)
-        
-        # Create the agent
-        agent = LLMSingleActionAgent(
-            llm_chain=llm_chain,
-            output_parser=None,  # Using default output parser
-            stop=["\nObservation:"],
-            allowed_tools=[tool.name for tool in self.tools]
-        )
-        
-        return AgentExecutor.from_agent_and_tools(
-            agent=agent,
-            tools=self.tools,
-            memory=self.memory,
-            verbose=self.verbose
-        )
-
-    async def aprocess_input(self, user_input: str) -> Dict:
+        self.sentiment_agent = SentimentAgent()
+        self.context_agent = ContextAgent()
+        self.response_agent = ResponseAgent()
+    
+    def process_message(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        db: Optional[Session] = None
+    ) -> Dict[str, Any]:
         """
-        Asynchronously process user input through the agent workflow
+        Process user message through the agent workflow.
         
         Args:
-            user_input: The user's input text
+            message: User input message
+            session_id: Optional session ID for chat history
+            db: Optional database session
             
         Returns:
-            Dict containing the processed response and metadata
-        """
-        return await self.agent_executor.arun(input=user_input)
-
-    def process_input(self, user_input: str) -> Dict:
-        """
-        Process user input through the agent workflow
-        
-        Args:
-            user_input: The user's input text
-            
-        Returns:
-            Dict containing the processed response and metadata
+            Dictionary containing:
+                - response: Generated response text
+                - sentiment: Sentiment score
+                - topics: List of identified topics
+                - topic_ids: List of topic IDs
+                - session_id: Chat session ID
         """
         try:
-            # Get sentiment analysis
-            sentiment = self.sentiment_agent.run(user_input)
+            # Generate session ID if not provided
+            if not session_id:
+                session_id = str(uuid.uuid4())
             
-            # Get context analysis
-            context = self.context_agent.run(user_input)
+            # Get chat history for context
+            context = self._get_chat_context(session_id, db) if db else {}
+            
+            # Analyze sentiment
+            sentiment_result = self.sentiment_agent(
+                message,
+                context=context,
+                db=db
+            )
+            if not sentiment_result["success"]:
+                raise Exception(f"Sentiment analysis failed: {sentiment_result['error']}")
+            sentiment_score = sentiment_result["result"]["score"]
+            
+            # Extract context and topics
+            context_result = self.context_agent(
+                message,
+                context=context,
+                db=db
+            )
+            if not context_result["success"]:
+                raise Exception(f"Context extraction failed: {context_result['error']}")
+            topics = context_result["result"]["topics"]
+            topic_ids = context_result["result"]["topic_ids"]
             
             # Generate response
-            response = self.response_agent.run(
-                user_input,
-                context,
-                sentiment
+            response_context = {
+                "sentiment": sentiment_score,
+                "topics": topics,
+                "topic_ids": topic_ids,
+                "chat_history": context.get("chat_history", [])
+            }
+            response_result = self.response_agent(
+                message,
+                context=response_context,
+                db=db
             )
+            if not response_result["success"]:
+                raise Exception(f"Response generation failed: {response_result['error']}")
+            response = response_result["result"]["response"]
             
             return {
                 "response": response,
-                "metadata": {
-                    "sentiment": sentiment,
-                    "context": context
-                }
+                "sentiment": sentiment_score,
+                "topics": topics,
+                "topic_ids": topic_ids,
+                "session_id": session_id
             }
             
         except Exception as e:
-            if self.verbose:
-                print(f"Error in workflow: {str(e)}")
+            self.logger.error(f"Error in workflow: {str(e)}")
+            raise
+    
+    def _get_chat_context(
+        self,
+        session_id: str,
+        db: Session,
+        limit: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Get chat history context for a session.
+        
+        Args:
+            session_id: Chat session ID
+            db: Database session
+            limit: Maximum number of history entries to return
+            
+        Returns:
+            Dictionary containing chat context
+        """
+        try:
+            # Get recent chat history
+            history = (
+                db.query(ChatHistory)
+                .filter(ChatHistory.session_id == session_id)
+                .order_by(ChatHistory.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            
+            # Format history entries
+            chat_history = []
+            for entry in reversed(history):  # Oldest to newest
+                chat_history.append({
+                    "user_input": entry.user_input,
+                    "system_response": entry.system_response,
+                    "sentiment": entry.sentiment_score,
+                    "topics": entry.context_topics.split(",") if entry.context_topics else []
+                })
+            
             return {
-                "response": "I encountered an error processing your request.",
-                "metadata": {
-                    "error": str(e)
-                }
+                "session_id": session_id,
+                "chat_history": chat_history
             }
-
-    def get_conversation_history(self) -> list:
-        """Get the conversation history from memory"""
-        return self.memory.chat_memory.messages if self.memory else []
-
-    def clear_memory(self) -> None:
-        """Clear the conversation memory"""
-        if self.memory:
-            self.memory.clear()
+            
+        except Exception as e:
+            self.logger.error(f"Error getting chat context: {str(e)}")
+            return {
+                "session_id": session_id,
+                "chat_history": []
+            }

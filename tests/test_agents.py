@@ -1,138 +1,188 @@
-import pytest
-from unittest.mock import Mock, patch
-from sqlalchemy.orm import Session
+"""Tests for PoliticianAI agents."""
 
-from src.agents.sentiment_agent import SentimentAgent
+import pytest
+from unittest.mock import MagicMock, patch
+
+from src.agents.base import BaseAgent
 from src.agents.context_agent import ContextAgent
 from src.agents.response_agent import ResponseAgent
+from src.agents.sentiment_agent import SentimentAgent
 from src.agents.workflow_manager import WorkflowManager
 
-@pytest.fixture
-def mock_db_session():
-    """Create a mock database session"""
-    return Mock(spec=Session)
+# Test data
+TEST_TEXT = "What is your stance on healthcare reform?"
+TEST_CONTEXT = {
+    "session_id": "test-session",
+    "chat_history": [
+        {
+            "user_input": "Hello",
+            "system_response": "Hi, how can I help you?",
+            "sentiment": 0.8,
+            "topics": ["General"]
+        }
+    ]
+}
 
-@pytest.fixture
-def sentiment_agent():
-    """Create a SentimentAgent instance"""
-    return SentimentAgent(verbose=True)
-
-@pytest.fixture
-def context_agent():
-    """Create a ContextAgent instance"""
-    return ContextAgent(verbose=True)
-
-@pytest.fixture
-def response_agent(mock_db_session):
-    """Create a ResponseAgent instance"""
-    return ResponseAgent(db_session=mock_db_session, verbose=True)
-
-@pytest.fixture
-def workflow_manager(mock_db_session):
-    """Create a WorkflowManager instance"""
-    return WorkflowManager(db_session=mock_db_session, verbose=True)
+class TestBaseAgent:
+    """Tests for BaseAgent class."""
+    
+    class ConcreteAgent(BaseAgent):
+        """Concrete implementation for testing."""
+        def process(self, input_data, context=None, db=None, **kwargs):
+            return {"result": input_data}
+    
+    def test_validate_input(self):
+        """Test input validation."""
+        agent = self.ConcreteAgent()
+        
+        # Valid input
+        assert agent.validate_input("test") is True
+        
+        # Invalid input
+        assert agent.validate_input("") is False
+        assert agent.validate_input(None) is False
+        assert agent.validate_input(123) is False
+    
+    def test_preprocess(self):
+        """Test preprocessing."""
+        agent = self.ConcreteAgent()
+        result = agent.preprocess("  test  ")
+        assert result == "test"
+    
+    def test_postprocess(self):
+        """Test postprocessing."""
+        agent = self.ConcreteAgent()
+        data = {"key": "value"}
+        result = agent.postprocess(data)
+        assert result == data
+    
+    def test_call(self):
+        """Test __call__ method."""
+        agent = self.ConcreteAgent()
+        result = agent("test")
+        assert result == {"success": True, "result": {"result": "test"}}
 
 class TestSentimentAgent:
-    """Test suite for SentimentAgent"""
+    """Tests for SentimentAgent class."""
     
-    def test_sentiment_analysis(self, sentiment_agent):
-        """Test sentiment analysis on sample text"""
-        text = "I strongly support this healthcare policy"
-        result = sentiment_agent.run(text)
-        
-        assert isinstance(result, dict)
-        assert 'sentiment' in result
-        assert 'confidence' in result
-        assert 'tone' in result
-        assert isinstance(result['confidence'], float)
-        assert 0 <= result['confidence'] <= 1
+    @pytest.fixture
+    def agent(self):
+        """Create SentimentAgent instance."""
+        with patch("transformers.pipeline") as mock_pipeline:
+            mock_pipeline.return_value = lambda x: [
+                {"label": "POSITIVE", "score": 0.9}
+            ]
+            agent = SentimentAgent()
+            return agent
+    
+    def test_process(self, agent):
+        """Test sentiment analysis."""
+        result = agent.process(TEST_TEXT)
+        assert "score" in result
+        assert "label" in result
+        assert "confidence" in result
+        assert result["score"] > 0
+        assert result["label"] == "POSITIVE"
 
 class TestContextAgent:
-    """Test suite for ContextAgent"""
+    """Tests for ContextAgent class."""
     
-    def test_context_extraction(self, context_agent):
-        """Test context extraction on sample text"""
-        text = "What is the current healthcare policy?"
-        result = context_agent.run(text)
-        
-        assert isinstance(result, dict)
-        assert 'main_topic' in result
-        assert 'confidence' in result
-        assert isinstance(result['confidence'], float)
-        assert 0 <= result['confidence'] <= 1
+    @pytest.fixture
+    def agent(self):
+        """Create ContextAgent instance."""
+        with patch("transformers.pipeline") as mock_pipeline:
+            mock_pipeline.return_value = lambda text, candidate_labels, multi_label: {
+                "labels": ["Healthcare"],
+                "scores": [0.9]
+            }
+            agent = ContextAgent()
+            return agent
+    
+    def test_process(self, agent):
+        """Test context extraction."""
+        result = agent.process(TEST_TEXT)
+        assert "topics" in result
+        assert "topic_ids" in result
+        assert "scores" in result
+        assert len(result["topics"]) > 0
+        assert "Healthcare" in result["topics"]
 
 class TestResponseAgent:
-    """Test suite for ResponseAgent"""
+    """Tests for ResponseAgent class."""
     
-    @patch('src.agents.response_agent.LlamaCpp')
-    def test_response_generation(self, mock_llama, response_agent):
-        """Test response generation with mocked LLM"""
-        # Mock LLM response
-        mock_llama.return_value.generate.return_value = "Sample response about healthcare"
-        
-        # Test input
-        query = "What is the healthcare policy?"
-        context = {
-            'main_topic': 'healthcare',
-            'confidence': 0.9,
-            'context': []
-        }
-        sentiment = {
-            'tone': 'neutral',
-            'confidence': 0.8
-        }
-        
-        result = response_agent.run(query, context, sentiment)
-        assert isinstance(result, str)
-        assert len(result) > 0
+    @pytest.fixture
+    def agent(self):
+        """Create ResponseAgent instance."""
+        with patch("transformers.pipeline") as mock_pipeline:
+            mock_pipeline.return_value = lambda *args, **kwargs: [
+                {"generated_text": "Here's my stance on healthcare..."}
+            ]
+            agent = ResponseAgent()
+            return agent
+    
+    def test_process(self, agent):
+        """Test response generation."""
+        result = agent.process(TEST_TEXT, context=TEST_CONTEXT)
+        assert "response" in result
+        assert "sources" in result
+        assert isinstance(result["response"], str)
+        assert len(result["response"]) > 0
 
 class TestWorkflowManager:
-    """Test suite for WorkflowManager"""
+    """Tests for WorkflowManager class."""
     
-    def test_process_input(self, workflow_manager):
-        """Test complete workflow processing"""
-        query = "What is the current position on healthcare reform?"
-        result = workflow_manager.process_input(query)
+    @pytest.fixture
+    def manager(self):
+        """Create WorkflowManager instance with mocked agents."""
+        manager = WorkflowManager()
         
-        assert isinstance(result, dict)
-        assert 'response' in result
-        assert 'metadata' in result
-        assert isinstance(result['metadata'], dict)
-
-    def test_conversation_memory(self, workflow_manager):
-        """Test conversation memory management"""
-        # Clear existing memory
-        workflow_manager.clear_memory()
+        # Mock sentiment agent
+        manager.sentiment_agent = MagicMock()
+        manager.sentiment_agent.return_value = {
+            "success": True,
+            "result": {"score": 0.8}
+        }
         
-        # Process a query
-        query = "Tell me about healthcare"
-        workflow_manager.process_input(query)
+        # Mock context agent
+        manager.context_agent = MagicMock()
+        manager.context_agent.return_value = {
+            "success": True,
+            "result": {
+                "topics": ["Healthcare"],
+                "topic_ids": [1],
+                "scores": [0.9]
+            }
+        }
         
-        # Check conversation history
-        history = workflow_manager.get_conversation_history()
-        assert len(history) > 0
-
-@pytest.mark.integration
-class TestIntegration:
-    """Integration tests for the complete system"""
+        # Mock response agent
+        manager.response_agent = MagicMock()
+        manager.response_agent.return_value = {
+            "success": True,
+            "result": {
+                "response": "Here's my stance on healthcare...",
+                "sources": []
+            }
+        }
+        
+        return manager
     
-    def test_end_to_end_workflow(self, workflow_manager):
-        """Test complete end-to-end workflow"""
-        queries = [
-            "What is the healthcare policy?",
-            "How does this compare to previous policies?",
-            "What are the main criticisms?"
-        ]
+    def test_process_message(self, manager):
+        """Test message processing workflow."""
+        result = manager.process_message(TEST_TEXT)
         
-        for query in queries:
-            result = workflow_manager.process_input(query)
-            assert isinstance(result, dict)
-            assert 'response' in result
-            assert 'metadata' in result
-            
-        # Verify conversation history
-        history = workflow_manager.get_conversation_history()
-        assert len(history) == len(queries)
-
-if __name__ == '__main__':
-    pytest.main([__file__])
+        assert "response" in result
+        assert "sentiment" in result
+        assert "topics" in result
+        assert "topic_ids" in result
+        assert "session_id" in result
+        
+        assert isinstance(result["response"], str)
+        assert isinstance(result["sentiment"], float)
+        assert isinstance(result["topics"], list)
+        assert isinstance(result["topic_ids"], list)
+        assert isinstance(result["session_id"], str)
+        
+        # Verify agent calls
+        manager.sentiment_agent.assert_called_once()
+        manager.context_agent.assert_called_once()
+        manager.response_agent.assert_called_once()

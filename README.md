@@ -1,6 +1,46 @@
 # PoliticianAI
 
-[Previous content remains the same until Prerequisites section]
+An AI system for political discourse simulation where users interact with virtual agents representing political figures. The agents have knowledge of voting history, funding, public statements, and sentiment data, and can engage in dynamic debates to provide insightful discussions.
+
+## Features
+
+- Sentiment analysis of user input
+- Context and topic extraction
+- Dynamic response generation
+- Historical data integration
+- Real-time fact checking
+- Caching for performance
+- GPU acceleration support
+
+## Architecture
+
+### Core Components
+
+1. **Agents**
+   - `SentimentAgent`: Analyzes sentiment in user messages
+   - `ContextAgent`: Extracts context and identifies topics
+   - `ResponseAgent`: Generates contextual responses
+   - `WorkflowManager`: Orchestrates agent interactions
+
+2. **Database Models**
+   - Topics
+   - Politicians
+   - Statements
+   - Voting Records
+   - Chat History
+   - Response Cache
+
+3. **API**
+   - FastAPI-based REST endpoints
+   - WebSocket support for real-time chat
+   - Request/response validation
+   - Error handling
+
+4. **Utilities**
+   - Caching system
+   - Metrics tracking
+   - Logging configuration
+   - Helper functions
 
 ## Prerequisites
 
@@ -56,90 +96,95 @@ The script will:
 - Initialize data
 - Start the application
 
-### Managing GPU Sessions
+## Project Structure
 
-You can check GPU status at any time:
-```bash
-# View available GPUs and utilization
-nvidia-smi
-
-# Show GPUs attached to current sessions
-genv devices
+```
+PoliticianAI/
+├── src/
+│   ├── agents/           # AI agent implementations
+│   ├── api/             # FastAPI endpoints
+│   ├── database/        # SQLAlchemy models
+│   └── utils/           # Helper utilities
+├── scripts/
+│   ├── init_genv.sh     # GPU environment setup
+│   ├── run_on_gpu.sh    # Main run script
+│   └── cleanup_gpu.sh   # GPU cleanup script
+├── data/                # Data storage
+│   ├── raw/             # Raw data files
+│   ├── processed/       # Processed data
+│   └── embeddings/      # Vector embeddings
+├── models/              # Downloaded models
+├── tests/               # Test suite
+└── monitoring/          # Monitoring configs
 ```
 
-For manual GPU session management:
-```bash
-# Activate new session
-genv activate --id <your-name>
+## Usage
 
-# Attach GPU
-genv attach --count 1
+1. Start the server:
+```bash
+./scripts/run_on_gpu.sh politician-ai my-session
 ```
 
-### Cleaning Up GPU Sessions
+2. Access the API:
+```bash
+curl http://localhost:8000/health  # Health check
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is your stance on healthcare?"}'
+```
 
-When you're done with your work:
-
-1. Use the cleanup script:
+3. When done, clean up:
 ```bash
 ./scripts/cleanup_gpu.sh
 ```
-This script will:
-- Show current GPU status
-- List active sessions
-- Let you deactivate specific or all sessions
-- Display final GPU status
 
-2. Deactivate your conda environment:
+## API Endpoints
+
+- `POST /chat`: Send message and get response
+- `GET /topics`: List available topics
+- `GET /politicians`: List available politicians
+- `GET /health`: Health check endpoint
+
+## Development
+
+1. Install development dependencies:
 ```bash
-conda deactivate
+pip install -r requirements-dev.txt
 ```
 
-### Troubleshooting GPU Setup
+2. Run tests:
+```bash
+pytest tests/
+```
 
-If you encounter issues:
+3. Format code:
+```bash
+black src/ tests/
+isort src/ tests/
+```
 
-1. Shell Initialization:
-   - Ensure genv shell is initialized: `./scripts/init_genv.sh`
-   - Verify initialization in ~/.bashrc
-   - Try opening a new terminal session
+4. Type checking:
+```bash
+mypy src/
+```
 
-2. Conda Environment Issues:
-   - List environments: `conda env list`
-   - Try creating a new environment: `conda create -n new-env python=3.8`
-   - Check if conda is in PATH: `which conda`
+## Monitoring
 
-3. GPU Session Issues:
-   - Check GPU availability: `nvidia-smi`
-   - List active sessions: `genv devices`
-   - Try cleaning up old sessions: `./scripts/cleanup_gpu.sh`
+The system includes:
+- Request/response metrics
+- Model inference tracking
+- Cache performance monitoring
+- Database query metrics
+- GPU utilization tracking
 
-4. Dependency Issues:
-   - "Rust not found": The script will install it automatically
-   - "ChromaDB build failed": Make sure Rust is properly installed
-   - "CUDA not found": Check GPU drivers and CUDA installation
+## Contributing
 
-5. Common Problems:
-   - "Shell not properly initialized": Run `./scripts/init_genv.sh`
-   - "Not running in active environment": Ensure conda environment is activated
-   - "No GPUs available": Check if all GPUs are in use
-   - "Conda command not found": Source your conda initialization
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
 
-### Best Practices for GPU Usage
+## License
 
-1. Environment Management:
-   - Use conda environments for isolation
-   - Keep environments clean and focused
-   - Document environment dependencies
-
-2. Resource Management:
-   - Always clean up your GPU sessions when done
-   - Monitor GPU memory usage with `nvidia-smi`
-   - Use only the GPUs you need
-
-3. Performance Optimization:
-   - Set appropriate batch sizes based on GPU memory
-   - Enable mixed precision training when possible
-   - Monitor GPU utilization to ensure efficient use
-
-[Rest of the README content remains the same]
+This project is licensed under the MIT License - see the LICENSE file for details.
