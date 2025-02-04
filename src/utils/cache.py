@@ -7,8 +7,7 @@ from typing import Any, Dict, Optional, Union
 
 from sqlalchemy.orm import Session
 
-from src.config import CACHE_EXPIRY_HOURS, RESPONSE_CACHE_SIZE
-from src.database.models import Cache
+from src.config.cache_config import CACHE_EXPIRY_HOURS, RESPONSE_CACHE_SIZE
 from src.utils import setup_logging
 
 # Configure logging

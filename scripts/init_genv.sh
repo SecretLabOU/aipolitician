@@ -13,30 +13,51 @@ print_color() {
     printf "${color}%s${NC}\n" "$message"
 }
 
-# Check if genv command exists
-if ! command -v genv >/dev/null 2>&1; then
-    print_color $RED "genv command not found. Please ensure it's installed."
-    exit 1
-fi
-
-# Check if initialization line already exists in .bashrc
-if grep -q "eval \"\$(genv shell --init)\"" ~/.bashrc; then
-    print_color $YELLOW "genv shell initialization already exists in ~/.bashrc"
+# Check if genv is installed
+if command -v genv >/dev/null 2>&1; then
+    print_color $GREEN "genv is already installed"
 else
-    print_color $YELLOW "Adding genv shell initialization to ~/.bashrc..."
-    echo 'eval "$(genv shell --init)"' >> ~/.bashrc
-    print_color $GREEN "Added successfully"
+    print_color $YELLOW "Installing genv..."
+    
+    # Install genv
+    pip install genv
+    
+    if [ $? -eq 0 ]; then
+        print_color $GREEN "genv installed successfully"
+    else
+        print_color $RED "Failed to install genv"
+        exit 1
+    fi
 fi
 
-# Initialize current shell
-print_color $YELLOW "Initializing current shell..."
+# Initialize genv shell
+print_color $YELLOW "Initializing genv shell..."
+
+# Add genv initialization to shell config
+SHELL_CONFIG="$HOME/.bashrc"
+if [ -f "$HOME/.zshrc" ]; then
+    SHELL_CONFIG="$HOME/.zshrc"
+fi
+
+# Check if genv init is already in shell config
+if grep -q "genv shell --init" "$SHELL_CONFIG"; then
+    print_color $GREEN "genv shell already initialized in $SHELL_CONFIG"
+else
+    # Add genv initialization
+    echo '# Initialize genv shell' >> "$SHELL_CONFIG"
+    echo 'eval "$(genv shell --init)"' >> "$SHELL_CONFIG"
+    print_color $GREEN "Added genv initialization to $SHELL_CONFIG"
+fi
+
+# Initialize genv shell in current session
 eval "$(genv shell --init)"
 
-if [ $? -eq 0 ]; then
-    print_color $GREEN "genv shell initialized successfully"
-    print_color $YELLOW "\nYou can now run:"
-    echo "./scripts/run_on_gpu.sh <your-session-name>"
-else
-    print_color $RED "Failed to initialize genv shell"
-    exit 1
-fi
+print_color $GREEN "genv shell initialized successfully"
+print_color $YELLOW "Please run 'source $SHELL_CONFIG' or start a new shell session"
+
+# Show current GPU status
+print_color $YELLOW "\nCurrent GPU status:"
+nvidia-smi
+
+print_color $YELLOW "\nCurrent GPU sessions:"
+genv devices
