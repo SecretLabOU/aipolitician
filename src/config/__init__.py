@@ -19,7 +19,7 @@ MODELS_DIR = PROJECT_ROOT / "models"
 
 # API settings
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
-API_PORT = get_env_int("API_PORT", 8000)
+API_PORT = get_env_int("API_PORT", 35000)
 API_WORKERS = get_env_int("API_WORKERS", 1)
 
 # Database settings
