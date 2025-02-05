@@ -55,7 +55,7 @@ LOG_FILE = os.getenv("LOG_FILE", "app.log")
 # Model paths
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment"
 CONTEXT_MODEL = "facebook/bart-large-mnli"
-RESPONSE_MODEL = "facebook/bart-large"
+RESPONSE_MODEL = "google/flan-t5-small"
 
 # Political topics
 POLITICAL_TOPICS: List[str] = [

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from transformers import pipeline
 
 from src.agents.base import BaseAgent
-from src.config import DEVICE, MODEL_PRECISION
+from src.config import DEVICE, MODEL_PRECISION, RESPONSE_MODEL
 from src.database.models import ChatHistory, Politician, Statement, Topic
 from src.utils import setup_logging
 
@@ -22,10 +22,10 @@ class ResponseAgent(BaseAgent):
         """Initialize response agent."""
         super().__init__()
         
-        # Initialize text generation pipeline
+        # Initialize text generation pipeline with lightweight model
         self.pipeline = pipeline(
             task="text2text-generation",
-            model="facebook/bart-large",  # Using BART for now, can be replaced with fine-tuned model
+            model=RESPONSE_MODEL,  # Using lightweight T5 model from config
             device=DEVICE,
             torch_dtype=MODEL_PRECISION
         )
@@ -130,14 +130,14 @@ class ResponseAgent(BaseAgent):
                 ])
                 generation_input = f"Context:\n{source_text}\n\nQuestion: {input_data}"
             
-            # Generate response with model
+            # Generate response with lightweight model (adjusted parameters for T5)
             response = self.pipeline(
                 generation_input,
-                max_length=150,
-                min_length=50,
-                num_beams=4,
-                length_penalty=2.0,
-                no_repeat_ngram_size=3
+                max_length=100,  # Reduced for more concise responses
+                min_length=30,   # Adjusted for T5's typical output length
+                num_beams=3,     # Reduced beam search for faster inference
+                length_penalty=1.0,
+                no_repeat_ngram_size=2
             )[0]["generated_text"]
             
             return {
