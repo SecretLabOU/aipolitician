@@ -37,10 +37,18 @@ sudo netstat -tuln | grep 35432
 cp .env.example .env
 ```
 
-2. Update the `.env` file with your GPU server's IP and database credentials:
+2. Update the `.env` file with the appropriate database credentials:
+
+If running on the GPU server:
 ```
-DATABASE_URL=postgresql://politician_ai_user:your_password_here@your_gpu_ip:35432/politician_ai
+DATABASE_URL=postgresql://politician_ai_user:your_password_here@localhost:35432/politician_ai
 ```
+
+If running on your development machine:
+```
+DATABASE_URL=postgresql://politician_ai_user:your_password_here@<gpu_server_ip>:35432/politician_ai
+```
+Replace `<gpu_server_ip>` with the actual IP address of your GPU server.
 
 3. Install Python dependencies:
 ```bash
@@ -65,10 +73,18 @@ python scripts/collect_politician_data.py
 
 ### Connection Issues
 If you can't connect to the database, verify:
+
+On GPU Server:
+1. PostgreSQL is running: `sudo systemctl status postgresql`
+2. Port 35432 is being used: `sudo netstat -tuln | grep 35432`
+3. Database exists: `sudo -u postgres psql -p 35432 -c "\l"`
+4. User has proper permissions: `sudo -u postgres psql -p 35432 -c "\du"`
+
+On Development Machine:
 1. The GPU server's IP address is correct
-2. PostgreSQL is running on the GPU server
-3. Your network allows connections to port 35432
-4. The database credentials are correct
+2. You can ping the GPU server
+3. Port 35432 is accessible: `nc -zv <gpu_server_ip> 35432`
+4. PostgreSQL allows remote connections (check pg_hba.conf)
 
 ### Migration Issues
 If migrations fail:
