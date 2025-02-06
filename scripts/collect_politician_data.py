@@ -19,8 +19,8 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # API Configuration
-PROPUBLICA_API_KEY = os.getenv("PROPUBLICA_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
 
 class PoliticianDataCollector:
     """Collector for politician data."""
@@ -157,50 +157,64 @@ class PoliticianDataCollector:
                 return topic
         return None
     
-    def collect_voting_records(self, politician_name: str) -> None:
+    def collect_wikipedia_info(self, politician_name: str) -> None:
         """
-        Collect voting records for a politician.
+        Collect information from Wikipedia for a politician.
         
         Args:
             politician_name: Name of the politician
         """
-        if not PROPUBLICA_API_KEY:
-            logger.error("PROPUBLICA_API_KEY not set")
-            return
-        
         politician = self.session.query(Politician).filter_by(name=politician_name).first()
         if not politician:
             logger.error(f"Politician not found: {politician_name}")
             return
         
-        # ProPublica Congress API endpoints
-        # Note: This is simplified - would need proper member ID lookup
-        url = "https://api.propublica.org/congress/v1/members/{member_id}/votes.json"
-        headers = {"X-API-Key": PROPUBLICA_API_KEY}
-        
         try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            votes_data = response.json().get("results", [])
+            # Get page content from Wikipedia API
+            params = {
+                "action": "query",
+                "format": "json",
+                "titles": politician_name,
+                "prop": "extracts",
+                "exintro": True,
+                "explaintext": True
+            }
             
-            for vote_data in votes_data:
-                vote = Vote(
+            response = requests.get(WIKIPEDIA_API_URL, params=params)
+            response.raise_for_status()
+            
+            # Extract page content
+            pages = response.json()["query"]["pages"]
+            page = next(iter(pages.values()))
+            content = page.get("extract", "")
+            
+            # Parse content into statements
+            sentences = content.split(". ")
+            for sentence in sentences:
+                if not sentence.strip():
+                    continue
+                    
+                # Determine topic (simple keyword matching for now)
+                topic = self._determine_topic(sentence)
+                if not topic:
+                    continue
+                
+                # Store statement
+                statement = Statement(
                     politician_id=politician.id,
-                    bill_number=vote_data.get("bill", {}).get("number", ""),
-                    bill_title=vote_data.get("description", ""),
-                    vote=vote_data.get("position", ""),
-                    date=datetime.strptime(
-                        vote_data.get("date", ""), 
-                        "%Y-%m-%d"
-                    )
+                    topic_id=topic.id,
+                    content=sentence.strip(),
+                    source="Wikipedia",
+                    date=datetime.now(),
+                    sentiment_score=0.0  # Neutral by default
                 )
-                self.session.add(vote)
+                self.session.add(statement)
             
             self.session.commit()
-            logger.info(f"Collected voting records for {politician_name}")
+            logger.info(f"Collected Wikipedia information for {politician_name}")
             
         except Exception as e:
-            logger.error(f"Error collecting voting records: {str(e)}")
+            logger.error(f"Error collecting Wikipedia information: {str(e)}")
             self.session.rollback()
     
     def close(self):
@@ -219,7 +233,7 @@ def main():
         politicians = ["Donald Trump", "Joe Biden"]
         for politician in politicians:
             collector.collect_statements(politician)
-            collector.collect_voting_records(politician)
+            collector.collect_wikipedia_info(politician)
         
         logger.info("Data collection complete!")
         
