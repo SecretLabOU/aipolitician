@@ -10,6 +10,7 @@ SQLAlchemy==2.0.23
 alembic==1.12.1
 psycopg2-binary==2.9.9
 aiosqlite==0.19.0
+python-dotenv==1.0.0
 
 # Machine Learning
 torch==2.1.1
