@@ -55,14 +55,19 @@ Replace `<gpu_server_ip>` with the actual IP address of your GPU server.
 pip install -r requirements.txt
 ```
 
-4. Run database migrations:
+4. Set up and run database migrations:
 ```bash
+# Create migrations versions directory
+mkdir -p migrations/versions
+
 # Generate initial migration
 alembic revision --autogenerate -m "Initial migration"
 
 # Apply migration
 alembic upgrade head
 ```
+
+Note: The versions directory is required for Alembic to store migration files.
 
 5. Run the data collection script:
 ```bash
