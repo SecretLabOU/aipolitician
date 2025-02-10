@@ -94,14 +94,14 @@ class PoliticianDataCollector:
         politicians_info = {
             "Donald Trump": {
                 "party": "Republican",
-                "position": "Former President",
-                "bio": "45th President of the United States (2017-2021). "
-                      "Businessman and television personality before presidency."
+                "position": "President",
+                "bio": "47th President of the United States (2025-present). "
+                      "Former President (2017-2021). Businessman and television personality."
             },
             "Joe Biden": {
                 "party": "Democratic",
-                "position": "President",
-                "bio": "46th President of the United States (2021-present). "
+                "position": "Former President",
+                "bio": "46th President of the United States (2021-2025). "
                       "Former Vice President (2009-2017) and Senator from Delaware."
             }
         }
