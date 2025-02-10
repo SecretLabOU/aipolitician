@@ -102,13 +102,57 @@ install_deps() {
     print_color $GREEN "Project installed in development mode"
 }
 
+# Setup database user
+setup_database_user() {
+    print_color $YELLOW "Setting up database user..."
+    
+    # Get password from .env file or environment
+    DB_PASSWORD=$(grep -oP 'DATABASE_URL=.*:\/\/nat:\K[^@]*' .env)
+    if [ -z "$DB_PASSWORD" ]; then
+        print_color $RED "Could not find database password in .env file"
+        exit 1
+    fi
+    
+    # Create user and database
+    sudo -u postgres psql -p 35432 << EOF
+    DO \$\$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'nat') THEN
+            CREATE USER nat WITH PASSWORD '$DB_PASSWORD';
+        END IF;
+    END
+    \$\$;
+
+    CREATE DATABASE politician_ai WITH OWNER nat;
+    GRANT ALL PRIVILEGES ON DATABASE politician_ai TO nat;
+EOF
+    
+    if [ $? -eq 0 ]; then
+        print_color $GREEN "Database user setup complete"
+    else
+        print_color $RED "Error setting up database user"
+        exit 1
+    fi
+}
+
 # Initialize database
 init_database() {
     print_color $YELLOW "Initializing database..."
     cd "${PROJECT_ROOT}"
     
+    # Set PYTHONPATH
+    export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
+    
     # Create migrations versions directory if it doesn't exist
     mkdir -p migrations/versions
+    
+    # Verify Python environment
+    print_color $YELLOW "Verifying Python environment..."
+    python -c "import src.config; print('Import successful')"
+    if [ $? -ne 0 ]; then
+        print_color $RED "Failed to import project modules. Check PYTHONPATH"
+        exit 1
+    fi
     
     # Generate initial migration
     print_color $YELLOW "Generating initial migration..."
@@ -136,7 +180,7 @@ show_database_status() {
     print_color $YELLOW "----------------"
     
     # Connect to database and show statistics
-    PGPASSWORD=$DB_PASSWORD psql -h localhost -p 35432 -U politician_ai_user -d politician_ai << EOF
+    PGPASSWORD=$DB_PASSWORD psql -h localhost -p 35432 -U nat -d politician_ai << EOF
 \echo '\nTable Statistics:'
 SELECT schemaname, relname, n_live_tup 
 FROM pg_stat_user_tables 
@@ -164,7 +208,7 @@ LIMIT 5;
 EOF
 }
 
-# Main setup function
+    # Main setup function
 main() {
     if [ "$#" -ne 2 ]; then
         print_color $RED "Usage: $0 <conda-env-name> <session-name>"
@@ -177,11 +221,20 @@ main() {
     # Initialize genv shell
     init_genv
     
+    # Verify .env file exists
+    if [ ! -f ".env" ]; then
+        print_color $RED ".env file not found. Please create it from .env.example"
+        exit 1
+    fi
+    
     # Setup and activate conda environment
     check_conda "$conda_env"
     
     # Install dependencies
     install_deps
+    
+    # Setup database user and permissions
+    setup_database_user
     
     # Initialize database
     init_database
@@ -191,7 +244,7 @@ main() {
     
     print_color $GREEN "\nDatabase initialization complete!"
     print_color $YELLOW "\nTo inspect the database manually, use:"
-    print_color $NC "psql -h localhost -p 35432 -U politician_ai_user -d politician_ai"
+    print_color $NC "psql -h localhost -p 35432 -U nat -d politician_ai"
 }
 
 # Show help
