@@ -60,23 +60,35 @@ init_database() {
     # Set PYTHONPATH
     export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
     
-    # Create database if it doesn't exist
-    PGPASSWORD=preston psql -h localhost -p 35432 -U nat -d postgres -c "CREATE DATABASE politician_ai;" 2>/dev/null || true
+    # Drop database if exists and create new one
+    print_color $YELLOW "Setting up database..."
+    PGPASSWORD=preston psql -h localhost -p 35432 -U nat -d postgres << EOF
+DROP DATABASE IF EXISTS politician_ai;
+CREATE DATABASE politician_ai;
+EOF
+    
+    if [ $? -ne 0 ]; then
+        print_color $RED "Error creating database"
+        exit 1
+    fi
+    
+    # Wait a moment for the database to be ready
+    sleep 2
     
     # Create migrations versions directory if it doesn't exist
     mkdir -p migrations/versions
     
     # Generate initial migration
     print_color $YELLOW "Generating initial migration..."
-    alembic revision --autogenerate -m "Initial migration"
+    PYTHONPATH="${PROJECT_ROOT}" alembic revision --autogenerate -m "Initial migration"
     
     # Apply migration
     print_color $YELLOW "Applying migration..."
-    alembic upgrade head
+    PYTHONPATH="${PROJECT_ROOT}" alembic upgrade head
     
     # Run data collection script
     print_color $YELLOW "Collecting politician data..."
-    python scripts/collect_politician_data.py
+    PYTHONPATH="${PROJECT_ROOT}" python scripts/collect_politician_data.py
     
     if [ $? -eq 0 ]; then
         print_color $GREEN "Database initialized successfully"
