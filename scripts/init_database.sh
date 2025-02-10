@@ -22,8 +22,21 @@ init_conda() {
     
     print_color $YELLOW "Initializing conda environment: $env_name"
     
-    # Initialize conda for shell
-    eval "$(conda shell.bash hook)"
+    # Source conda.sh
+    CONDA_BASE=$(dirname $(dirname $(which python)))
+    source "${CONDA_BASE}/etc/profile.d/conda.sh"
+    
+    if [ $? -ne 0 ]; then
+        # Try alternative conda paths
+        if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+            source "$HOME/miniconda3/etc/profile.d/conda.sh"
+        elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+            source "$HOME/anaconda3/etc/profile.d/conda.sh"
+        else
+            print_color $RED "Could not find conda.sh. Please ensure conda is installed."
+            exit 1
+        fi
+    fi
     
     # Activate environment
     conda activate "$env_name"
@@ -33,6 +46,10 @@ init_conda() {
     fi
     
     print_color $GREEN "Conda environment ready"
+    
+    # Verify Python environment
+    python --version
+    which python
 }
 
 # Initialize database
