@@ -62,9 +62,10 @@ init_database() {
     
     # Drop database if exists and create new one
     print_color $YELLOW "Setting up database..."
-    PGPASSWORD=preston psql -h localhost -p 35432 -U nat -d postgres << EOF
+    sudo -u postgres psql -p 35432 << EOF
 DROP DATABASE IF EXISTS politician_ai;
-CREATE DATABASE politician_ai;
+CREATE DATABASE politician_ai WITH OWNER nat;
+GRANT ALL PRIVILEGES ON DATABASE politician_ai TO nat;
 EOF
     
     if [ $? -ne 0 ]; then
@@ -80,11 +81,11 @@ EOF
     
     # Generate initial migration
     print_color $YELLOW "Generating initial migration..."
-    PYTHONPATH="${PROJECT_ROOT}" alembic revision --autogenerate -m "Initial migration"
+    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" alembic revision --autogenerate -m "Initial migration"
     
     # Apply migration
     print_color $YELLOW "Applying migration..."
-    PYTHONPATH="${PROJECT_ROOT}" alembic upgrade head
+    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" alembic upgrade head
     
     # Run data collection script
     print_color $YELLOW "Collecting politician data..."

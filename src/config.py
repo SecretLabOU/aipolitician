@@ -18,8 +18,10 @@ API_PORT = get_env_int("API_PORT", 8000)
 API_WORKERS = get_env_int("API_WORKERS", 1)
 
 # Database settings
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/main.db")
-CACHE_DATABASE_URL = os.getenv("CACHE_DATABASE_URL", f"sqlite:///{DATA_DIR}/cache.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required")
+CACHE_DATABASE_URL = os.getenv("CACHE_DATABASE_URL", DATABASE_URL)
 
 # Model settings
 DEVICE = os.getenv("DEVICE", "cuda" if os.getenv("CUDA_VISIBLE_DEVICES") else "cpu")
