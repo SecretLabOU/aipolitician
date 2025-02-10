@@ -16,55 +16,16 @@ print_color() {
     printf "${color}%s${NC}\n" "$message"
 }
 
-# Initialize genv shell
-init_genv() {
-    print_color $YELLOW "Initializing genv shell environment..."
-    
-    # Check if genv shell is initialized
-    if ! command -v genv >/dev/null 2>&1; then
-        print_color $RED "genv command not found. Please ensure it's installed."
-        exit 1
-    fi
-    
-    # Initialize genv shell
-    eval "$(genv shell --init)"
-    
-    if [ $? -eq 0 ]; then
-        print_color $GREEN "genv shell initialized successfully"
-    else
-        print_color $RED "Failed to initialize genv shell"
-        exit 1
-    fi
-}
-
-# Check conda environment
-check_conda() {
+# Initialize conda environment
+init_conda() {
     local env_name=$1
     
-    # Check if conda is available
-    if ! command -v conda >/dev/null 2>&1; then
-        print_color $RED "conda not found. Please install miniconda or anaconda."
-        exit 1
-    fi
+    print_color $YELLOW "Initializing conda environment: $env_name"
     
     # Initialize conda for shell
-    print_color $YELLOW "Initializing conda..."
     eval "$(conda shell.bash hook)"
     
-    # Check if environment exists
-    if conda env list | grep -q "^${env_name}[[:space:]]"; then
-        print_color $GREEN "Found existing conda environment: $env_name"
-    else
-        print_color $YELLOW "Creating new conda environment: $env_name"
-        conda create -y -n "$env_name" python=3.10.6 pip
-        if [ $? -ne 0 ]; then
-            print_color $RED "Failed to create conda environment"
-            exit 1
-        fi
-    fi
-    
     # Activate environment
-    print_color $YELLOW "Activating conda environment: $env_name"
     conda activate "$env_name"
     if [ $? -ne 0 ]; then
         print_color $RED "Failed to activate conda environment"
@@ -72,67 +33,6 @@ check_conda() {
     fi
     
     print_color $GREEN "Conda environment ready"
-}
-
-# Install dependencies
-install_deps() {
-    print_color $YELLOW "Installing dependencies..."
-    
-    # Upgrade pip first
-    print_color $YELLOW "Upgrading pip..."
-    pip install --upgrade pip
-    
-    # Install dependencies
-    print_color $YELLOW "Installing project dependencies..."
-    if pip install -r requirements.txt; then
-        print_color $GREEN "Dependencies installed successfully"
-    else
-        print_color $RED "Error installing dependencies"
-        exit 1
-    fi
-    
-    # Install project in development mode
-    print_color $YELLOW "Installing project in development mode..."
-    cd "${PROJECT_ROOT}"
-    pip install -e .
-    if [ $? -ne 0 ]; then
-        print_color $RED "Failed to install project in development mode"
-        exit 1
-    fi
-    print_color $GREEN "Project installed in development mode"
-}
-
-# Setup database user
-setup_database_user() {
-    print_color $YELLOW "Setting up database user..."
-    
-    # Get password from .env file or environment
-    DB_PASSWORD=$(grep -oP 'DATABASE_URL=.*:\/\/nat:\K[^@]*' .env)
-    if [ -z "$DB_PASSWORD" ]; then
-        print_color $RED "Could not find database password in .env file"
-        exit 1
-    fi
-    
-    # Create user and database
-    sudo -u postgres psql -p 35432 << EOF
-    DO \$\$
-    BEGIN
-        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'nat') THEN
-            CREATE USER nat WITH PASSWORD '$DB_PASSWORD';
-        END IF;
-    END
-    \$\$;
-
-    CREATE DATABASE politician_ai WITH OWNER nat;
-    GRANT ALL PRIVILEGES ON DATABASE politician_ai TO nat;
-EOF
-    
-    if [ $? -eq 0 ]; then
-        print_color $GREEN "Database user setup complete"
-    else
-        print_color $RED "Error setting up database user"
-        exit 1
-    fi
 }
 
 # Initialize database
@@ -143,16 +43,11 @@ init_database() {
     # Set PYTHONPATH
     export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
     
+    # Create database if it doesn't exist
+    PGPASSWORD=preston psql -h localhost -p 35432 -U nat -d postgres -c "CREATE DATABASE politician_ai;" 2>/dev/null || true
+    
     # Create migrations versions directory if it doesn't exist
     mkdir -p migrations/versions
-    
-    # Verify Python environment
-    print_color $YELLOW "Verifying Python environment..."
-    python -c "import src.config; print('Import successful')"
-    if [ $? -ne 0 ]; then
-        print_color $RED "Failed to import project modules. Check PYTHONPATH"
-        exit 1
-    fi
     
     # Generate initial migration
     print_color $YELLOW "Generating initial migration..."
@@ -180,7 +75,7 @@ show_database_status() {
     print_color $YELLOW "----------------"
     
     # Connect to database and show statistics
-    PGPASSWORD=$DB_PASSWORD psql -h localhost -p 35432 -U nat -d politician_ai << EOF
+    PGPASSWORD=preston psql -h localhost -p 35432 -U nat -d politician_ai << EOF
 \echo '\nTable Statistics:'
 SELECT schemaname, relname, n_live_tup 
 FROM pg_stat_user_tables 
@@ -208,18 +103,14 @@ LIMIT 5;
 EOF
 }
 
-    # Main setup function
+# Main function
 main() {
-    if [ "$#" -ne 2 ]; then
-        print_color $RED "Usage: $0 <conda-env-name> <session-name>"
+    if [ "$#" -ne 1 ]; then
+        print_color $RED "Usage: $0 <conda-env-name>"
         exit 1
     fi
     
     local conda_env=$1
-    local session_name=$2
-    
-    # Initialize genv shell
-    init_genv
     
     # Verify .env file exists
     if [ ! -f ".env" ]; then
@@ -227,14 +118,8 @@ main() {
         exit 1
     fi
     
-    # Setup and activate conda environment
-    check_conda "$conda_env"
-    
-    # Install dependencies
-    install_deps
-    
-    # Setup database user and permissions
-    setup_database_user
+    # Initialize conda environment
+    init_conda "$conda_env"
     
     # Initialize database
     init_database
@@ -249,13 +134,12 @@ main() {
 
 # Show help
 show_help() {
-    echo "Usage: $0 <conda-env-name> <session-name>"
+    echo "Usage: $0 <conda-env-name>"
     echo
-    echo "This script initializes the PoliticianAI database on the GPU server."
+    echo "This script initializes the PoliticianAI database."
     echo
     echo "Arguments:"
-    echo "  conda-env-name: Name of the conda environment to use/create"
-    echo "  session-name:   Name for the GPU session"
+    echo "  conda-env-name: Name of the conda environment to use"
     echo
     echo "Before running:"
     echo "1. Ensure you are on the GPU server"
@@ -263,7 +147,7 @@ show_help() {
     echo "3. Make sure PostgreSQL is running on port 35432"
     echo
     echo "Example:"
-    echo "  ./init_database.sh politician-ai my-session"
+    echo "  ./init_database.sh poly-2"
 }
 
 # Check if help is requested
