@@ -85,16 +85,14 @@ EOF
 
     # Create tables directly first
     print_color $YELLOW "Creating tables..."
-    PYTHONPATH="${PROJECT_ROOT}" python << EOF
+    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" python << EOF
 from src.database.models import Base
-from src.database import engine
+from sqlalchemy import create_engine
+
+engine = create_engine("postgresql://nat:preston@localhost:35432/politician_ai")
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 EOF
-    
-    # Generate and apply migration to track changes
-    print_color $YELLOW "Setting up migrations..."
-    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" alembic stamp head
     
     # Run data collection script with environment variables
     print_color $YELLOW "Collecting politician data..."

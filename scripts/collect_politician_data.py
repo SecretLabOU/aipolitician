@@ -10,7 +10,22 @@ import requests
 from sqlalchemy.orm import Session
 
 from src.config import DATA_DIR, POLITICAL_TOPICS
-from src.database import Base, Session as DbSession, engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from src.database.models import Base
+
+# Create database engine with appropriate settings for PostgreSQL
+engine = create_engine(
+    "postgresql://nat:preston@localhost:35432/politician_ai",
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+    echo=False
+)
+
+# Create session factory
+Session = sessionmaker(bind=engine)
 from src.database.models import Politician, Statement, Topic, Vote
 from src.utils import setup_logging
 
@@ -47,7 +62,7 @@ class PoliticianDataCollector:
     def __init__(self):
         """Initialize data collector."""
         logger.info("Initializing PoliticianDataCollector")
-        self.session = DbSession()
+        self.session = Session()
         self.setup_database()
     
     def setup_database(self):
