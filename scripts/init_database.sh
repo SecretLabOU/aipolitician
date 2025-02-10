@@ -79,17 +79,27 @@ EOF
     # Create migrations versions directory if it doesn't exist
     mkdir -p migrations/versions
     
-    # Generate initial migration
-    print_color $YELLOW "Generating initial migration..."
-    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" alembic revision --autogenerate -m "Initial migration"
+    # Remove existing migrations
+    print_color $YELLOW "Cleaning up old migrations..."
+    rm -rf migrations/versions/*
+
+    # Create tables directly first
+    print_color $YELLOW "Creating tables..."
+    PYTHONPATH="${PROJECT_ROOT}" python << EOF
+from src.database.models import Base
+from src.database import engine
+Base.metadata.drop_all(engine)
+Base.metadata.create_all(engine)
+EOF
     
-    # Apply migration
-    print_color $YELLOW "Applying migration..."
-    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" alembic upgrade head
+    # Generate and apply migration to track changes
+    print_color $YELLOW "Setting up migrations..."
+    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" alembic stamp head
     
-    # Run data collection script
+    # Run data collection script with environment variables
     print_color $YELLOW "Collecting politician data..."
-    PYTHONPATH="${PROJECT_ROOT}" python scripts/collect_politician_data.py
+    NEWS_API_KEY=$(grep -oP 'NEWS_API_KEY=\K[^#\s]+' .env)
+    NEWS_API_KEY="$NEWS_API_KEY" PYTHONPATH="${PROJECT_ROOT}" python scripts/collect_politician_data.py
     
     if [ $? -eq 0 ]; then
         print_color $GREEN "Database initialized successfully"
