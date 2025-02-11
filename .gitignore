@@ -34,10 +34,8 @@ ENV/
 *~
 
 # Project specific
-data/*
-!data/.gitkeep
-models/*
-!models/.gitkeep
+data/
+models/
 *.db
 *.sqlite3
 app.log
