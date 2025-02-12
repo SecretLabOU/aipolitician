@@ -22,10 +22,10 @@ class ResponseAgent(BaseAgent):
         """Initialize response agent."""
         super().__init__()
         
-        # Initialize text generation pipeline with lightweight model
+        # Initialize text generation pipeline with GPT-2 model
         self.pipeline = pipeline(
-            task="text2text-generation",
-            model=RESPONSE_MODEL,  # Using lightweight T5 model from config
+            task="text-generation",
+            model=RESPONSE_MODEL,
             device=DEVICE,
             torch_dtype=MODEL_PRECISION
         )
@@ -145,15 +145,21 @@ class ResponseAgent(BaseAgent):
             
             generation_input = f"{agent_style}\n{generation_input}" if agent_style else generation_input
             
-            # Generate response with lightweight model (adjusted parameters for T5)
+            # Generate response with GPT-2 model
             response = self.pipeline(
                 generation_input,
-                max_length=150,  # Increased for more natural responses
-                min_length=30,   # Adjusted for T5's typical output length
-                num_beams=3,     # Reduced beam search for faster inference
-                length_penalty=1.0,
-                no_repeat_ngram_size=2
+                max_length=200,  # Longer responses for more natural conversation
+                min_length=50,   # Ensure substantive responses
+                num_return_sequences=1,
+                temperature=0.9,  # Higher temperature for more creative responses
+                top_k=50,        # Maintain diversity while avoiding nonsense
+                top_p=0.95,      # Nucleus sampling for natural text
+                do_sample=True,  # Enable sampling for more varied responses
+                pad_token_id=self.pipeline.tokenizer.eos_token_id
             )[0]["generated_text"]
+            
+            # Extract the response after the input prompt
+            response = response[len(generation_input):].strip()
             
             return {
                 "response": response,
