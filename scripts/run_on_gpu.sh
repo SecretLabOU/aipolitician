@@ -218,7 +218,7 @@ setup_python_env() {
     print_color $YELLOW "Verifying project structure..."
     required_files=(
         "src/__init__.py"
-        "src/config.py"
+        "src/config/__init__.py"
         "src/agents/__init__.py"
         "src/database/__init__.py"
         "src/api/__init__.py"
@@ -231,9 +231,34 @@ setup_python_env() {
         fi
     done
     
-    # Try importing project modules
+    # Try importing project modules one by one
     print_color $YELLOW "\nVerifying imports..."
-    if ! python -c "from src import DialogueGenerationAgent, WorkflowManager; print('Import successful')" 2>/dev/null; then
+    if ! python -c "
+import sys
+print('Python path:', sys.path)
+print('\nTrying imports:')
+
+print('1. Import utils...')
+from src.utils import setup_logging
+print('Utils imported successfully')
+
+print('2. Import config...')
+from src.config import RESPONSE_MODEL, DEVICE
+print('Config imported successfully')
+
+print('3. Import database...')
+from src.database import Base, Session
+print('Database imported successfully')
+
+print('4. Import agents...')
+from src.agents import DialogueGenerationAgent, WorkflowManager
+print('Agents imported successfully')
+
+print('5. Import API...')
+from src.api import router
+print('API imported successfully')
+
+print('\nAll imports successful!')" 2>&1; then
         print_color $RED "\nFailed to import project. Debug information:"
         print_color $RED "\nPython path: $PYTHONPATH"
         print_color $RED "Project root: ${PROJECT_ROOT}"
