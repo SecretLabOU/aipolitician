@@ -60,21 +60,25 @@ init_database() {
     # Set PYTHONPATH
     export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
     
-    # Drop database if exists and create new one
-    print_color $YELLOW "Setting up database..."
-    sudo -u postgres psql -p 35432 << EOF
-DROP DATABASE IF EXISTS politician_ai;
-CREATE DATABASE politician_ai WITH OWNER nat;
-GRANT ALL PRIVILEGES ON DATABASE politician_ai TO nat;
-EOF
-    
-    if [ $? -ne 0 ]; then
-        print_color $RED "Error creating database"
+    # Get database URL from .env file
+    if [ ! -f ".env" ]; then
+        print_color $RED ".env file not found"
         exit 1
     fi
     
-    # Wait a moment for the database to be ready
-    sleep 2
+    # Extract database connection details from DATABASE_URL
+    DB_URL=$(grep -oP 'DATABASE_URL=\K[^#\s]+' .env)
+    if [ -z "$DB_URL" ]; then
+        print_color $RED "DATABASE_URL not found in .env file"
+        exit 1
+    fi
+    
+    # Parse database URL to get credentials
+    DB_USER=$(echo $DB_URL | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+    DB_PASS=$(echo $DB_URL | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+    DB_HOST=$(echo $DB_URL | sed -n 's/.*@\([^:]*\):.*/\1/p')
+    DB_PORT=$(echo $DB_URL | sed -n 's/.*:\([^/]*\)\/.*/\1/p')
+    DB_NAME=$(echo $DB_URL | sed -n 's/.*\/\(.*\)/\1/p')
     
     # Create migrations versions directory if it doesn't exist
     mkdir -p migrations/versions
@@ -83,21 +87,17 @@ EOF
     print_color $YELLOW "Cleaning up old migrations..."
     rm -rf migrations/versions/*
 
-    # Create tables directly first
+    # Create tables directly
     print_color $YELLOW "Creating tables..."
-    DATABASE_URL="postgresql://nat:preston@localhost:35432/politician_ai" PYTHONPATH="${PROJECT_ROOT}" python << EOF
+    PYTHONPATH="${PROJECT_ROOT}" python << EOF
 from src.database.models import Base
 from sqlalchemy import create_engine
+from src.config import get_database_url
 
-engine = create_engine("postgresql://nat:preston@localhost:35432/politician_ai")
+engine = create_engine(get_database_url())
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 EOF
-    
-    # Run data collection script with environment variables
-    print_color $YELLOW "Collecting politician data..."
-    NEWS_API_KEY=$(grep -oP 'NEWS_API_KEY=\K[^#\s]+' .env)
-    NEWS_API_KEY="$NEWS_API_KEY" PYTHONPATH="${PROJECT_ROOT}" python scripts/collect_politician_data.py
     
     if [ $? -eq 0 ]; then
         print_color $GREEN "Database initialized successfully"
@@ -112,32 +112,30 @@ show_database_status() {
     print_color $YELLOW "\nDatabase Status:"
     print_color $YELLOW "----------------"
     
+    # Get database URL from .env file
+    DB_URL=$(grep -oP 'DATABASE_URL=\K[^#\s]+' .env)
+    
+    # Parse database URL to get credentials
+    DB_USER=$(echo $DB_URL | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+    DB_PASS=$(echo $DB_URL | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+    DB_HOST=$(echo $DB_URL | sed -n 's/.*@\([^:]*\):.*/\1/p')
+    DB_PORT=$(echo $DB_URL | sed -n 's/.*:\([^/]*\)\/.*/\1/p')
+    DB_NAME=$(echo $DB_URL | sed -n 's/.*\/\(.*\)/\1/p')
+    
     # Connect to database and show statistics
-    PGPASSWORD=preston psql -h localhost -p 35432 -U nat -d politician_ai << EOF
+    PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME << EOF
 \echo '\nTable Statistics:'
 SELECT schemaname, relname, n_live_tup 
 FROM pg_stat_user_tables 
 ORDER BY n_live_tup DESC;
 
-\echo '\nPoliticians:'
-SELECT name, party, position FROM politicians;
-
-\echo '\nTopics:'
-SELECT name, (
-    SELECT COUNT(*) 
-    FROM statements 
-    WHERE topic_id = topics.id
-) as statement_count 
-FROM topics 
-ORDER BY statement_count DESC;
-
-\echo '\nRecent Statements:'
-SELECT p.name, t.name as topic, s.content, s.sentiment_score, s.date
-FROM statements s
-JOIN politicians p ON s.politician_id = p.id
-JOIN topics t ON s.topic_id = t.id
-ORDER BY s.date DESC
-LIMIT 5;
+\echo '\nChat History:'
+SELECT session_id, COUNT(*) as message_count, 
+       MIN(created_at) as first_message,
+       MAX(created_at) as last_message
+FROM chat_history 
+GROUP BY session_id 
+ORDER BY last_message DESC;
 EOF
 }
 
@@ -166,8 +164,7 @@ main() {
     show_database_status
     
     print_color $GREEN "\nDatabase initialization complete!"
-    print_color $YELLOW "\nTo inspect the database manually, use:"
-    print_color $NC "psql -h localhost -p 35432 -U nat -d politician_ai"
+    print_color $YELLOW "\nTo inspect the database manually, use the connection details from your .env file"
 }
 
 # Show help

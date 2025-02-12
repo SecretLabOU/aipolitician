@@ -84,7 +84,7 @@ def download_model(model_name: str):
 def verify_models():
     """Verify response model is downloaded."""
     model_dir = MODELS_DIR / RESPONSE_MODEL.split('/')[-1]
-    return not (model_dir / "config.json").exists()
+    return (model_dir / "config.json").exists()
 
 def main():
     """Main setup function."""
@@ -103,7 +103,7 @@ def main():
             logger.warning("CUDA not available, using CPU")
         
         # Check if model needs to be downloaded
-        if verify_models():
+        if not verify_models():
             logger.info("Downloading response model...")
             download_model(RESPONSE_MODEL)
         else:

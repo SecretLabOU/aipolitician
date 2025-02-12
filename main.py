@@ -14,8 +14,10 @@ from src.config import (
     API_HOST,
     API_PORT,
     API_WORKERS,
+    DATA_DIR,
     DEBUG,
     LOGGING_CONFIG,
+    MODELS_DIR,
     get_database_url
 )
 from src.database import Base, init_db
@@ -57,10 +59,10 @@ def main():
         logger.info("Database initialized successfully")
         
         # Ensure required directories exist
-        data_dir = Path("data")
-        models_dir = Path("models")
-        data_dir.mkdir(exist_ok=True)
-        models_dir.mkdir(exist_ok=True)
+        DATA_DIR.mkdir(exist_ok=True)
+        MODELS_DIR.mkdir(exist_ok=True)
+        logger.info(f"Data directory: {DATA_DIR}")
+        logger.info(f"Models directory: {MODELS_DIR}")
         
         # Start the server
         uvicorn.run(

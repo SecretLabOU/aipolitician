@@ -343,6 +343,14 @@ main() {
         exit 1
     fi
     
+    # Initialize database
+    print_color $YELLOW "Initializing database..."
+    ./scripts/init_database.sh "$conda_env"
+    if [ $? -ne 0 ]; then
+        print_color $RED "Database initialization failed"
+        exit 1
+    fi
+    
     # Setup models and data
     setup_models
     init_data

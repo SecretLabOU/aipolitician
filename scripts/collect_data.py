@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from src.config import DATA_DIR
-from src.database import Base, engine
+from src.database import Base, init_db
 from src.utils import setup_logging
 
 # Configure logging
@@ -28,6 +28,9 @@ def initialize_database():
     logger.info("Initializing database...")
     
     try:
+        # Initialize database engine
+        engine = init_db()
+        
         # Create all tables
         Base.metadata.create_all(engine)
         logger.info("Database tables created successfully")

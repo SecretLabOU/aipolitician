@@ -4,26 +4,11 @@ import datetime
 from typing import Any, Dict, List
 
 from sqlalchemy import (
-    Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
+    Column, DateTime, Float, ForeignKey, Integer, String, Text
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
-from src.config import get_database_url
-
-# Create database engine with appropriate settings for PostgreSQL
-engine = create_engine(
-    get_database_url(),
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
-    echo=False
-)
-
-# Create session factory
-Session = sessionmaker(bind=engine)
 
 # Create base class for declarative models
 Base = declarative_base()
