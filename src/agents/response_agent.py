@@ -22,12 +22,14 @@ class ResponseAgent(BaseAgent):
         """Initialize response agent."""
         super().__init__()
         
-        # Initialize text generation pipeline with GPT-2 model
+        # Initialize text generation pipeline with DialoGPT model
         self.pipeline = pipeline(
             task="text-generation",
             model=RESPONSE_MODEL,
             device=DEVICE,
-            torch_dtype=MODEL_PRECISION
+            torch_dtype=MODEL_PRECISION,
+            model_kwargs={"use_cache": True},
+            return_full_text=False  # Only return the generated text, not the prompt
         )
     
     def validate_input(self, input_data: Any) -> bool:
@@ -121,20 +123,25 @@ class ResponseAgent(BaseAgent):
             # Generate response with DialoGPT
             outputs = self.pipeline(
                 generation_input,
-                max_length=150,
-                min_length=20,
+                max_new_tokens=150,  # Control the length of new tokens generated
+                min_new_tokens=20,   # Minimum new tokens to generate
                 num_return_sequences=1,
                 temperature=0.7,
                 top_p=0.9,
                 do_sample=True,
-                pad_token_id=self.pipeline.tokenizer.eos_token_id
-            )[0]["generated_text"]
+                pad_token_id=self.pipeline.tokenizer.eos_token_id,
+                eos_token_id=self.pipeline.tokenizer.eos_token_id,
+                repetition_penalty=1.2  # Prevent repetitive text
+            )
             
-            # Extract response after the "Assistant:" prompt
-            response = outputs.split("Assistant:")[-1].strip()
+            # Get the generated response
+            response = outputs[0]["generated_text"].strip()
             
-            # Clean up any trailing conversation markers
-            response = response.split("Human:")[0].strip()
+            # Clean up the response
+            if "Assistant:" in response:
+                response = response.split("Assistant:")[-1].strip()
+            if "Human:" in response:
+                response = response.split("Human:")[0].strip()
             
             return {
                 "response": response,

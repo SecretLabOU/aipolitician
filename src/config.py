@@ -56,7 +56,7 @@ LOG_FILE = os.getenv("LOG_FILE", "app.log")
 # Model paths
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment"
 CONTEXT_MODEL = "facebook/bart-large-mnli"
-RESPONSE_MODEL = "microsoft/DialoGPT-large"  # Dialogue-optimized GPT model
+RESPONSE_MODEL = "microsoft/DialoGPT-medium"  # More stable than large for this use case
 
 # Political topics
 POLITICAL_TOPICS: List[str] = [
