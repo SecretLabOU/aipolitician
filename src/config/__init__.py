@@ -3,9 +3,9 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Union
 
-from src.config.env_utils import get_env_bool, get_env_float, get_env_int
+from src.config.env_utils import get_env_bool, get_env_int
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -58,15 +58,6 @@ LOGGING_CONFIG: Dict[str, Union[str, Dict]] = {
     }
 }
 
-# Database configuration
-DB_CONFIG = {
-    "pool_size": 5,
-    "max_overflow": 10,
-    "pool_timeout": 30,
-    "pool_recycle": 1800,
-    "echo": DEBUG
-}
-
 # API configuration
 API_CONFIG = {
     "title": "PoliticianAI",
@@ -74,13 +65,6 @@ API_CONFIG = {
     "version": "1.0.0",
     "debug": DEBUG
 }
-
-def get_database_url() -> str:
-    """Get database URL from environment."""
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise ValueError("DATABASE_URL environment variable is required")
-    return database_url
 
 __all__ = [
     'PROJECT_ROOT',
@@ -97,10 +81,7 @@ __all__ = [
     'LOG_FILE',
     'RESPONSE_MODEL',
     'LOGGING_CONFIG',
-    'DB_CONFIG',
     'API_CONFIG',
-    'get_database_url',
     'get_env_bool',
-    'get_env_float',
     'get_env_int'
 ]

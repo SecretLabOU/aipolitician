@@ -17,10 +17,8 @@ from src.config import (
     DATA_DIR,
     DEBUG,
     LOGGING_CONFIG,
-    MODELS_DIR,
-    get_database_url
+    MODELS_DIR
 )
-from src.database import Base, init_db
 from src.utils import setup_logging
 
 # Configure logging
@@ -51,12 +49,6 @@ def main():
     """Run the application."""
     try:
         logger.info("Starting PoliticianAI application")
-        
-        # Initialize database
-        logger.info("Initializing database...")
-        engine = init_db()
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database initialized successfully")
         
         # Ensure required directories exist
         DATA_DIR.mkdir(exist_ok=True)

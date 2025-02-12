@@ -220,7 +220,6 @@ setup_python_env() {
         "src/__init__.py"
         "src/config/__init__.py"
         "src/agents/__init__.py"
-        "src/database/__init__.py"
         "src/api/__init__.py"
     )
     
@@ -246,15 +245,7 @@ print('2. Import config...')
 from src.config import RESPONSE_MODEL, DEVICE
 print('Config imported successfully')
 
-print('3. Import database models...')
-from src.database.models import Base, ChatHistory
-print('Database models imported successfully')
-
-print('4. Import utils...')
-from src.utils import setup_logging
-print('Utils imported successfully')
-
-print('5. Import agents...')
+print('3. Import agents...')
 from src.agents import DialogueGenerationAgent, WorkflowManager
 print('Agents imported successfully')
 
@@ -343,17 +334,8 @@ main() {
         exit 1
     fi
     
-    # Initialize database
-    print_color $YELLOW "Initializing database..."
-    ./scripts/init_database.sh "$conda_env"
-    if [ $? -ne 0 ]; then
-        print_color $RED "Database initialization failed"
-        exit 1
-    fi
-    
-    # Setup models and data
+    # Setup models
     setup_models
-    init_data
     
     # Start the application
     print_color $GREEN "\nSetup complete! Starting application..."

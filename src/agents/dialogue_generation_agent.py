@@ -1,14 +1,12 @@
 """Dialogue generation agent for political discourse simulation."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from sqlalchemy.orm import Session
 from transformers import pipeline
 
 from src.agents.base import BaseAgent
 from src.config import DEVICE, MODEL_PRECISION, RESPONSE_MODEL
-from src.database.models import ChatHistory
 from src.utils import setup_logging
 
 # Configure logging
@@ -82,7 +80,6 @@ class DialogueGenerationAgent(BaseAgent):
         self,
         input_data: str,
         context: Optional[Dict[str, Any]] = None,
-        db: Optional[Session] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
