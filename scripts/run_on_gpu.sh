@@ -221,6 +221,7 @@ setup_python_env() {
         "src/config/__init__.py"
         "src/agents/__init__.py"
         "src/api/__init__.py"
+        "src/utils/__init__.py"
     )
     
     for file in "${required_files[@]}"; do

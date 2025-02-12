@@ -88,7 +88,6 @@ class DialogueGenerationAgent(BaseAgent):
         Args:
             input_data: Input text to respond to
             context: Optional context dictionary containing agent type and chat history
-            db: Optional database session
             **kwargs: Additional keyword arguments
             
         Returns:

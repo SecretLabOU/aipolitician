@@ -2,9 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
-
-from sqlalchemy.orm import Session
+from typing import Any, Dict, Optional
 
 from src.utils import setup_logging
 
@@ -24,7 +22,6 @@ class BaseAgent(ABC):
         self,
         input_data: Any,
         context: Optional[Dict[str, Any]] = None,
-        db: Optional[Session] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -33,7 +30,6 @@ class BaseAgent(ABC):
         Args:
             input_data: Input data to process
             context: Optional context dictionary
-            db: Optional database session
             **kwargs: Additional keyword arguments
             
         Returns:
@@ -108,7 +104,6 @@ class BaseAgent(ABC):
         self,
         input_data: Any,
         context: Optional[Dict[str, Any]] = None,
-        db: Optional[Session] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -117,7 +112,6 @@ class BaseAgent(ABC):
         Args:
             input_data: Input data to process
             context: Optional context dictionary
-            db: Optional database session
             **kwargs: Additional keyword arguments
             
         Returns:
@@ -132,7 +126,7 @@ class BaseAgent(ABC):
             preprocessed_data = self.preprocess(input_data, context)
             
             # Process
-            result = self.process(preprocessed_data, context, db, **kwargs)
+            result = self.process(preprocessed_data, context, **kwargs)
             
             # Postprocess
             final_result = self.postprocess(result, context)
