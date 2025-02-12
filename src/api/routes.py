@@ -8,9 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.agents import (
-    ContextAgent,
-    ResponseAgent,
-    SentimentAgent,
+    DialogueGenerationAgent,
     WorkflowManager
 )
 from src.database import Session as DbSession
@@ -43,41 +41,27 @@ class ChatResponse(BaseModel):
     """Chat response model."""
     
     response: str
-    sentiment: float
-    topics: List[str]
     session_id: str
 
-class TopicResponse(BaseModel):
-    """Topic response model."""
-    
-    id: int
-    name: str
-    description: Optional[str] = None
-
-class PoliticianResponse(BaseModel):
-    """Politician response model."""
-    
-    id: int
-    name: str
-    party: Optional[str] = None
-    position: Optional[str] = None
-    bio: Optional[str] = None
-
 # Routes
-@router.post("/chat/trump", response_model=ChatResponse)
-async def chat_trump(
+@router.post("/chat/{agent}", response_model=ChatResponse)
+async def chat(
+    agent: str,
     request: ChatRequest,
     db: Session = Depends(get_db)
 ) -> ChatResponse:
-    """Process chat message and return Trump-style response."""
+    """Process chat message and return agent-specific response."""
     try:
+        if agent not in ["trump", "biden"]:
+            raise HTTPException(status_code=400, detail="Invalid agent specified")
+            
         # Initialize workflow manager
         workflow = WorkflowManager()
         
-        # Process message with Trump agent
+        # Process message
         result = workflow.process_message(
             message=request.message,
-            agent="trump",
+            agent=agent,
             db=db
         )
         
@@ -85,17 +69,13 @@ async def chat_trump(
         history = ChatHistory(
             session_id=result["session_id"],
             user_input=request.message,
-            system_response=result["response"],
-            sentiment_score=result["sentiment"],
-            context_topics=",".join(map(str, result["topic_ids"]))
+            system_response=result["response"]
         )
         db.add(history)
         db.commit()
         
         return ChatResponse(
             response=result["response"],
-            sentiment=result["sentiment"],
-            topics=result["topics"],
             session_id=result["session_id"]
         )
         
@@ -104,96 +84,6 @@ async def chat_trump(
         raise HTTPException(
             status_code=500,
             detail="Error processing chat message"
-        )
-
-@router.post("/chat/biden", response_model=ChatResponse)
-async def chat_biden(
-    request: ChatRequest,
-    db: Session = Depends(get_db)
-) -> ChatResponse:
-    """Process chat message and return Biden-style response."""
-    try:
-        # Initialize workflow manager
-        workflow = WorkflowManager()
-        
-        # Process message with Biden agent
-        result = workflow.process_message(
-            message=request.message,
-            agent="biden",
-            db=db
-        )
-        
-        # Save to chat history
-        history = ChatHistory(
-            session_id=result["session_id"],
-            user_input=request.message,
-            system_response=result["response"],
-            sentiment_score=result["sentiment"],
-            context_topics=",".join(map(str, result["topic_ids"]))
-        )
-        db.add(history)
-        db.commit()
-        
-        return ChatResponse(
-            response=result["response"],
-            sentiment=result["sentiment"],
-            topics=result["topics"],
-            session_id=result["session_id"]
-        )
-        
-    except Exception as e:
-        logger.error(f"Error processing chat message: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error processing chat message"
-        )
-
-@router.get("/topics", response_model=List[TopicResponse])
-async def get_topics(
-    db: Session = Depends(get_db)
-) -> List[TopicResponse]:
-    """Get list of available topics."""
-    try:
-        topics = db.query(Topic).all()
-        return [
-            TopicResponse(
-                id=topic.id,
-                name=topic.name,
-                description=topic.description
-            )
-            for topic in topics
-        ]
-        
-    except Exception as e:
-        logger.error(f"Error fetching topics: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching topics"
-        )
-
-@router.get("/politicians", response_model=List[PoliticianResponse])
-async def get_politicians(
-    db: Session = Depends(get_db)
-) -> List[PoliticianResponse]:
-    """Get list of politicians."""
-    try:
-        politicians = db.query(Politician).all()
-        return [
-            PoliticianResponse(
-                id=politician.id,
-                name=politician.name,
-                party=politician.party,
-                position=politician.position,
-                bio=politician.bio
-            )
-            for politician in politicians
-        ]
-        
-    except Exception as e:
-        logger.error(f"Error fetching politicians: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching politicians"
         )
 
 @router.get("/health")

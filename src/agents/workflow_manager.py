@@ -7,10 +7,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.agents.base import BaseAgent
-from src.agents.context_agent import ContextAgent
-from src.agents.response_agent import ResponseAgent
-from src.agents.sentiment_agent import SentimentAgent
-from src.database.models import ChatHistory, Topic
+from src.agents.dialogue_generation_agent import DialogueGenerationAgent
+from src.database.models import ChatHistory
 from src.utils import setup_logging
 
 # Configure logging
@@ -24,10 +22,8 @@ class WorkflowManager:
         """Initialize workflow manager."""
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Initialize agents
-        self.sentiment_agent = SentimentAgent()
-        self.context_agent = ContextAgent()
-        self.response_agent = ResponseAgent()
+        # Initialize dialogue generation agent
+        self.response_agent = DialogueGenerationAgent()
     
     def process_message(
         self,
@@ -46,9 +42,6 @@ class WorkflowManager:
         Returns:
             Dictionary containing:
                 - response: Generated response text
-                - sentiment: Sentiment score
-                - topics: List of identified topics
-                - topic_ids: List of topic IDs
                 - session_id: Chat session ID
         """
         try:
@@ -58,32 +51,8 @@ class WorkflowManager:
             # Get chat history for context
             context = self._get_chat_context(f"{agent}_{session_id}", db) if db else {}
             
-            # Analyze sentiment
-            sentiment_result = self.sentiment_agent(
-                message,
-                context=context,
-                db=db
-            )
-            if not sentiment_result["success"]:
-                raise Exception(f"Sentiment analysis failed: {sentiment_result['error']}")
-            sentiment_score = sentiment_result["result"]["score"]
-            
-            # Extract context and topics
-            context_result = self.context_agent(
-                message,
-                context=context,
-                db=db
-            )
-            if not context_result["success"]:
-                raise Exception(f"Context extraction failed: {context_result['error']}")
-            topics = context_result["result"]["topics"]
-            topic_ids = context_result["result"]["topic_ids"]
-            
             # Generate response
             response_context = {
-                "sentiment": sentiment_score,
-                "topics": topics,
-                "topic_ids": topic_ids,
                 "chat_history": context.get("chat_history", []),
                 "agent": agent
             }
@@ -94,13 +63,9 @@ class WorkflowManager:
             )
             if not response_result["success"]:
                 raise Exception(f"Response generation failed: {response_result['error']}")
-            response = response_result["result"]["response"]
             
             return {
-                "response": response,
-                "sentiment": sentiment_score,
-                "topics": topics,
-                "topic_ids": topic_ids,
+                "response": response_result["result"]["response"],
                 "session_id": session_id
             }
             
@@ -140,9 +105,7 @@ class WorkflowManager:
             for entry in reversed(history):  # Oldest to newest
                 chat_history.append({
                     "user_input": entry.user_input,
-                    "system_response": entry.system_response,
-                    "sentiment": entry.sentiment_score,
-                    "topics": entry.context_topics.split(",") if entry.context_topics else []
+                    "system_response": entry.system_response
                 })
             
             return {

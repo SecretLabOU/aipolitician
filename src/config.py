@@ -28,54 +28,15 @@ DEVICE = os.getenv("DEVICE", "cuda" if os.getenv("CUDA_VISIBLE_DEVICES") else "c
 MODEL_PRECISION = os.getenv("MODEL_PRECISION", "float16")
 BATCH_SIZE = get_env_int("BATCH_SIZE", 1)
 
-# LangChain settings
-LANGCHAIN_VERBOSE = get_env_bool("LANGCHAIN_VERBOSE", False)
-LANGCHAIN_CACHE = get_env_bool("LANGCHAIN_CACHE", True)
-
-# Cache settings
-CACHE_EXPIRY_HOURS = get_env_int("CACHE_EXPIRY_HOURS", 24)
-RESPONSE_CACHE_SIZE = get_env_int("RESPONSE_CACHE_SIZE", 1000)
-
-# Vector store settings
-EMBEDDING_DIMENSION = get_env_int("EMBEDDING_DIMENSION", 768)
-MAX_CONTEXT_LENGTH = get_env_int("MAX_CONTEXT_LENGTH", 2048)
-
-# GPU settings
-CUDA_VISIBLE_DEVICES = os.getenv("CUDA_VISIBLE_DEVICES", "0")
-GPU_MEMORY_FRACTION = get_env_float("GPU_MEMORY_FRACTION", 0.9)
-
 # Development settings
 DEBUG = get_env_bool("DEBUG", False)
-RELOAD = get_env_bool("RELOAD", False)
-TESTING = get_env_bool("TESTING", False)
 
 # Logging settings
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = os.getenv("LOG_FILE", "app.log")
 
 # Model paths
-SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment"
-CONTEXT_MODEL = "facebook/bart-large-mnli"
-RESPONSE_MODEL = "facebook/blenderbot-400M-distill"  # Dialogue-optimized model
-
-# Political topics
-POLITICAL_TOPICS: List[str] = [
-    "Healthcare",
-    "Economy",
-    "Education",
-    "Immigration",
-    "Climate Change",
-    "National Security",
-    "Gun Control",
-    "Social Security",
-    "Tax Policy",
-    "Foreign Policy",
-    "Criminal Justice",
-    "Infrastructure",
-    "Energy Policy",
-    "Trade Policy",
-    "Civil Rights",
-]
+RESPONSE_MODEL = "microsoft/DialoGPT-large"  # Professional dialogue generation model
 
 # Logging configuration
 LOGGING_CONFIG: Dict[str, Union[str, Dict]] = {
@@ -84,10 +45,6 @@ LOGGING_CONFIG: Dict[str, Union[str, Dict]] = {
     "formatters": {
         "standard": {
             "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        },
-        "json": {
-            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s"
         }
     },
     "handlers": {
@@ -96,59 +53,15 @@ LOGGING_CONFIG: Dict[str, Union[str, Dict]] = {
             "level": LOG_LEVEL,
             "formatter": "standard",
             "stream": "ext://sys.stdout"
-        },
-        "file": {
-            "class": "logging.FileHandler",
-            "level": LOG_LEVEL,
-            "formatter": "json",
-            "filename": LOG_FILE,
-            "mode": "a"
         }
     },
     "loggers": {
         "": {  # Root logger
-            "handlers": ["console", "file"],
+            "handlers": ["console"],
             "level": LOG_LEVEL,
             "propagate": True
         }
     }
-}
-
-# Prometheus metrics configuration
-METRICS_CONFIG = {
-    "namespace": "politician_ai",
-    "subsystem": "",
-    "enable_default_metrics": True,
-    "buckets": (
-        .005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0, 7.5, 10.0
-    ),
-    "multiprocess_mode": "all"
-}
-
-# OpenTelemetry configuration
-OTEL_CONFIG = {
-    "service_name": "politician_ai",
-    "environment": "production" if not DEBUG else "development",
-    "sampler": "always_on" if DEBUG else "parentbased_traceidratio",
-    "sampling_ratio": 1.0 if DEBUG else 0.1
-}
-
-# Cache configuration
-CACHE_CONFIG = {
-    "ttl": CACHE_EXPIRY_HOURS * 3600,  # Convert hours to seconds
-    "maxsize": RESPONSE_CACHE_SIZE,
-    "typed": False
-}
-
-# Model configuration
-MODEL_CONFIG = {
-    "device": DEVICE,
-    "torch_dtype": MODEL_PRECISION,
-    "max_length": MAX_CONTEXT_LENGTH,
-    "num_beams": 4,
-    "length_penalty": 2.0,
-    "no_repeat_ngram_size": 3,
-    "batch_size": BATCH_SIZE
 }
 
 # Database configuration
@@ -165,9 +78,5 @@ API_CONFIG = {
     "title": "PoliticianAI",
     "description": "AI system for political discourse simulation",
     "version": "1.0.0",
-    "docs_url": "/docs" if DEBUG else None,
-    "redoc_url": "/redoc" if DEBUG else None,
-    "openapi_url": "/openapi.json" if DEBUG else None,
-    "root_path": "",
     "debug": DEBUG
 }

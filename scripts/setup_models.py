@@ -9,12 +9,10 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 
 from src.config import (
-    CONTEXT_MODEL,
     DEVICE,
     MODEL_PRECISION,
     MODELS_DIR,
-    RESPONSE_MODEL,
-    SENTIMENT_MODEL
+    RESPONSE_MODEL
 )
 from src.utils import setup_logging
 
@@ -44,16 +42,15 @@ def setup_model_directory():
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"Model directory ready: {MODELS_DIR}")
 
-def download_model(model_name: str, model_type: str):
+def download_model(model_name: str):
     """
     Download and save model.
     
     Args:
         model_name: HuggingFace model name
-        model_type: Type of model (for logging)
     """
     try:
-        logger.info(f"Downloading {model_type} model: {model_name}")
+        logger.info(f"Downloading response model: {model_name}")
         
         # Download tokenizer
         tokenizer = AutoTokenizer.from_pretrained(
@@ -61,7 +58,7 @@ def download_model(model_name: str, model_type: str):
             cache_dir=MODELS_DIR,
             use_fast=True
         )
-        logger.info(f"Downloaded {model_type} tokenizer")
+        logger.info(f"Downloaded tokenizer")
         
         # Download model
         model = AutoModel.from_pretrained(
@@ -70,7 +67,7 @@ def download_model(model_name: str, model_type: str):
             torch_dtype=get_torch_dtype(MODEL_PRECISION),
             device_map=DEVICE if torch.cuda.is_available() else None
         )
-        logger.info(f"Downloaded {model_type} model")
+        logger.info(f"Downloaded model")
         
         # Save model and tokenizer
         model_dir = MODELS_DIR / model_name.split('/')[-1]
@@ -78,27 +75,16 @@ def download_model(model_name: str, model_type: str):
         
         model.save_pretrained(model_dir)
         tokenizer.save_pretrained(model_dir)
-        logger.info(f"Saved {model_type} model and tokenizer to {model_dir}")
+        logger.info(f"Saved model and tokenizer to {model_dir}")
         
     except Exception as e:
-        logger.error(f"Error downloading {model_type} model: {str(e)}")
+        logger.error(f"Error downloading model: {str(e)}")
         raise
 
 def verify_models():
-    """Verify all required models are downloaded."""
-    models = [
-        (SENTIMENT_MODEL, "sentiment analysis"),
-        (CONTEXT_MODEL, "context extraction"),
-        (RESPONSE_MODEL, "response generation")
-    ]
-    
-    missing_models = []
-    for model_name, model_type in models:
-        model_dir = MODELS_DIR / model_name.split('/')[-1]
-        if not (model_dir / "config.json").exists():
-            missing_models.append((model_name, model_type))
-    
-    return missing_models
+    """Verify response model is downloaded."""
+    model_dir = MODELS_DIR / RESPONSE_MODEL.split('/')[-1]
+    return not (model_dir / "config.json").exists()
 
 def main():
     """Main setup function."""
@@ -116,15 +102,12 @@ def main():
         else:
             logger.warning("CUDA not available, using CPU")
         
-        # Check for missing models
-        missing_models = verify_models()
-        
-        if missing_models:
-            logger.info("Downloading missing models...")
-            for model_name, model_type in missing_models:
-                download_model(model_name, model_type)
+        # Check if model needs to be downloaded
+        if verify_models():
+            logger.info("Downloading response model...")
+            download_model(RESPONSE_MODEL)
         else:
-            logger.info("All models already downloaded")
+            logger.info("Response model already downloaded")
         
         logger.info("Model setup complete!")
         
