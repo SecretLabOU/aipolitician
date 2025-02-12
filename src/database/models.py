@@ -10,11 +10,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql import func
 
-from src.config import DATABASE_URL
+from src.config import get_database_url
 
 # Create database engine with appropriate settings for PostgreSQL
 engine = create_engine(
-    DATABASE_URL,
+    get_database_url(),
     pool_size=5,
     max_overflow=10,
     pool_timeout=30,
