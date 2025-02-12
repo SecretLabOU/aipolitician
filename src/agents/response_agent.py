@@ -66,6 +66,11 @@ class ResponseAgent(BaseAgent):
         
         # Add context if available
         if context:
+            # Add agent type for response styling
+            agent = context.get("agent", "")
+            if agent:
+                text = f"Style: {agent.upper()}\n{text}"
+            
             # Add identified topics
             topics = context.get("topics", [])
             if topics:
@@ -130,10 +135,20 @@ class ResponseAgent(BaseAgent):
                 ])
                 generation_input = f"Context:\n{source_text}\n\nQuestion: {input_data}"
             
+            # Generate response with agent-specific styling
+            agent_style = ""
+            if context and "agent" in context:
+                if context["agent"] == "trump":
+                    agent_style = "Respond in Donald Trump's speaking style - use simple words, strong opinions, and phrases like 'believe me', 'tremendous', 'huge'. Be assertive and use exclamation points."
+                elif context["agent"] == "biden":
+                    agent_style = "Respond in Joe Biden's speaking style - use folksy language, personal anecdotes, phrases like 'folks', 'look', 'here's the deal'. Be empathetic and measured."
+            
+            generation_input = f"{agent_style}\n{generation_input}" if agent_style else generation_input
+            
             # Generate response with lightweight model (adjusted parameters for T5)
             response = self.pipeline(
                 generation_input,
-                max_length=100,  # Reduced for more concise responses
+                max_length=150,  # Increased for more natural responses
                 min_length=30,   # Adjusted for T5's typical output length
                 num_beams=3,     # Reduced beam search for faster inference
                 length_penalty=1.0,

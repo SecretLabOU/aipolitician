@@ -32,7 +32,7 @@ class WorkflowManager:
     def process_message(
         self,
         message: str,
-        session_id: Optional[str] = None,
+        agent: str,
         db: Optional[Session] = None
     ) -> Dict[str, Any]:
         """
@@ -40,7 +40,7 @@ class WorkflowManager:
         
         Args:
             message: User input message
-            session_id: Optional session ID for chat history
+            agent: Type of agent to use ("trump" or "biden")
             db: Optional database session
             
         Returns:
@@ -52,12 +52,11 @@ class WorkflowManager:
                 - session_id: Chat session ID
         """
         try:
-            # Generate session ID if not provided
-            if not session_id:
-                session_id = str(uuid.uuid4())
+            # Generate session ID
+            session_id = str(uuid.uuid4())
             
             # Get chat history for context
-            context = self._get_chat_context(session_id, db) if db else {}
+            context = self._get_chat_context(f"{agent}_{session_id}", db) if db else {}
             
             # Analyze sentiment
             sentiment_result = self.sentiment_agent(
@@ -85,7 +84,8 @@ class WorkflowManager:
                 "sentiment": sentiment_score,
                 "topics": topics,
                 "topic_ids": topic_ids,
-                "chat_history": context.get("chat_history", [])
+                "chat_history": context.get("chat_history", []),
+                "agent": agent
             }
             response_result = self.response_agent(
                 message,

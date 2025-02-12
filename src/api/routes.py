@@ -38,7 +38,6 @@ class ChatRequest(BaseModel):
     """Chat request model."""
     
     message: str
-    session_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     """Chat response model."""
@@ -65,20 +64,62 @@ class PoliticianResponse(BaseModel):
     bio: Optional[str] = None
 
 # Routes
-@router.post("/chat", response_model=ChatResponse)
-async def chat(
+@router.post("/chat/trump", response_model=ChatResponse)
+async def chat_trump(
     request: ChatRequest,
     db: Session = Depends(get_db)
 ) -> ChatResponse:
-    """Process chat message and return response."""
+    """Process chat message and return Trump-style response."""
     try:
         # Initialize workflow manager
         workflow = WorkflowManager()
         
-        # Process message
+        # Process message with Trump agent
         result = workflow.process_message(
             message=request.message,
-            session_id=request.session_id,
+            agent="trump",
+            db=db
+        )
+        
+        # Save to chat history
+        history = ChatHistory(
+            session_id=result["session_id"],
+            user_input=request.message,
+            system_response=result["response"],
+            sentiment_score=result["sentiment"],
+            context_topics=",".join(map(str, result["topic_ids"]))
+        )
+        db.add(history)
+        db.commit()
+        
+        return ChatResponse(
+            response=result["response"],
+            sentiment=result["sentiment"],
+            topics=result["topics"],
+            session_id=result["session_id"]
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing chat message: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error processing chat message"
+        )
+
+@router.post("/chat/biden", response_model=ChatResponse)
+async def chat_biden(
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+) -> ChatResponse:
+    """Process chat message and return Biden-style response."""
+    try:
+        # Initialize workflow manager
+        workflow = WorkflowManager()
+        
+        # Process message with Biden agent
+        result = workflow.process_message(
+            message=request.message,
+            agent="biden",
             db=db
         )
         
