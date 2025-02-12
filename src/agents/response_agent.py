@@ -22,14 +22,13 @@ class ResponseAgent(BaseAgent):
         """Initialize response agent."""
         super().__init__()
         
-        # Initialize text generation pipeline with DialoGPT model
+        # Initialize text generation pipeline with GPT-2
         self.pipeline = pipeline(
             task="text-generation",
             model=RESPONSE_MODEL,
             device=DEVICE,
             torch_dtype=MODEL_PRECISION,
-            model_kwargs={"use_cache": True},
-            return_full_text=False  # Only return the generated text, not the prompt
+            model_kwargs={"pad_token_id": 50256}  # GPT-2's EOS token ID
         )
     
     def validate_input(self, input_data: Any) -> bool:
@@ -120,26 +119,23 @@ class ResponseAgent(BaseAgent):
                 ])
                 generation_input = f"{generation_input}\nRelevant context:\n{source_text}"
             
-            # Generate response with DialoGPT
+            # Generate response with GPT-2
             outputs = self.pipeline(
                 generation_input,
-                max_new_tokens=150,  # Control the length of new tokens generated
-                min_new_tokens=20,   # Minimum new tokens to generate
+                max_length=200,
                 num_return_sequences=1,
-                temperature=0.7,
-                top_p=0.9,
+                temperature=0.8,
+                top_k=50,
+                top_p=0.95,
                 do_sample=True,
-                pad_token_id=self.pipeline.tokenizer.eos_token_id,
-                eos_token_id=self.pipeline.tokenizer.eos_token_id,
-                repetition_penalty=1.2  # Prevent repetitive text
+                pad_token_id=50256,  # GPT-2's EOS token ID
+                return_full_text=False
             )
             
-            # Get the generated response
+            # Extract the generated response
             response = outputs[0]["generated_text"].strip()
             
-            # Clean up the response
-            if "Assistant:" in response:
-                response = response.split("Assistant:")[-1].strip()
+            # Clean up the response by removing any prompt text
             if "Human:" in response:
                 response = response.split("Human:")[0].strip()
             
