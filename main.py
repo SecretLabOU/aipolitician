@@ -16,9 +16,9 @@ from src.config import (
     API_WORKERS,
     DEBUG,
     LOGGING_CONFIG,
-    RELOAD
+    get_database_url
 )
-from src.database import Base, engine
+from src.database import Base, init_db
 from src.utils import setup_logging
 
 # Configure logging
@@ -45,13 +45,16 @@ app.add_middleware(
 # Include routers
 app.include_router(router)
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
 def main():
     """Run the application."""
     try:
         logger.info("Starting PoliticianAI application")
+        
+        # Initialize database
+        logger.info("Initializing database...")
+        engine = init_db()
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database initialized successfully")
         
         # Ensure required directories exist
         data_dir = Path("data")
@@ -65,7 +68,7 @@ def main():
             host=API_HOST,
             port=API_PORT,
             workers=API_WORKERS,
-            reload=RELOAD,
+            reload=DEBUG,
             log_config=LOGGING_CONFIG
         )
         

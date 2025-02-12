@@ -17,12 +17,6 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = get_env_int("API_PORT", 8000)
 API_WORKERS = get_env_int("API_WORKERS", 1)
 
-# Database settings
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is required")
-CACHE_DATABASE_URL = os.getenv("CACHE_DATABASE_URL", DATABASE_URL)
-
 # Model settings
 DEVICE = os.getenv("DEVICE", "cuda" if os.getenv("CUDA_VISIBLE_DEVICES") else "cpu")
 MODEL_PRECISION = os.getenv("MODEL_PRECISION", "float16")
@@ -81,6 +75,13 @@ API_CONFIG = {
     "debug": DEBUG
 }
 
+def get_database_url() -> str:
+    """Get database URL from environment."""
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL environment variable is required")
+    return database_url
+
 __all__ = [
     'PROJECT_ROOT',
     'DATA_DIR',
@@ -88,8 +89,6 @@ __all__ = [
     'API_HOST',
     'API_PORT',
     'API_WORKERS',
-    'DATABASE_URL',
-    'CACHE_DATABASE_URL',
     'DEVICE',
     'MODEL_PRECISION',
     'BATCH_SIZE',
@@ -100,6 +99,7 @@ __all__ = [
     'LOGGING_CONFIG',
     'DB_CONFIG',
     'API_CONFIG',
+    'get_database_url',
     'get_env_bool',
     'get_env_float',
     'get_env_int'
