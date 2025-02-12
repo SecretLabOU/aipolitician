@@ -61,37 +61,21 @@ class ResponseAgent(BaseAgent):
         Returns:
             Preprocessed text with context
         """
-        # Clean and normalize text
-        text = input_data.strip()
+        # Get agent type and prepare persona instruction
+        agent_type = context.get("agent", "") if context else ""
+        persona_instruction = ""
+        if agent_type == "trump":
+            persona_instruction = "You are Donald Trump. Respond in your characteristic style - use simple words, strong opinions, and phrases like 'believe me', 'tremendous', 'huge'. Be assertive and use exclamation points."
+        elif agent_type == "biden":
+            persona_instruction = "You are Joe Biden. Respond in your characteristic style - use folksy language, personal anecdotes, phrases like 'folks', 'look', 'here's the deal'. Be empathetic and measured."
         
-        # Add context if available
-        if context:
-            # Add agent type for response styling
-            agent = context.get("agent", "")
-            if agent:
-                text = f"Style: {agent.upper()}\n{text}"
-            
-            # Add identified topics
-            topics = context.get("topics", [])
-            if topics:
-                text = f"Topics: {', '.join(topics)}\nQuestion: {text}"
-            
-            # Add sentiment context
-            sentiment = context.get("sentiment")
-            if sentiment is not None:
-                sentiment_label = "positive" if sentiment > 0 else "negative"
-                text = f"Tone: {sentiment_label}\n{text}"
-            
-            # Add chat history context
-            history = context.get("chat_history", [])
-            if history:
-                history_text = "\n".join([
-                    f"User: {entry['user_input']}\nSystem: {entry['system_response']}"
-                    for entry in history[-2:]  # Last 2 exchanges
-                ])
-                text = f"Previous conversation:\n{history_text}\n\nCurrent: {text}"
+        # Format the input with persona
+        if persona_instruction:
+            input_data = f"{persona_instruction}\n\nHuman: {input_data}\nAssistant:"
+        else:
+            input_data = f"Human: {input_data}\nAssistant:"
         
-        return text
+        return input_data.strip()
     
     def process(
         self,
@@ -125,41 +109,32 @@ class ResponseAgent(BaseAgent):
                     db
                 )
             
-            # Generate response
+            # Add source information to input if available
             generation_input = input_data
             if sources:
-                # Add source information to input
                 source_text = "\n".join([
                     f"- {source.content}"
                     for source in sources[:3]  # Use top 3 most relevant sources
                 ])
-                generation_input = f"Context:\n{source_text}\n\nQuestion: {input_data}"
+                generation_input = f"{generation_input}\nRelevant context:\n{source_text}"
             
-            # Generate response with agent-specific styling
-            agent_style = ""
-            if context and "agent" in context:
-                if context["agent"] == "trump":
-                    agent_style = "Respond in Donald Trump's speaking style - use simple words, strong opinions, and phrases like 'believe me', 'tremendous', 'huge'. Be assertive and use exclamation points."
-                elif context["agent"] == "biden":
-                    agent_style = "Respond in Joe Biden's speaking style - use folksy language, personal anecdotes, phrases like 'folks', 'look', 'here's the deal'. Be empathetic and measured."
-            
-            generation_input = f"{agent_style}\n{generation_input}" if agent_style else generation_input
-            
-            # Generate response with GPT-2 model
-            response = self.pipeline(
+            # Generate response with DialoGPT
+            outputs = self.pipeline(
                 generation_input,
-                max_length=200,  # Longer responses for more natural conversation
-                min_length=50,   # Ensure substantive responses
+                max_length=150,
+                min_length=20,
                 num_return_sequences=1,
-                temperature=0.9,  # Higher temperature for more creative responses
-                top_k=50,        # Maintain diversity while avoiding nonsense
-                top_p=0.95,      # Nucleus sampling for natural text
-                do_sample=True,  # Enable sampling for more varied responses
+                temperature=0.7,
+                top_p=0.9,
+                do_sample=True,
                 pad_token_id=self.pipeline.tokenizer.eos_token_id
             )[0]["generated_text"]
             
-            # Extract the response after the input prompt
-            response = response[len(generation_input):].strip()
+            # Extract response after the "Assistant:" prompt
+            response = outputs.split("Assistant:")[-1].strip()
+            
+            # Clean up any trailing conversation markers
+            response = response.split("Human:")[0].strip()
             
             return {
                 "response": response,
