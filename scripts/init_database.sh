@@ -22,20 +22,16 @@ init_conda() {
     
     print_color $YELLOW "Initializing conda environment: $env_name"
     
-    # Source conda.sh
-    CONDA_BASE=$(dirname $(dirname $(which python)))
-    source "${CONDA_BASE}/etc/profile.d/conda.sh"
-    
-    if [ $? -ne 0 ]; then
-        # Try alternative conda paths
-        if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
-            source "$HOME/miniconda3/etc/profile.d/conda.sh"
-        elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
-            source "$HOME/anaconda3/etc/profile.d/conda.sh"
-        else
-            print_color $RED "Could not find conda.sh. Please ensure conda is installed."
-            exit 1
-        fi
+    # Try to find and source conda.sh
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        source "/opt/conda/etc/profile.d/conda.sh"
+    elif [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+        source "$HOME/miniconda3/etc/profile.d/conda.sh"
+    elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+        source "$HOME/anaconda3/etc/profile.d/conda.sh"
+    else
+        print_color $RED "Could not find conda.sh. Please ensure conda is installed."
+        exit 1
     fi
     
     # Activate environment
@@ -93,7 +89,7 @@ init_database() {
 from src.database.models import Base
 from sqlalchemy import create_engine
 
-engine = create_engine("$DB_URL")
+engine = create_engine("""${DB_URL}""")
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 EOF
