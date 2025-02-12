@@ -12,7 +12,7 @@ from src.agents import (
     WorkflowManager
 )
 from src.database import Session as DbSession
-from src.database.models import ChatHistory, Politician, Statement, Topic
+from src.database.models import ChatHistory
 from src.utils import setup_logging
 
 # Configure logging

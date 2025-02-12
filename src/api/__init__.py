@@ -1,5 +1,5 @@
-"""PoliticianAI API package."""
+"""API module for PoliticianAI."""
 
-from .routes import router
+from src.api.routes import router
 
 __all__ = ['router']

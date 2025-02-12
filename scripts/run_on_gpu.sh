@@ -210,16 +210,36 @@ setup_python_env() {
     print_color $YELLOW "\nInstalled packages:"
     pip list
     
-    # Try importing with verbose output
-    print_color $YELLOW "\nAttempting to import project..."
-    if ! PYTHONPATH="${PROJECT_ROOT}" python -v -c "import src.config; print('Import successful')" 2>&1; then
+    # Set up Python path properly
+    print_color $YELLOW "\nSetting up Python path..."
+    export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
+    
+    # Verify project structure
+    print_color $YELLOW "Verifying project structure..."
+    required_files=(
+        "src/__init__.py"
+        "src/config.py"
+        "src/agents/__init__.py"
+        "src/database/__init__.py"
+        "src/api/__init__.py"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [ ! -f "${PROJECT_ROOT}/$file" ]; then
+            print_color $RED "Missing required file: $file"
+            exit 1
+        fi
+    done
+    
+    # Try importing project modules
+    print_color $YELLOW "\nVerifying imports..."
+    if ! python -c "from src import DialogueGenerationAgent, WorkflowManager; print('Import successful')" 2>/dev/null; then
         print_color $RED "\nFailed to import project. Debug information:"
-        print_color $RED "\nPython path:"
-        python -c "import sys; print('\n'.join(sys.path))"
-        print_color $RED "\nProject root: ${PROJECT_ROOT}"
+        print_color $RED "\nPython path: $PYTHONPATH"
+        print_color $RED "Project root: ${PROJECT_ROOT}"
         print_color $RED "Current directory: $(pwd)"
-        print_color $RED "\nTrying to locate config.py:"
-        find . -name "config.py"
+        print_color $RED "\nProject structure:"
+        find "${PROJECT_ROOT}/src" -type f -name "*.py" | sort
         exit 1
     fi
     

@@ -1,15 +1,9 @@
-"""PoliticianAI agents package."""
+"""Agent modules for PoliticianAI."""
 
-from .base import BaseAgent
-from .context_agent import ContextAgent
-from .response_agent import ResponseAgent
-from .sentiment_agent import SentimentAgent
-from .workflow_manager import WorkflowManager
+from src.agents.dialogue_generation_agent import DialogueGenerationAgent
+from src.agents.workflow_manager import WorkflowManager
 
 __all__ = [
-    'BaseAgent',
-    'ContextAgent',
-    'ResponseAgent',
-    'SentimentAgent',
-    'WorkflowManager',
+    'DialogueGenerationAgent',
+    'WorkflowManager'
 ]
