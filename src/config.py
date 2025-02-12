@@ -56,7 +56,7 @@ LOG_FILE = os.getenv("LOG_FILE", "app.log")
 # Model paths
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment"
 CONTEXT_MODEL = "facebook/bart-large-mnli"
-RESPONSE_MODEL = "gpt2"  # Base GPT-2 model for reliable text generation
+RESPONSE_MODEL = "facebook/blenderbot-400M-distill"  # Dialogue-optimized model
 
 # Political topics
 POLITICAL_TOPICS: List[str] = [

@@ -22,13 +22,12 @@ class ResponseAgent(BaseAgent):
         """Initialize response agent."""
         super().__init__()
         
-        # Initialize text generation pipeline with GPT-2
+        # Initialize conversational pipeline with BlenderBot
         self.pipeline = pipeline(
-            task="text-generation",
+            task="conversational",
             model=RESPONSE_MODEL,
             device=DEVICE,
-            torch_dtype=MODEL_PRECISION,
-            model_kwargs={"pad_token_id": 50256}  # GPT-2's EOS token ID
+            torch_dtype=MODEL_PRECISION
         )
     
     def validate_input(self, input_data: Any) -> bool:
@@ -119,37 +118,47 @@ class ResponseAgent(BaseAgent):
                 ])
                 generation_input = f"{generation_input}\nRelevant context:\n{source_text}"
             
-            # Generate response with GPT-2
-            outputs = self.pipeline(
-                generation_input,
-                max_length=200,
-                num_return_sequences=1,
-                temperature=0.8,
-                top_k=50,
-                top_p=0.95,
-                do_sample=True,
-                pad_token_id=50256,  # GPT-2's EOS token ID
-                return_full_text=False
-            )
-            
-            # Extract the generated response
-            response = outputs[0]["generated_text"].strip()
-            
-            # Clean up the response by removing any prompt text
-            if "Human:" in response:
-                response = response.split("Human:")[0].strip()
-            
-            return {
-                "response": response,
-                "sources": [
-                    {
-                        "content": source.content,
-                        "politician": source.politician.name,
-                        "topic": source.topic.name
+            try:
+                # Format conversation for BlenderBot
+                conversation = {
+                    "past_user_inputs": [],
+                    "generated_responses": [],
+                    "text": generation_input
+                }
+                
+                # Generate response
+                result = self.pipeline(conversation)
+                response = result["generated_text"]
+                
+                # Ensure we have a response
+                if not response.strip():
+                    response = "I am having trouble generating a response right now."
+                
+                result = {
+                    "response": response,
+                    "sources": [
+                        {
+                            "content": source.content,
+                            "politician": source.politician.name,
+                            "topic": source.topic.name
+                        }
+                        for source in sources
+                    ]
+                }
+                return {
+                    "success": True,
+                    "result": result
+                }
+            except Exception as e:
+                self.logger.error(f"Failed to generate response: {str(e)}")
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "result": {
+                        "response": "I am having trouble generating a response right now.",
+                        "sources": []
                     }
-                    for source in sources
-                ]
-            }
+                }
             
         except Exception as e:
             self.logger.error(f"Error generating response: {str(e)}")
@@ -170,14 +179,26 @@ class ResponseAgent(BaseAgent):
         Returns:
             Postprocessed results
         """
-        # Clean up response text
-        response = output_data["response"].strip()
-        
-        # Remove any "Question:" or "Context:" prefixes
-        response = response.replace("Question:", "").replace("Context:", "").strip()
-        
-        output_data["response"] = response
-        return output_data
+        try:
+            # Clean up response text
+            response = output_data["response"].strip()
+            
+            # Remove any prefixes and clean up
+            response = response.replace("Question:", "").replace("Context:", "").strip()
+            response = response.replace("Assistant:", "").strip()
+            
+            # Ensure we have a non-empty response
+            if not response:
+                response = "I am having trouble generating a response right now."
+            
+            output_data["response"] = response
+            return output_data
+        except Exception as e:
+            self.logger.error(f"Error in postprocess: {str(e)}")
+            return {
+                "response": "I am having trouble generating a response right now.",
+                "sources": []
+            }
     
     def _get_relevant_statements(
         self,
