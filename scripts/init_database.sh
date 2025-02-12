@@ -85,11 +85,13 @@ init_database() {
 
     # Create tables directly
     print_color $YELLOW "Creating tables..."
+    export DATABASE_URL="${DB_URL}"
     PYTHONPATH="${PROJECT_ROOT}" python << EOF
 from src.database.models import Base
 from sqlalchemy import create_engine
+from os import environ
 
-engine = create_engine("""${DB_URL}""")
+engine = create_engine(environ['DATABASE_URL'])
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 EOF
