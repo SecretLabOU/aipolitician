@@ -63,7 +63,7 @@ init_database() {
     fi
     
     # Extract database connection details from DATABASE_URL
-    DB_URL=$(grep -oP 'DATABASE_URL=\K[^#\s]+' .env)
+    DB_URL=$(grep -oP 'DATABASE_URL=\K[^\n]+' .env | tr -d '\r')
     if [ -z "$DB_URL" ]; then
         print_color $RED "DATABASE_URL not found in .env file"
         exit 1
@@ -85,13 +85,20 @@ init_database() {
 
     # Create tables directly
     print_color $YELLOW "Creating tables..."
-    export DATABASE_URL="${DB_URL}"
     PYTHONPATH="${PROJECT_ROOT}" python << EOF
 from src.database.models import Base
 from sqlalchemy import create_engine
-from os import environ
+from sqlalchemy.engine.url import URL
 
-engine = create_engine(environ['DATABASE_URL'])
+url = URL.create(
+    drivername="postgresql",
+    username="${DB_USER}",
+    password="${DB_PASS}",
+    host="${DB_HOST}",
+    port=${DB_PORT},
+    database="${DB_NAME}"
+)
+engine = create_engine(url)
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 EOF
@@ -110,7 +117,7 @@ show_database_status() {
     print_color $YELLOW "----------------"
     
     # Get database URL from .env file
-    DB_URL=$(grep -oP 'DATABASE_URL=\K[^#\s]+' .env)
+    DB_URL=$(grep -oP 'DATABASE_URL=\K[^\n]+' .env | tr -d '\r')
     
     # Parse database URL to get credentials
     DB_USER=$(echo $DB_URL | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
