@@ -7,7 +7,7 @@ def load_model():
     Load the language model and tokenizer.
     Returns a tuple of (model, tokenizer).
     """
-    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    model_name = "meta-llama/Llama-2-7b-chat-hf"
     
     # Configure CUDA settings
     if torch.cuda.is_available():
@@ -27,19 +27,21 @@ def load_model():
         device = "cpu"
         print("Using CPU")
     
-    # Load tokenizer
+    # Load tokenizer with auth token
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
-        local_files_only=True  # Prevent downloads during inference
+        token=os.getenv('HUGGING_FACE_HUB_TOKEN'),
+        use_fast=True
     )
     
-    # Configure model loading settings
+    # Configure model loading settings for Llama 2
     model_kwargs = {
         "torch_dtype": torch.float16 if device.startswith("cuda") else torch.float32,
         "low_cpu_mem_usage": True,
-        "trust_remote_code": True,
         "device_map": device,
-        "use_flash_attention_2": False,  # Explicitly disable flash attention
+        "token": os.getenv('HUGGING_FACE_HUB_TOKEN'),
+        "use_flash_attention_2": False,
+        "max_memory": {0: "13GB"},  # Reserve some VRAM for generation
         "use_cache": True
     }
     

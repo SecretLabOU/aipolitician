@@ -49,6 +49,6 @@ async def root():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "model": "meta-llama/Llama-2-7b-chat-hf",
         "device": "cuda" if torch.cuda.is_available() else "cpu"
     }

@@ -55,10 +55,10 @@ conda activate $ENV_NAME
 echo "Installing/upgrading pip requirements..."
 pip install -r requirements.txt
 
-# Set CUDA and PyTorch environment variables
+# Set environment variables
 export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-export TRANSFORMERS_OFFLINE=1
+export HUGGING_FACE_HUB_TOKEN=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
 
 # Run the FastAPI server
 echo "Starting the server..."
