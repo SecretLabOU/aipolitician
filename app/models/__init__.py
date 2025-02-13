@@ -6,33 +6,36 @@ def load_model():
     Load the language model and tokenizer.
     Returns a tuple of (model, tokenizer).
     """
-    model_name = "microsoft/phi-2"
+    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     
-    # Check if CUDA is available
+    # Set CUDA memory management settings
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.backends.cuda.max_split_size_mb = 512
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
     
     # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Load model with flash attention disabled
+    # Load model with conservative memory settings
     try:
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            device_map="auto",
-            trust_remote_code=True,
-            use_flash_attention_2=False  # Disable flash attention
+            low_cpu_mem_usage=True,
+            device_map="auto"
         )
+        print("Model loaded successfully on", device)
     except Exception as e:
-        print(f"Error loading model: {str(e)}")
-        print("Attempting to load model with different configuration...")
-        # Fallback to CPU if GPU loading fails
+        print(f"Error loading model on {device}: {str(e)}")
+        print("Falling back to CPU...")
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             torch_dtype=torch.float32,
-            device_map="cpu",
-            trust_remote_code=True,
-            use_flash_attention_2=False
+            low_cpu_mem_usage=True,
+            device_map="cpu"
         )
     
     return model, tokenizer
