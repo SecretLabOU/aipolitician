@@ -30,7 +30,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = os.getenv("LOG_FILE", "app.log")
 
 # Model paths
-RESPONSE_MODEL = "microsoft/DialoGPT-medium"  # Dialogue-optimized model
+RESPONSE_MODEL = "gpt2"  # Base GPT-2 model for text generation
 
 # Logging configuration
 LOGGING_CONFIG: Dict[str, Union[str, Dict]] = {

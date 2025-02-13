@@ -3,11 +3,21 @@
 import logging
 from typing import Any, Dict, Optional
 
+import torch
 from transformers import pipeline
 
 from src.agents.base import BaseAgent
 from src.config import DEVICE, MODEL_PRECISION, RESPONSE_MODEL
 from src.utils import setup_logging
+
+def get_torch_dtype(precision: str) -> torch.dtype:
+    """Convert precision string to torch dtype."""
+    dtype_map = {
+        'float16': torch.float16,
+        'float32': torch.float32,
+        'bfloat16': torch.bfloat16
+    }
+    return dtype_map.get(precision.lower(), torch.float32)
 
 # Configure logging
 setup_logging()
@@ -25,8 +35,8 @@ class DialogueGenerationAgent(BaseAgent):
             task="text-generation",
             model=RESPONSE_MODEL,
             device=DEVICE,
-            torch_dtype=MODEL_PRECISION,
-            model_kwargs={"pad_token_id": 50256}  # GPT's EOS token ID
+            torch_dtype=get_torch_dtype(MODEL_PRECISION),
+            framework="pt"  # Use PyTorch backend
         )
     
     def validate_input(self, input_data: Any) -> bool:
