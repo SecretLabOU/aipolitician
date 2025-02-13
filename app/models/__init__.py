@@ -68,27 +68,44 @@ def load_model():
     
     return model, tokenizer
 
-def generate_response(model, tokenizer, prompt, max_length=200):
+def generate_response(model, tokenizer, prompt, max_length=300):
     """
-    Generate a response using the model.
+    Generate a response using the model with improved parameters and cleanup.
     """
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     
-    # Generate response
+    # Generate response with carefully tuned parameters
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
             max_length=max_length,
             num_return_sequences=1,
-            temperature=0.7,
+            temperature=0.9,  # Slightly higher temperature for more dynamic responses
+            top_p=0.9,       # Nucleus sampling
+            top_k=50,        # Top-k sampling
             do_sample=True,
-            pad_token_id=tokenizer.eos_token_id
+            no_repeat_ngram_size=3,  # Prevent repetition of 3-grams
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            repetition_penalty=1.2    # Penalize repetition
         )
     
-    # Decode and return the response
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Decode the response
+    full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     
-    # Remove the input prompt from the response
-    response = response[len(tokenizer.decode(inputs.input_ids[0], skip_special_tokens=True)):].strip()
+    # Find the last "Assistant:" in the response
+    response_parts = full_response.split("Assistant:")
+    if len(response_parts) > 1:
+        response = response_parts[-1].strip()
+    else:
+        # If no "Assistant:" found, try to find after the last "Human:"
+        human_parts = full_response.split("Human:")
+        if len(human_parts) > 1:
+            response = human_parts[-1].split("\n")[0].strip()
+        else:
+            response = full_response.strip()
+    
+    # Clean up any remaining artifacts
+    response = response.replace("Human:", "").replace("Assistant:", "").strip()
     
     return response

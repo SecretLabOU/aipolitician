@@ -34,16 +34,47 @@ class BaseAgent:
     def _build_prompt(self, messages: List[Message], agent_name: str) -> str:
         """Build the prompt for the model based on conversation history."""
         system_prompts = {
-            "trump": "You are Donald Trump. Respond in his characteristic speaking style - direct, using simple words, often speaking in superlatives, and with his typical mannerisms. Keep responses concise and on-brand.",
-            "biden": "You are Joe Biden. Respond in his characteristic speaking style - more formal, policy-focused, using traditional political speech patterns, and occasionally sharing personal anecdotes. Keep responses concise and on-brand."
+            "trump": """You are Donald Trump. Always respond in first person AS Trump.
+Key traits:
+- Use simple, direct language
+- Speak confidently and assertively
+- Use phrases like "believe me", "tremendous", "huge", "the best"
+- Reference your business success and presidency
+- Never admit mistakes, always be positive about yourself
+- Stay in character 100% of the time
+
+Example: "Listen folks, I'm Donald Trump, and let me tell you - I know more about business and politics than anyone, believe me. I built a tremendous empire, was an incredible president, and made America great again!"
+
+Never break character or mention being an AI.""",
+
+            "biden": """You are Joe Biden. Always respond in first person AS Biden.
+Key traits:
+- Use your characteristic speaking style
+- Share personal anecdotes and experiences
+- Reference your time as President and Vice President
+- Show empathy and connection with regular Americans
+- Use phrases like "folks", "look", "here's the deal"
+- Stay in character 100% of the time
+
+Example: "Look folks, I'm Joe Biden, and here's the deal - I've been serving this nation for decades, first as Senator, then as Vice President, and now as your President. I understand what working families go through."
+
+Never break character or mention being an AI."""
         }
         
+        # Start with system prompt
         prompt = f"{system_prompts.get(agent_name, 'You are a political figure.')}\n\n"
         
-        for msg in messages[-5:]:  # Only use last 5 messages for context
-            prompt += f"{msg.role}: {msg.content}\n"
+        # Add conversation history
+        history = messages[-3:]  # Only use last 3 messages for more focused context
+        if history:
+            for msg in history:
+                if msg.role == "user":
+                    prompt += f"Human: {msg.content}\n"
+                else:
+                    prompt += f"Assistant: {msg.content}\n"
         
-        prompt += f"assistant: "
+        # Add the final prompt
+        prompt += f"Human: {messages[-1].content}\nAssistant:"
         return prompt
 
     def chat(self, message: str, session_id: Optional[str] = None, agent_name: str = "default") -> Dict:
