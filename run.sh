@@ -60,6 +60,16 @@ export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 export HUGGING_FACE_HUB_TOKEN=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
 
+# Check if model is cached
+if [ ! -d "cached_model" ]; then
+    echo "Model not found in cache. Downloading model..."
+    python download_model.py
+    if [ $? -ne 0 ]; then
+        echo "Failed to download model. Please check your internet connection and Hugging Face token."
+        exit 1
+    fi
+fi
+
 # Run the FastAPI server
 echo "Starting the server..."
 TORCH_CUDA_ARCH_LIST="8.6" uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

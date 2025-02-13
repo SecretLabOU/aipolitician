@@ -7,7 +7,11 @@ def load_model():
     Load the language model and tokenizer.
     Returns a tuple of (model, tokenizer).
     """
-    model_name = "meta-llama/Llama-2-7b-chat-hf"
+    cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cached_model")
+    if not os.path.exists(cache_dir):
+        raise ValueError(
+            "Model not found in cache. Please run download_model.py first to download and cache the model."
+        )
     
     # Configure CUDA settings
     if torch.cuda.is_available():
@@ -27,28 +31,29 @@ def load_model():
         device = "cpu"
         print("Using CPU")
     
-    # Load tokenizer with auth token
+    print(f"Loading from cache directory: {cache_dir}")
+    
+    # Load tokenizer from cache
     tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        token=os.getenv('HUGGING_FACE_HUB_TOKEN'),
-        use_fast=True
+        cache_dir,
+        use_fast=True,
+        local_files_only=True
     )
     
-    # Configure model loading settings for Llama 2
+    # Configure model loading settings
     model_kwargs = {
         "torch_dtype": torch.float16 if device.startswith("cuda") else torch.float32,
         "low_cpu_mem_usage": True,
         "device_map": device,
-        "token": os.getenv('HUGGING_FACE_HUB_TOKEN'),
         "use_flash_attention_2": False,
         "max_memory": {0: "13GB"},  # Reserve some VRAM for generation
-        "use_cache": True
+        "local_files_only": True
     }
     
     # Load model with error handling
     try:
         print(f"Loading model to {device}...")
-        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(cache_dir, **model_kwargs)
         
         if device.startswith("cuda"):
             # Force model to GPU if not already there
@@ -66,7 +71,7 @@ def load_model():
             "device_map": "cpu",
             "use_flash_attention_2": False
         })
-        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(cache_dir, **model_kwargs)
     
     return model, tokenizer
 
