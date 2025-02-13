@@ -55,6 +55,11 @@ conda activate $ENV_NAME
 echo "Installing/upgrading pip requirements..."
 pip install -r requirements.txt
 
+# Set CUDA and PyTorch environment variables
+export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+export TRANSFORMERS_OFFLINE=1
+
 # Run the FastAPI server
 echo "Starting the server..."
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+TORCH_CUDA_ARCH_LIST="8.6" uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
