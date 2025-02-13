@@ -14,13 +14,26 @@ def load_model():
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     
-    # Load model
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map="auto",
-        trust_remote_code=True
-    )
+    # Load model with flash attention disabled
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            device_map="auto",
+            trust_remote_code=True,
+            use_flash_attention_2=False  # Disable flash attention
+        )
+    except Exception as e:
+        print(f"Error loading model: {str(e)}")
+        print("Attempting to load model with different configuration...")
+        # Fallback to CPU if GPU loading fails
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float32,
+            device_map="cpu",
+            trust_remote_code=True,
+            use_flash_attention_2=False
+        )
     
     return model, tokenizer
 

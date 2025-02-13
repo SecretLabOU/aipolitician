@@ -9,10 +9,25 @@ fi
 # Environment name
 ENV_NAME="aipolitician"
 
-# Check if NVIDIA GPU is available
+# Check if genv is available
+if ! command -v genv &> /dev/null; then
+    echo "genv is not installed. Please install genv first."
+    exit 1
+fi
+
+# Check if NVIDIA GPU is available and set up genv
 if command -v nvidia-smi &> /dev/null; then
     echo "Checking GPU status..."
     nvidia-smi
+    
+    # Activate genv session
+    echo "Activating genv session..."
+    genv activate --id aipolitician
+    
+    # Attach to RTX 4080 (index 1)
+    echo "Attaching to RTX 4080..."
+    genv attach --index 1
+    
     HAS_GPU=1
 else
     echo "No NVIDIA GPU found. Will proceed with CPU."
