@@ -60,15 +60,12 @@ export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 export HUGGING_FACE_HUB_TOKEN=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
 
-# Install huggingface-cli if not present
-pip install --upgrade huggingface-hub
-
 # Check if model is cached
 if [ ! -d "cached_model" ]; then
-    echo "Model not found in cache. Setting up model..."
-    python setup_model.py
+    echo "Model not found in cache. Downloading Llama model..."
+    python download_llama.py
     if [ $? -ne 0 ]; then
-        echo "Failed to set up model. Please check your internet connection and Hugging Face token."
+        echo "Failed to download model. Please check your internet connection."
         exit 1
     fi
 fi

@@ -29,7 +29,7 @@ def load_model():
         # Create pipeline
         _pipe = pipeline(
             "text-generation",
-            model="TheBloke/Llama-2-7B-Chat-GGML",
+            model=cache_dir,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
             device_map="auto",
             max_memory={0: "13GB"} if device == "cuda" else None,
