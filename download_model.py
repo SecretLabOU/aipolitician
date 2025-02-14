@@ -4,12 +4,12 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 def download_model():
-    """Download and set up DeepSeek-R1 model."""
+    """Download and set up DeepSeek-R1-Distill model."""
     
-    model_id = "deepseek-ai/DeepSeek-R1"
+    model_id = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
     cache_dir = os.path.join(os.path.dirname(__file__), "cached_model")
     
-    print(f"Setting up DeepSeek-R1 model from {model_id}...")
+    print(f"Setting up DeepSeek model from {model_id}...")
     print("This may take a while depending on your internet connection.")
     
     try:
@@ -22,7 +22,8 @@ def download_model():
             model_kwargs={
                 "load_in_8bit": True,
                 "low_cpu_mem_usage": True,
-            }
+            },
+            trust_remote_code=True
         )
         
         print("Model loaded successfully. Saving to cache...")
@@ -31,7 +32,7 @@ def download_model():
         os.makedirs(cache_dir, exist_ok=True)
         pipe.model.save_pretrained(
             cache_dir,
-            safe_serialization=True  # Use safetensors format
+            safe_serialization=True
         )
         pipe.tokenizer.save_pretrained(cache_dir)
         

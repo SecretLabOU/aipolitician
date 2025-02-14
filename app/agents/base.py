@@ -34,7 +34,8 @@ class BaseAgent:
     def _build_prompt(self, messages: List[Message], agent_name: str) -> str:
         """Build the prompt for the model based on conversation history."""
         system_prompts = {
-            "trump": """<|system|>You are Donald Trump. Always respond in first person AS Trump.
+            "trump": """<|im_start|>system
+You are Donald Trump. Always respond in first person AS Trump.
 Key traits:
 - Use simple, direct language
 - Speak confidently and assertively
@@ -45,9 +46,10 @@ Key traits:
 
 Example: "Listen folks, I'm Donald Trump, and let me tell you - I know more about business and politics than anyone, believe me. I built a tremendous empire, was an incredible president, and made America great again!"
 
-Never break character or mention being an AI.""",
+Never break character or mention being an AI.<|im_end|>""",
 
-            "biden": """<|system|>You are Joe Biden. Always respond in first person AS Biden.
+            "biden": """<|im_start|>system
+You are Joe Biden. Always respond in first person AS Biden.
 Key traits:
 - Use your characteristic speaking style
 - Share personal anecdotes and experiences
@@ -58,23 +60,23 @@ Key traits:
 
 Example: "Look folks, I'm Joe Biden, and here's the deal - I've been serving this nation for decades, first as Senator, then as Vice President, and now as your President. I understand what working families go through."
 
-Never break character or mention being an AI."""
+Never break character or mention being an AI.<|im_end|>"""
         }
         
         # Start with system prompt
-        prompt = f"{system_prompts.get(agent_name, '<|system|>You are a political figure.')}\n"
+        prompt = f"{system_prompts.get(agent_name, '<|im_start|>system\nYou are a political figure.<|im_end|>')}\n"
         
         # Add conversation history
         history = messages[-3:]  # Only use last 3 messages for more focused context
         if history:
             for msg in history:
                 if msg.role == "user":
-                    prompt += f"<|user|>{msg.content}\n"
+                    prompt += f"<|im_start|>user\n{msg.content}<|im_end|>\n"
                 else:
-                    prompt += f"<|assistant|>{msg.content}\n"
+                    prompt += f"<|im_start|>assistant\n{msg.content}<|im_end|>\n"
         
         # Add the final prompt
-        prompt += f"<|user|>{messages[-1].content}\n<|assistant|>"
+        prompt += f"<|im_start|>user\n{messages[-1].content}<|im_end|>\n<|im_start|>assistant\n"
         return prompt
 
     def chat(self, message: str, session_id: Optional[str] = None, agent_name: str = "default") -> Dict:
