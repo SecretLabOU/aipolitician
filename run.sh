@@ -58,7 +58,10 @@ pip install -r requirements.txt
 # Set environment variables
 export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-export HUGGING_FACE_HUB_TOKEN=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
+
+# Ensure Hugging Face CLI is installed and user is logged in
+echo "Checking Hugging Face authentication..."
+huggingface-cli whoami || (echo "Please login with your Hugging Face account" && huggingface-cli login)
 
 # Check if model is cached
 if [ ! -d "cached_model" ]; then
