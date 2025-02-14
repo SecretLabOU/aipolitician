@@ -59,14 +59,10 @@ pip install -r requirements.txt
 export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
-# Ensure Hugging Face CLI is installed and user is logged in
-echo "Checking Hugging Face authentication..."
-huggingface-cli whoami || (echo "Please login with your Hugging Face account" && huggingface-cli login)
-
 # Check if model is cached
 if [ ! -d "cached_model" ]; then
-    echo "Model not found in cache. Downloading Llama model..."
-    python download_llama.py
+    echo "Model not found in cache. Downloading model..."
+    python download_model.py
     if [ $? -ne 0 ]; then
         echo "Failed to download model. Please check your internet connection."
         exit 1

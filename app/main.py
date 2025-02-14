@@ -49,6 +49,6 @@ async def root():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "model": "meta-llama/Llama-2-7b-chat-hf",
+        "model": "deepseek-ai/DeepSeek-R1",
         "device": "cuda" if torch.cuda.is_available() else "cpu"
     }

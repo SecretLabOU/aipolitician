@@ -34,7 +34,7 @@ class BaseAgent:
     def _build_prompt(self, messages: List[Message], agent_name: str) -> str:
         """Build the prompt for the model based on conversation history."""
         system_prompts = {
-            "trump": """You are Donald Trump. Always respond in first person AS Trump.
+            "trump": """<|system|>You are Donald Trump. Always respond in first person AS Trump.
 Key traits:
 - Use simple, direct language
 - Speak confidently and assertively
@@ -47,7 +47,7 @@ Example: "Listen folks, I'm Donald Trump, and let me tell you - I know more abou
 
 Never break character or mention being an AI.""",
 
-            "biden": """You are Joe Biden. Always respond in first person AS Biden.
+            "biden": """<|system|>You are Joe Biden. Always respond in first person AS Biden.
 Key traits:
 - Use your characteristic speaking style
 - Share personal anecdotes and experiences
@@ -62,19 +62,19 @@ Never break character or mention being an AI."""
         }
         
         # Start with system prompt
-        prompt = f"{system_prompts.get(agent_name, 'You are a political figure.')}\n\n"
+        prompt = f"{system_prompts.get(agent_name, '<|system|>You are a political figure.')}\n"
         
         # Add conversation history
         history = messages[-3:]  # Only use last 3 messages for more focused context
         if history:
             for msg in history:
                 if msg.role == "user":
-                    prompt += f"Human: {msg.content}\n"
+                    prompt += f"<|user|>{msg.content}\n"
                 else:
-                    prompt += f"Assistant: {msg.content}\n"
+                    prompt += f"<|assistant|>{msg.content}\n"
         
         # Add the final prompt
-        prompt += f"Human: {messages[-1].content}\nAssistant:"
+        prompt += f"<|user|>{messages[-1].content}\n<|assistant|>"
         return prompt
 
     def chat(self, message: str, session_id: Optional[str] = None, agent_name: str = "default") -> Dict:
