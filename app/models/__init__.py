@@ -26,13 +26,16 @@ def load_model():
             torch.cuda.empty_cache()
             torch.set_grad_enabled(False)
         
-        # Create pipeline
+        # Create pipeline with optimized settings
         _pipe = pipeline(
             "text-generation",
             model=cache_dir,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
             device_map="auto",
-            max_memory={0: "13GB"} if device == "cuda" else None,
+            model_kwargs={
+                "load_in_8bit": True if device == "cuda" else False,
+                "low_cpu_mem_usage": True,
+            },
             local_files_only=True
         )
         
@@ -45,20 +48,20 @@ def generate_response(model, tokenizer, prompt, max_length=300):
     Generate a response using the pipeline.
     """
     global _pipe
-    """
-    Generate a response using the model with improved parameters and cleanup.
-    """
+    
     # Use the pipeline for generation
     result = _pipe(
         prompt,
         max_length=max_length,
         num_return_sequences=1,
-        temperature=0.9,
+        temperature=0.7,  # Slightly lower for more focused responses
         top_p=0.9,
-        top_k=50,
+        top_k=40,
         do_sample=True,
         no_repeat_ngram_size=3,
-        repetition_penalty=1.2
+        repetition_penalty=1.2,
+        pad_token_id=_pipe.tokenizer.eos_token_id,
+        eos_token_id=_pipe.tokenizer.eos_token_id
     )
     
     full_response = result[0]['generated_text']
