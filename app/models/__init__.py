@@ -26,16 +26,12 @@ def load_model():
             torch.cuda.empty_cache()
             torch.set_grad_enabled(False)
         
-        # Create pipeline with optimized settings
+        # Create pipeline with explicit device mapping
         _pipe = pipeline(
             "text-generation",
             model=cache_dir,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            device_map="auto",
-            model_kwargs={
-                "load_in_8bit": True if device == "cuda" else False,
-                "low_cpu_mem_usage": True,
-            },
+            torch_dtype=torch.float16,
+            device_map={"": 3},  # Use Quadro RTX 8000
             local_files_only=True
         )
         

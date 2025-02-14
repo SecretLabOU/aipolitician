@@ -24,9 +24,9 @@ if command -v nvidia-smi &> /dev/null; then
     echo "Activating genv session..."
     genv activate --id aipolitician
     
-    # Attach to RTX 4080 (index 1)
-    echo "Attaching to RTX 4080..."
-    genv attach --index 1
+    # Attach to Quadro RTX 8000 (index 3)
+    echo "Attaching to Quadro RTX 8000..."
+    genv attach --index 3
     
     HAS_GPU=1
 else
@@ -56,7 +56,7 @@ echo "Installing/upgrading pip requirements..."
 pip install -r requirements.txt
 
 # Set environment variables
-export CUDA_VISIBLE_DEVICES=1  # Use RTX 4080
+export CUDA_VISIBLE_DEVICES=3  # Use Quadro RTX 8000
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 # Check if model is cached

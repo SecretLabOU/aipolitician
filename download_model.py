@@ -6,35 +6,34 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 def download_model():
     """Download and set up DeepSeek-R1-Distill model."""
     
-    model_id = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+    model_id = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
     cache_dir = os.path.join(os.path.dirname(__file__), "cached_model")
+    device_map = {"": 3}  # Use Quadro RTX 8000
     
     print(f"Setting up DeepSeek model from {model_id}...")
     print("This may take a while depending on your internet connection.")
     
     try:
-        # Create pipeline with optimized settings
-        pipe = pipeline(
-            "text-generation",
-            model=model_id,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            model_kwargs={
-                "load_in_8bit": True,
-                "low_cpu_mem_usage": True,
-            },
-            trust_remote_code=True
+        # Load model with explicit device mapping
+        print("Loading model...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map=device_map,
+            torch_dtype=torch.float16
         )
+        
+        print("Loading tokenizer...")
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
         
         print("Model loaded successfully. Saving to cache...")
         
         # Save model and tokenizer
         os.makedirs(cache_dir, exist_ok=True)
-        pipe.model.save_pretrained(
+        model.save_pretrained(
             cache_dir,
             safe_serialization=True
         )
-        pipe.tokenizer.save_pretrained(cache_dir)
+        tokenizer.save_pretrained(cache_dir)
         
         print(f"Model and tokenizer saved to {cache_dir}")
         print("Setup complete!")
