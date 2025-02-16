@@ -24,9 +24,9 @@ if command -v nvidia-smi &> /dev/null; then
     echo "Activating genv session..."
     genv activate --id aipolitician
     
-    # Attach to Quadro RTX 8000 (index 3)
-    echo "Attaching to Quadro RTX 8000..."
-    genv attach --index 3
+    # Attach to GPU
+    echo "Attaching to GPU..."
+    genv attach --count 1
     
     HAS_GPU=1
 else
@@ -55,20 +55,11 @@ conda activate $ENV_NAME
 echo "Installing/upgrading pip requirements..."
 pip install -r requirements.txt
 
-# Set environment variables
-export CUDA_VISIBLE_DEVICES=3  # Use Quadro RTX 8000
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-
-# Check if model is cached
-if [ ! -d "cached_model" ]; then
-    echo "Model not found in cache. Downloading model..."
-    python download_model.py
-    if [ $? -ne 0 ]; then
-        echo "Failed to download model. Please check your internet connection."
-        exit 1
-    fi
+# Set environment variables if GPU is available
+if [ $HAS_GPU -eq 1 ]; then
+    export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 fi
 
 # Run the FastAPI server
 echo "Starting the server..."
-TORCH_CUDA_ARCH_LIST="8.6" uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

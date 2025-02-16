@@ -1,104 +1,100 @@
-from typing import Dict, List, Optional
-from pydantic import BaseModel
-from langgraph.graph import Graph
+from typing import Dict, Optional, List
+from langchain.memory import ConversationBufferMemory
+from langchain_core.messages import HumanMessage, AIMessage
+from transformers import pipeline
 import uuid
 
-class Message(BaseModel):
-    role: str
-    content: str
-
-class ChatSession(BaseModel):
-    session_id: str
-    messages: List[Message]
-    agent_name: str
-
-class BaseAgent:
-    def __init__(self, model, tokenizer):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.sessions: Dict[str, ChatSession] = {}
+class PoliticalAgent:
+    def __init__(self, name: str, personality_traits: Dict[str, float]):
+        """
+        Initialize a political agent with a name and personality traits.
         
-    def _get_session(self, session_id: Optional[str] = None, agent_name: Optional[str] = None) -> ChatSession:
-        """Get or create a chat session."""
-        if session_id and session_id in self.sessions:
-            return self.sessions[session_id]
-        
-        new_session_id = session_id or str(uuid.uuid4())
-        self.sessions[new_session_id] = ChatSession(
-            session_id=new_session_id,
-            messages=[],
-            agent_name=agent_name or "default"
+        Args:
+            name: Name of the political figure
+            personality_traits: Dictionary of personality traits and their strengths (0-1)
+        """
+        self.name = name
+        self.personality_traits = personality_traits
+        self.sentiment_analyzer = pipeline(
+            "sentiment-analysis",
+            model="distilbert-base-uncased-finetuned-sst-2-english",
+            device=-1  # CPU by default, will be updated if GPU is available
         )
-        return self.sessions[new_session_id]
-
-    def _build_prompt(self, messages: List[Message], agent_name: str) -> str:
-        """Build the prompt for the model based on conversation history."""
-        system_prompts = {
-            "trump": """<|im_start|>system
-You are Donald Trump. Always respond in first person AS Trump.
-Key traits:
-- Use simple, direct language
-- Speak confidently and assertively
-- Use phrases like "believe me", "tremendous", "huge", "the best"
-- Reference your business success and presidency
-- Never admit mistakes, always be positive about yourself
-- Stay in character 100% of the time
-
-Example: "Listen folks, I'm Donald Trump, and let me tell you - I know more about business and politics than anyone, believe me. I built a tremendous empire, was an incredible president, and made America great again!"
-
-Never break character or mention being an AI.<|im_end|>""",
-
-            "biden": """<|im_start|>system
-You are Joe Biden. Always respond in first person AS Biden.
-Key traits:
-- Use your characteristic speaking style
-- Share personal anecdotes and experiences
-- Reference your time as President and Vice President
-- Show empathy and connection with regular Americans
-- Use phrases like "folks", "look", "here's the deal"
-- Stay in character 100% of the time
-
-Example: "Look folks, I'm Joe Biden, and here's the deal - I've been serving this nation for decades, first as Senator, then as Vice President, and now as your President. I understand what working families go through."
-
-Never break character or mention being an AI.<|im_end|>"""
+        
+        # Initialize conversation memory
+        self.memories: Dict[str, ConversationBufferMemory] = {}
+        
+    def _create_session(self) -> str:
+        """Create a new conversation session."""
+        session_id = str(uuid.uuid4())
+        self.memories[session_id] = ConversationBufferMemory(
+            return_messages=True,
+            memory_key="chat_history"
+        )
+        return session_id
+        
+    def _get_memory(self, session_id: Optional[str] = None) -> ConversationBufferMemory:
+        """Get or create memory for a session."""
+        if not session_id or session_id not in self.memories:
+            session_id = self._create_session()
+        return self.memories[session_id], session_id
+        
+    def _analyze_sentiment(self, text: str) -> Dict[str, float]:
+        """Analyze sentiment of input text."""
+        result = self.sentiment_analyzer(text)[0]
+        return {
+            "label": result["label"],
+            "score": result["score"]
         }
         
-        # Start with system prompt
-        prompt = f"{system_prompts.get(agent_name, '<|im_start|>system\nYou are a political figure.<|im_end|>')}\n"
+    def _format_response(self, response: str) -> str:
+        """Format the response according to the agent's personality."""
+        # To be implemented by specific agent classes
+        return response
         
-        # Add conversation history
-        history = messages[-3:]  # Only use last 3 messages for more focused context
-        if history:
-            for msg in history:
-                if msg.role == "user":
-                    prompt += f"<|im_start|>user\n{msg.content}<|im_end|>\n"
-                else:
-                    prompt += f"<|im_start|>assistant\n{msg.content}<|im_end|>\n"
+    async def generate_response(
+        self,
+        message: str,
+        session_id: Optional[str] = None
+    ) -> Dict:
+        """
+        Generate a response to the user's message.
         
-        # Add the final prompt
-        prompt += f"<|im_start|>user\n{messages[-1].content}<|im_end|>\n<|im_start|>assistant\n"
-        return prompt
-
-    def chat(self, message: str, session_id: Optional[str] = None, agent_name: str = "default") -> Dict:
-        """Process a chat message and return a response."""
-        from app.models import generate_response
+        Args:
+            message: User's input message
+            session_id: Optional session ID for continuing a conversation
+            
+        Returns:
+            Dictionary containing response, session_id, and sentiment analysis
+        """
+        # Get or create conversation memory
+        memory, session_id = self._get_memory(session_id)
         
-        # Get or create session
-        session = self._get_session(session_id, agent_name)
+        # Analyze sentiment
+        sentiment = self._analyze_sentiment(message)
         
-        # Add user message to history
-        session.messages.append(Message(role="user", content=message))
+        # Add user message to memory
+        memory.chat_memory.add_message(HumanMessage(content=message))
         
-        # Build prompt from conversation history
-        prompt = self._build_prompt(session.messages, agent_name)
+        # Generate response (to be implemented by specific agent classes)
+        response = "Base response - should be overridden"
         
-        # Generate response
-        response = generate_response(self.model, self.tokenizer, prompt)
+        # Format response according to personality
+        formatted_response = self._format_response(response)
         
-        # Add response to history
-        session.messages.append(Message(role="assistant", content=response))
+        # Add agent response to memory
+        memory.chat_memory.add_message(AIMessage(content=formatted_response))
         
         return {
-            "response": response,
-            "session_id": session.session_id
+            "response": formatted_response,
+            "session_id": session_id,
+            "sentiment": sentiment,
+            "context": {
+                "agent_name": self.name,
+                "personality_traits": str(self.personality_traits)
+            }
         }
+        
+    def set_gpu_device(self, device_id: int):
+        """Set GPU device for the agent's models."""
+        self.sentiment_analyzer.device = device_id

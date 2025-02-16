@@ -1,2 +1,4 @@
-# AI Politician Chat API
-# This package implements a FastAPI-based chat system for interacting with AI politicians
+# AI Politician Application
+from app.agents import *
+from app.models import *
+from app.routers import *
