@@ -1,8 +1,15 @@
-from typing import Dict, Optional, List
-from langchain.memory import ConversationBufferMemory
-from langchain_core.messages import HumanMessage, AIMessage
+from typing import Dict, Optional, List, TypedDict, Annotated
+from langgraph.graph import Graph, StateGraph
+from langgraph.prebuilt import ToolExecutor
 from transformers import pipeline
 import uuid
+from pydantic import BaseModel
+
+class AgentState(TypedDict):
+    messages: List[Dict[str, str]]
+    current_speaker: str
+    session_id: str
+    context: Dict[str, any]
 
 class PoliticalAgent:
     def __init__(self, name: str, personality_traits: Dict[str, float]):
@@ -21,36 +28,58 @@ class PoliticalAgent:
             device=-1  # CPU by default, will be updated if GPU is available
         )
         
-        # Initialize conversation memory
-        self.memories: Dict[str, ConversationBufferMemory] = {}
+        # Initialize state graph
+        self.workflow = self._create_workflow()
         
-    def _create_session(self) -> str:
-        """Create a new conversation session."""
-        session_id = str(uuid.uuid4())
-        self.memories[session_id] = ConversationBufferMemory(
-            return_messages=True,
-            memory_key="chat_history"
-        )
-        return session_id
+    def _create_workflow(self) -> Graph:
+        """Create the conversation workflow graph."""
+        # Create state graph
+        workflow = StateGraph(AgentState)
         
-    def _get_memory(self, session_id: Optional[str] = None) -> ConversationBufferMemory:
-        """Get or create memory for a session."""
-        if not session_id or session_id not in self.memories:
-            session_id = self._create_session()
-        return self.memories[session_id], session_id
+        # Add nodes
+        workflow.add_node("process_input", self._process_input)
+        workflow.add_node("analyze_sentiment", self._analyze_sentiment_node)
+        workflow.add_node("generate_response", self._generate_response_node)
+        workflow.add_node("format_response", self._format_response_node)
         
-    def _analyze_sentiment(self, text: str) -> Dict[str, float]:
-        """Analyze sentiment of input text."""
-        result = self.sentiment_analyzer(text)[0]
-        return {
+        # Define edges
+        workflow.add_edge("process_input", "analyze_sentiment")
+        workflow.add_edge("analyze_sentiment", "generate_response")
+        workflow.add_edge("generate_response", "format_response")
+        
+        # Set entry point
+        workflow.set_entry_point("process_input")
+        
+        # Compile graph
+        return workflow.compile()
+        
+    def _process_input(self, state: AgentState) -> AgentState:
+        """Process user input and update state."""
+        if "session_id" not in state:
+            state["session_id"] = str(uuid.uuid4())
+        state["current_speaker"] = "user"
+        return state
+
+    def _analyze_sentiment_node(self, state: AgentState) -> AgentState:
+        """Analyze sentiment of the latest message."""
+        latest_message = state["messages"][-1]["content"]
+        result = self.sentiment_analyzer(latest_message)[0]
+        state["context"]["sentiment"] = {
             "label": result["label"],
             "score": result["score"]
         }
+        return state
         
-    def _format_response(self, response: str) -> str:
-        """Format the response according to the agent's personality."""
+    def _generate_response_node(self, state: AgentState) -> AgentState:
+        """Generate response based on conversation state."""
         # To be implemented by specific agent classes
-        return response
+        state["current_speaker"] = self.name
+        return state
+
+    def _format_response_node(self, state: AgentState) -> AgentState:
+        """Format the response according to personality."""
+        # To be implemented by specific agent classes
+        return state
         
     async def generate_response(
         self,
@@ -58,7 +87,7 @@ class PoliticalAgent:
         session_id: Optional[str] = None
     ) -> Dict:
         """
-        Generate a response to the user's message.
+        Generate a response to the user's message using the workflow graph.
         
         Args:
             message: User's input message
@@ -67,28 +96,24 @@ class PoliticalAgent:
         Returns:
             Dictionary containing response, session_id, and sentiment analysis
         """
-        # Get or create conversation memory
-        memory, session_id = self._get_memory(session_id)
+        # Initialize or update state
+        state: AgentState = {
+            "messages": [{"role": "user", "content": message}],
+            "current_speaker": "user",
+            "session_id": session_id or str(uuid.uuid4()),
+            "context": {
+                "agent_name": self.name,
+                "personality_traits": self.personality_traits
+            }
+        }
         
-        # Analyze sentiment
-        sentiment = self._analyze_sentiment(message)
-        
-        # Add user message to memory
-        memory.chat_memory.add_message(HumanMessage(content=message))
-        
-        # Generate response (to be implemented by specific agent classes)
-        response = "Base response - should be overridden"
-        
-        # Format response according to personality
-        formatted_response = self._format_response(response)
-        
-        # Add agent response to memory
-        memory.chat_memory.add_message(AIMessage(content=formatted_response))
+        # Execute workflow
+        final_state = self.workflow.invoke(state)
         
         return {
-            "response": formatted_response,
-            "session_id": session_id,
-            "sentiment": sentiment,
+            "response": final_state["messages"][-1]["content"],
+            "session_id": final_state["session_id"],
+            "sentiment": final_state["context"].get("sentiment", {}),
             "context": {
                 "agent_name": self.name,
                 "personality_traits": str(self.personality_traits)
@@ -98,3 +123,4 @@ class PoliticalAgent:
     def set_gpu_device(self, device_id: int):
         """Set GPU device for the agent's models."""
         self.sentiment_analyzer.device = device_id
+        # Additional GPU settings can be configured here

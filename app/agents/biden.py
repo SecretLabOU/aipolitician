@@ -1,8 +1,8 @@
 from typing import Dict, Optional
-from .base import PoliticalAgent
-from langchain_core.language_models import BaseLLM
+from .base import PoliticalAgent, AgentState
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
+import random
 
 class BidenAgent(PoliticalAgent):
     def __init__(self):
@@ -33,8 +33,24 @@ class BidenAgent(PoliticalAgent):
             device_map="auto"
         )
         
-        # Biden-specific prompt template
-        self.prompt_template = """You are Joe Biden, the 46th President of the United States. 
+        # Biden's characteristic phrases
+        self.biden_phrases = [
+            "Look, folks",
+            "Here's the deal",
+            "I'm serious",
+            "Not a joke"
+        ]
+
+    def _generate_response_node(self, state: AgentState) -> AgentState:
+        """Generate response using Biden's characteristic style."""
+        # Format conversation history
+        chat_history = "\n".join([
+            f"{msg['role']}: {msg['content']}"
+            for msg in state["messages"]
+        ])
+        
+        # Create prompt
+        prompt = f"""You are Joe Biden, the 46th President of the United States. 
         Respond to the following message in your characteristic style, incorporating your unique speech patterns, 
         policy positions, and personality. Focus on unity, empathy, and experience while maintaining your 
         distinctive communication style.
@@ -42,48 +58,8 @@ class BidenAgent(PoliticalAgent):
         Previous conversation:
         {chat_history}
 
-        User: {message}
+        User: {state['messages'][-1]['content']}
         Biden:"""
-
-    def _format_response(self, response: str) -> str:
-        """Format response in Biden's characteristic style."""
-        # Add typical Biden phrases
-        biden_phrases = [
-            "Look, folks",
-            "Here's the deal",
-            "I'm serious",
-            "Not a joke"
-        ]
-        
-        # Randomly insert Biden's characteristic phrases
-        if not any(phrase in response for phrase in biden_phrases):
-            response = f"{biden_phrases[0]}, {response}"
-        
-        # Add emphasis to key policy words
-        policy_words = ["democracy", "unity", "middle class", "america"]
-        for word in policy_words:
-            if word.lower() in response.lower():
-                response = response.replace(word, word.upper())
-        
-        return response
-
-    async def generate_response(
-        self,
-        message: str,
-        session_id: Optional[str] = None
-    ) -> Dict:
-        # Get memory and format chat history
-        memory, session_id = self._get_memory(session_id)
-        chat_history = "\n".join([
-            f"{'User' if isinstance(msg, HumanMessage) else 'Biden'}: {msg.content}"
-            for msg in memory.chat_memory.messages
-        ])
-        
-        # Create prompt
-        prompt = self.prompt_template.format(
-            chat_history=chat_history,
-            message=message
-        )
         
         # Generate response
         generated = self.generator(
@@ -95,26 +71,33 @@ class BidenAgent(PoliticalAgent):
             do_sample=True
         )[0]["generated_text"]
         
-        # Extract the response part
+        # Extract and add response to state
         response = generated.split("Biden:")[-1].strip()
+        state["messages"].append({
+            "role": "assistant",
+            "content": response
+        })
         
-        # Format response and update memory
-        formatted_response = self._format_response(response)
-        memory.chat_memory.add_message(HumanMessage(content=message))
-        memory.chat_memory.add_message(AIMessage(content=formatted_response))
+        return state
+
+    def _format_response_node(self, state: AgentState) -> AgentState:
+        """Format the response in Biden's characteristic style."""
+        response = state["messages"][-1]["content"]
         
-        # Analyze sentiment
-        sentiment = self._analyze_sentiment(message)
+        # Add Biden's characteristic phrases if not present
+        if not any(phrase in response for phrase in self.biden_phrases):
+            phrase = random.choice(self.biden_phrases)
+            response = f"{phrase}, {response}"
         
-        return {
-            "response": formatted_response,
-            "session_id": session_id,
-            "sentiment": sentiment,
-            "context": {
-                "agent_name": self.name,
-                "personality_traits": str(self.personality_traits)
-            }
-        }
+        # Add emphasis to key policy words
+        policy_words = ["democracy", "unity", "middle class", "america"]
+        for word in policy_words:
+            if word.lower() in response.lower():
+                response = response.replace(word, word.upper())
+        
+        # Update the formatted response
+        state["messages"][-1]["content"] = response
+        return state
 
     def set_gpu_device(self, device_id: int):
         """Set GPU device for all models."""
