@@ -36,12 +36,22 @@ class ModelManager:
             print(f"Loading model: {model_name} ({model_type})")
             
             if model_type == "sentiment-analysis":
-                # For sentiment analysis, use the pipeline directly
-                generator = pipeline(
-                    "sentiment-analysis",
-                    model=model_name,
-                    device_map="auto"
-                )
+                # For sentiment analysis, use CPU by default since some models don't support device_map
+                try:
+                    # First try with device_map="auto"
+                    generator = pipeline(
+                        "sentiment-analysis",
+                        model=model_name,
+                        device_map="auto"
+                    )
+                except ValueError:
+                    # Fallback to CPU if device_map not supported
+                    print(f"Warning: {model_name} doesn't support device_map='auto', falling back to CPU")
+                    generator = pipeline(
+                        "sentiment-analysis",
+                        model=model_name,
+                        device=-1  # Use CPU
+                    )
                 return {
                     "generator": generator
                 }
