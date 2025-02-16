@@ -1,6 +1,5 @@
-from typing import Dict, Optional, List, TypedDict, Annotated
+from typing import Dict, Optional, List, TypedDict, Annotated, Sequence
 from langgraph.graph import Graph, StateGraph
-from langgraph.prebuilt import ToolExecutor
 from transformers import pipeline
 import uuid
 from pydantic import BaseModel
@@ -10,6 +9,7 @@ class AgentState(TypedDict):
     current_speaker: str
     session_id: str
     context: Dict[str, any]
+    next_step: str
 
 class PoliticalAgent:
     def __init__(self, name: str, personality_traits: Dict[str, float]):
@@ -36,19 +36,27 @@ class PoliticalAgent:
         # Create state graph
         workflow = StateGraph(AgentState)
         
+        # Define conditional edges
+        def should_continue(state: AgentState) -> str:
+            return state["next_step"]
+        
         # Add nodes
         workflow.add_node("process_input", self._process_input)
         workflow.add_node("analyze_sentiment", self._analyze_sentiment_node)
         workflow.add_node("generate_response", self._generate_response_node)
         workflow.add_node("format_response", self._format_response_node)
         
-        # Define edges
-        workflow.add_edge("process_input", "analyze_sentiment")
-        workflow.add_edge("analyze_sentiment", "generate_response")
-        workflow.add_edge("generate_response", "format_response")
+        # Define edges with conditional routing
+        workflow.add_edge("process_input", should_continue)
+        workflow.add_edge("analyze_sentiment", should_continue)
+        workflow.add_edge("generate_response", should_continue)
+        workflow.add_edge("format_response", should_continue)
         
         # Set entry point
         workflow.set_entry_point("process_input")
+        
+        # Set exit point
+        workflow.set_finish_point("format_response")
         
         # Compile graph
         return workflow.compile()
@@ -58,6 +66,7 @@ class PoliticalAgent:
         if "session_id" not in state:
             state["session_id"] = str(uuid.uuid4())
         state["current_speaker"] = "user"
+        state["next_step"] = "analyze_sentiment"
         return state
 
     def _analyze_sentiment_node(self, state: AgentState) -> AgentState:
@@ -68,17 +77,20 @@ class PoliticalAgent:
             "label": result["label"],
             "score": result["score"]
         }
+        state["next_step"] = "generate_response"
         return state
         
     def _generate_response_node(self, state: AgentState) -> AgentState:
         """Generate response based on conversation state."""
         # To be implemented by specific agent classes
         state["current_speaker"] = self.name
+        state["next_step"] = "format_response"
         return state
 
     def _format_response_node(self, state: AgentState) -> AgentState:
         """Format the response according to personality."""
         # To be implemented by specific agent classes
+        state["next_step"] = "end"
         return state
         
     async def generate_response(
@@ -101,24 +113,29 @@ class PoliticalAgent:
             "messages": [{"role": "user", "content": message}],
             "current_speaker": "user",
             "session_id": session_id or str(uuid.uuid4()),
+            "next_step": "process_input",
             "context": {
                 "agent_name": self.name,
                 "personality_traits": self.personality_traits
             }
         }
         
-        # Execute workflow
-        final_state = self.workflow.invoke(state)
-        
-        return {
-            "response": final_state["messages"][-1]["content"],
-            "session_id": final_state["session_id"],
-            "sentiment": final_state["context"].get("sentiment", {}),
-            "context": {
-                "agent_name": self.name,
-                "personality_traits": str(self.personality_traits)
+        try:
+            # Execute workflow
+            final_state = self.workflow.invoke(state)
+            
+            return {
+                "response": final_state["messages"][-1]["content"],
+                "session_id": final_state["session_id"],
+                "sentiment": final_state["context"].get("sentiment", {}),
+                "context": {
+                    "agent_name": self.name,
+                    "personality_traits": str(self.personality_traits)
+                }
             }
-        }
+        except Exception as e:
+            print(f"Error in workflow execution: {str(e)}")
+            raise
         
     def set_gpu_device(self, device_id: int):
         """Set GPU device for the agent's models."""
