@@ -12,6 +12,17 @@ check_python_version() {
     fi
 }
 
+# Function to install Rust
+install_rust() {
+    if ! command -v rustc &> /dev/null; then
+        echo "Installing Rust..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+    else
+        echo "Rust is already installed"
+    fi
+}
+
 # Function to create virtual environment
 create_venv() {
     echo "Creating Python virtual environment..."
@@ -44,6 +55,9 @@ setup_gpu() {
 
 # Main execution starts here
 echo "Setting up AI Politician environment..."
+
+# Install Rust (required for some Python packages)
+install_rust
 
 # Check if conda is available
 if command -v conda &> /dev/null; then
@@ -79,6 +93,9 @@ else
         source .venv/bin/activate
     fi
 fi
+
+# Ensure Rust environment variables are set
+source "$HOME/.cargo/env" 2>/dev/null || true
 
 # Setup GPU environment
 setup_gpu

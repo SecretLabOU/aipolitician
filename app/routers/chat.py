@@ -15,21 +15,37 @@ from app.utils.exceptions import (
 
 router = APIRouter()
 
-# Initialize agents with error handling
+# Global agents dictionary
 agents: Dict[str, any] = {}
-try:
-    agents = {
-        "trump": TrumpAgent(),
-        "biden": BidenAgent()
-    }
-except Exception as e:
-    print(f"Error initializing agents: {str(e)}")
+
+def initialize_agents() -> bool:
+    """Initialize political agents."""
+    global agents
+    if not agents:
+        try:
+            agents["trump"] = TrumpAgent()
+            agents["biden"] = BidenAgent()
+            return True
+        except Exception as e:
+            print(f"Failed to initialize agents: {str(e)}")
+            agents.clear()  # Clean up any partial initialization
+            return False
+    return True
+
+@router.on_event("startup")
+async def startup_event():
+    """Initialize agents when the application starts."""
+    if not initialize_agents():
+        raise RuntimeError("Failed to initialize political agents")
 
 async def get_agent(agent_name: str):
     """Dependency to get agent by name."""
     agent_name = agent_name.lower()
-    if not agents:
-        raise ModelLoadError("Political agents are not initialized")
+    
+    # Try to initialize agents if they're not already initialized
+    if not agents and not initialize_agents():
+        raise ModelLoadError("Failed to initialize political agents")
+        
     if agent_name not in agents:
         raise AgentNotFoundError(
             f"Agent '{agent_name}' not found. Available agents: {', '.join(agents.keys())}"
@@ -91,10 +107,30 @@ async def chat_with_agent(
 @router.get("/agents")
 async def list_agents():
     """List available political agents."""
-    if not agents:
-        raise ModelLoadError("Political agents are not initialized")
+    # Try to initialize agents if they're not already initialized
+    if not agents and not initialize_agents():
+        raise ModelLoadError("Failed to initialize political agents")
+        
     return {
         "agents": list(agents.keys()),
         "total": len(agents),
-        "status": "healthy"
+        "status": "healthy" if agents else "initializing"
     }
+
+@router.get("/health")
+async def health_check():
+    """Check the health of the service."""
+    try:
+        if not agents:
+            initialize_agents()
+        
+        return {
+            "status": "healthy" if agents else "degraded",
+            "agents_initialized": bool(agents),
+            "available_agents": list(agents.keys()) if agents else []
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
