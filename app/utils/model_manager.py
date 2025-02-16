@@ -1,7 +1,14 @@
-from typing import Dict, Optional
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from typing import Dict, Optional, Literal
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    pipeline
+)
 import torch
 from pathlib import Path
+
+ModelType = Literal["text-generation", "sentiment-analysis"]
 
 class ModelManager:
     _instance = None
@@ -15,57 +22,70 @@ class ModelManager:
         return cls._instance
 
     @classmethod
-    def get_model(cls, model_name: str, model_type: str = "text-generation"):
+    def get_model(cls, model_name: str, model_type: ModelType = "text-generation"):
         """Get or initialize a model and its tokenizer."""
-        if model_name not in cls._models:
-            cls._models[model_name] = cls._load_model(model_name, model_type)
-        return cls._models[model_name]
+        model_key = f"{model_name}_{model_type}"
+        if model_key not in cls._models:
+            cls._models[model_key] = cls._load_model(model_name, model_type)
+        return cls._models[model_key]
 
     @classmethod
-    def _load_model(cls, model_name: str, model_type: str):
+    def _load_model(cls, model_name: str, model_type: ModelType):
         """Load a model and its tokenizer with optimized settings."""
         try:
-            print(f"Loading model: {model_name}")
+            print(f"Loading model: {model_name} ({model_type})")
             
-            # Initialize tokenizer
-            tokenizer = AutoTokenizer.from_pretrained(
-                model_name,
-                cache_dir=cls._cache_dir / model_name,
-                padding_side="left"
-            )
+            if model_type == "sentiment-analysis":
+                # For sentiment analysis, use the pipeline directly
+                generator = pipeline(
+                    "sentiment-analysis",
+                    model=model_name,
+                    device_map="auto"
+                )
+                return {
+                    "generator": generator
+                }
             
-            # Add padding token if not present
-            if not tokenizer.pad_token:
-                tokenizer.pad_token = tokenizer.eos_token
-            
-            # Initialize model with optimized settings
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                cache_dir=cls._cache_dir / model_name,
-                torch_dtype=torch.float16,
-                device_map="auto",
-                load_in_4bit=True
-            )
-            
-            # Create generation pipeline
-            generator = pipeline(
-                model_type,
-                model=model,
-                tokenizer=tokenizer,
-                device_map="auto",
-                max_new_tokens=200,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.1,
-                pad_token_id=tokenizer.pad_token_id
-            )
-            
-            return {
-                "model": model,
-                "tokenizer": tokenizer,
-                "generator": generator
-            }
+            else:  # text-generation
+                # Initialize tokenizer
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_name,
+                    cache_dir=cls._cache_dir / model_name,
+                    padding_side="left"
+                )
+                
+                # Add padding token if not present
+                if not tokenizer.pad_token:
+                    tokenizer.pad_token = tokenizer.eos_token
+                
+                # Initialize model with optimized settings
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    cache_dir=cls._cache_dir / model_name,
+                    torch_dtype=torch.float16,
+                    device_map="auto",
+                    load_in_4bit=True
+                )
+                
+                # Create generation pipeline
+                generator = pipeline(
+                    "text-generation",
+                    model=model,
+                    tokenizer=tokenizer,
+                    device_map="auto",
+                    max_new_tokens=200,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                    repetition_penalty=1.1,
+                    pad_token_id=tokenizer.pad_token_id
+                )
+                
+                return {
+                    "model": model,
+                    "tokenizer": tokenizer,
+                    "generator": generator
+                }
             
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_name}: {str(e)}")
@@ -73,10 +93,13 @@ class ModelManager:
     @classmethod
     def set_gpu_device(cls, model_name: str, device_id: int):
         """Set GPU device for a specific model."""
-        if model_name in cls._models and torch.cuda.is_available():
-            model_dict = cls._models[model_name]
-            model_dict["model"] = model_dict["model"].to(f"cuda:{device_id}")
-            model_dict["generator"].device = device_id
+        if torch.cuda.is_available():
+            for model_key, model_dict in cls._models.items():
+                if model_name in model_key:
+                    if "model" in model_dict:
+                        model_dict["model"] = model_dict["model"].to(f"cuda:{device_id}")
+                    if "generator" in model_dict:
+                        model_dict["generator"].device = device_id
 
     @classmethod
     def clear_cache(cls):
