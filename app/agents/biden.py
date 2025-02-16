@@ -1,7 +1,7 @@
 from typing import Dict, Optional
 from .base import PoliticalAgent, AgentState
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-import torch
+from ..utils.model_manager import ModelManager
+from ..utils.exceptions import ModelGenerationError, ModelLoadError
 import random
 
 class BidenAgent(PoliticalAgent):
@@ -15,30 +15,23 @@ class BidenAgent(PoliticalAgent):
         }
         super().__init__("Joe Biden", personality_traits)
         
-        # Initialize model and tokenizer
-        self.model_name = "mistralai/Mistral-7B-v0.1"
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            load_in_4bit=True
-        )
-        
-        # Set up generation pipeline
-        self.generator = pipeline(
-            "text-generation",
-            model=self.model,
-            tokenizer=self.tokenizer,
-            device_map="auto"
-        )
+        try:
+            # Initialize model through ModelManager
+            model_dict = ModelManager.get_model("mistralai/Mistral-7B-v0.1")
+            self.generator = model_dict["generator"]
+        except Exception as e:
+            raise ModelLoadError(f"Failed to load Biden's model: {str(e)}")
         
         # Biden's characteristic phrases
         self.biden_phrases = [
             "Look, folks",
             "Here's the deal",
             "I'm serious",
-            "Not a joke"
+            "Not a joke",
+            "Let me be clear",
+            "Come on, man",
+            "The fact is",
+            "And I mean this sincerely"
         ]
 
     def _generate_response_node(self, state: AgentState) -> AgentState:
@@ -65,11 +58,12 @@ class BidenAgent(PoliticalAgent):
             # Generate response
             generated = self.generator(
                 prompt,
-                max_length=200,
+                max_new_tokens=200,
                 num_return_sequences=1,
                 temperature=0.7,
                 top_p=0.9,
-                do_sample=True
+                do_sample=True,
+                repetition_penalty=1.1
             )[0]["generated_text"]
             
             # Extract and add response to state
@@ -84,8 +78,7 @@ class BidenAgent(PoliticalAgent):
             return state
             
         except Exception as e:
-            print(f"Error in generate_response_node: {str(e)}")
-            raise
+            raise ModelGenerationError(f"Failed to generate Biden's response: {str(e)}")
 
     def _format_response_node(self, state: AgentState) -> AgentState:
         """Format the response in Biden's characteristic style."""
@@ -98,8 +91,13 @@ class BidenAgent(PoliticalAgent):
                 response = f"{phrase}, {response}"
             
             # Add emphasis to key policy words
-            policy_words = ["democracy", "unity", "middle class", "america"]
-            for word in policy_words:
+            biden_keywords = [
+                "democracy", "unity", "middle class", "america",
+                "folks", "truth", "dignity", "respect",
+                "working families", "soul of the nation"
+            ]
+            
+            for word in biden_keywords:
                 if word.lower() in response.lower():
                     response = response.replace(word.lower(), word.upper())
                     response = response.replace(word.capitalize(), word.UPPER())
@@ -112,11 +110,12 @@ class BidenAgent(PoliticalAgent):
             return state
             
         except Exception as e:
-            print(f"Error in format_response_node: {str(e)}")
-            raise
+            raise ModelGenerationError(f"Failed to format Biden's response: {str(e)}")
 
     def set_gpu_device(self, device_id: int):
         """Set GPU device for all models."""
         super().set_gpu_device(device_id)
-        if torch.cuda.is_available():
-            self.model = self.model.to(f"cuda:{device_id}")
+        try:
+            ModelManager.set_gpu_device("mistralai/Mistral-7B-v0.1", device_id)
+        except Exception as e:
+            print(f"Warning: Failed to set GPU device for Biden's model: {str(e)}")
