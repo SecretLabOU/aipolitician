@@ -25,11 +25,18 @@ class BaseAgent(ABC):
         prompt = self.format_prompt(user_input, history)
         
         inputs = self.tokenizer(prompt, return_tensors="pt")
+        # Create attention mask
+        attention_mask = torch.ones_like(inputs.input_ids)
+        
         outputs = self.model.generate(
             inputs.input_ids,
+            attention_mask=attention_mask,
             max_length=200,
+            do_sample=True,
             temperature=0.7,
-            pad_token_id=self.tokenizer.eos_token_id
+            top_p=0.9,
+            pad_token_id=self.tokenizer.eos_token_id,
+            no_repeat_ngram_size=3
         )
         
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)

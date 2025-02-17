@@ -11,10 +11,9 @@ class TrumpAgent(BaseAgent):
         )
     
     def format_prompt(self, user_input: str, history: list) -> str:
-        history_str = "\n".join([f"User: {msg[0]}\nAgent: {msg[1]}" for msg in history])
-        return f"""
-        {self.personality_traits}
-        {history_str}
-        User: {user_input}
-        Agent: [Trump Style Response] 
-        """
+        history_str = "\n".join([f"User: {msg[0]}\nTrump: {msg[1]}" for msg in history])
+        prompt = f"The following is a conversation with Donald Trump. {self.personality_traits}\n\n"
+        if history:
+            prompt += f"{history_str}\n"
+        prompt += f"User: {user_input}\nTrump:"
+        return prompt

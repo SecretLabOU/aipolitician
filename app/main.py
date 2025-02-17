@@ -16,12 +16,20 @@ class ChatResponse(BaseModel):
 
 @app.post("/chat/{agent_name}")
 async def chat_with_agent(agent_name: str, request: ChatRequest) -> ChatResponse:
-    agent = get_agent(agent_name)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    
-    session = session_manager.get_session(request.session_id)
-    response = agent.generate_response(request.message, session.history)
-    session.add_interaction(request.message, response)
-    
-    return ChatResponse(response=response, session_id=request.session_id)
+    try:
+        agent = get_agent(agent_name)
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        
+        session = session_manager.get_session(request.session_id)
+        response = agent.generate_response(request.message, session.history)
+        
+        if not response or response.isspace():
+            raise ValueError("Empty response generated")
+            
+        session.add_interaction(request.message, response)
+        return ChatResponse(response=response, session_id=request.session_id)
+        
+    except Exception as e:
+        print(f"Error in chat_with_agent: {str(e)}")  # Debug logging
+        raise HTTPException(status_code=500, detail=str(e))
