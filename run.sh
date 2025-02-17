@@ -37,7 +37,6 @@ if [ $GPU_ENABLED -eq 1 ]; then
     echo "Starting server with GPU support..."
     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 \
     --workers 1 \
-    --ssl-keyfile=key.pem --ssl-certfile=cert.pem \
     --log-level info
 else
     echo "Starting server with CPU only..."
@@ -45,3 +44,4 @@ else
     --workers 4 \
     --log-level warning
 fi
+echo "Server is running. Access it at http://localhost:8000"
