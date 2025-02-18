@@ -4,10 +4,26 @@ An AI-powered application that simulates conversations with political figures, f
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.10.16
 - CUDA-compatible GPU (recommended)
 - Conda or Miniconda
 - HuggingFace API key with access to the Mistral-7B-Instruct-v0.2 model (gated model)
+
+## Environment Details
+
+The project uses a conda environment with specific package versions that were used to train the model:
+
+- Python: 3.10.16
+- Key ML Libraries:
+  * torch>=2.0.0
+  * transformers>=4.30.0
+  * peft==0.14.0
+  * accelerate==1.4.0
+  * bitsandbytes==0.45.2
+
+The complete list of dependencies is in `requirements.txt`. The environment is automatically set up by the `run.sh` script.
+
+Note: The environment name is 'aipolitician' to maintain consistency with the training setup.
 
 ## Model Access
 

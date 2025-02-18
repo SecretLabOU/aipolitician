@@ -7,7 +7,7 @@ if [ ! -f .env ]; then
 fi
 
 # Environment setup
-ENV_NAME="politician-deep"
+ENV_NAME="aipolitician"
 REQUIREMENTS="requirements.txt"
 
 # GPU detection and setup
