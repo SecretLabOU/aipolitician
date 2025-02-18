@@ -13,12 +13,17 @@ ENV_NAME="mistral-finetune"  # Match the working environment name
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate $ENV_NAME
 
+# Install/update dependencies
+echo "Installing dependencies..."
+pip install -r requirements.txt
+
 # Load environment variables
 set -a
 source .env
 set +a
 
 # Activate GPU environment
+echo "Setting up GPU..."
 genv activate --id nat
 genv attach --index 0
 
