@@ -6,10 +6,16 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Environment setup
-ENV_NAME="mistral-finetune"  # Match the working environment name
+# Initialize genv shell if not already done
+if ! command -v genv &> /dev/null; then
+    echo "Initializing genv shell..."
+    eval "$(genv shell --init)"
+fi
 
-# Activate environment
+# Environment setup
+ENV_NAME="mistral-finetune"
+
+# Activate conda environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate $ENV_NAME
 
@@ -22,13 +28,21 @@ set -a
 source .env
 set +a
 
-# Activate GPU environment
+# Setup GPU environment with error handling
 echo "Setting up GPU..."
-genv activate --id nat
-genv attach --index 0
+if ! genv activate --id nat 2>/dev/null; then
+    echo "Warning: Could not activate GPU environment. Continuing without specific GPU allocation."
+fi
 
-# Run server
+if ! genv attach --index 0 2>/dev/null; then
+    echo "Warning: Could not attach to GPU 0. Continuing with default GPU assignment."
+fi
+
+# Set CUDA device order to prevent NVML issues
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
+
+# Run server with specific worker configuration
 echo "Starting server..."
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+CUDA_VISIBLE_DEVICES=0 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --workers 1
 
 echo "Server is running. Access it at http://localhost:8000"

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from app.models.secure_config import get_model_config, get_api_key
 from huggingface_hub import login
 import logging
@@ -38,17 +38,37 @@ class BaseAgent(ABC):
             model_start = time.time()
             logger.info("Loading base model...")
             logger.info(f"Model configuration: {self.config}")
-            logger.info(f"CUDA available: {torch.cuda.is_available()}")
+
+            # Configure GPU settings
             if torch.cuda.is_available():
-                logger.info(f"CUDA device count: {torch.cuda.device_count()}")
-                logger.info(f"Current CUDA device: {torch.cuda.current_device()}")
-                logger.info(f"GPU Memory usage before model load: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
-            
+                try:
+                    # Set CUDA device explicitly
+                    torch.cuda.set_device(0)
+                    logger.info(f"Set CUDA device to: {torch.cuda.current_device()}")
+                    
+                    # Initialize CUDA context
+                    torch.cuda.init()
+                    logger.info("CUDA context initialized")
+                    
+                    # Get device properties
+                    device_props = torch.cuda.get_device_properties(0)
+                    logger.info(f"Using GPU: {device_props.name} with {device_props.total_memory/1024**2:.0f}MB memory")
+                except Exception as e:
+                    logger.warning(f"GPU initialization warning (non-fatal): {str(e)}")
+
+            # Create BitsAndBytesConfig for 4-bit quantization
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.config["base_model"],
-                torch_dtype=torch.float16,
+                quantization_config=bnb_config,
                 device_map="auto",
-                load_in_4bit=True
+                torch_dtype=torch.bfloat16,
             )
             
             if torch.cuda.is_available():
