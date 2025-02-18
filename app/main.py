@@ -46,14 +46,13 @@ def health_check():
     return {"status": "healthy"}
 
 @app.post("/chat/{agent_name}")
-def chat_with_agent(
+async def chat(
     agent_name: str,
-    request: ChatRequest,
-) -> ChatResponse:
-    """Chat with an AI agent"""
-    start_time = time.time()
-    
+    request: ChatRequest
+) -> dict:
     try:
+        logger.info(f"Processing chat request for agent: {agent_name}")
+        
         # Get or create session
         session = session_manager.get_session(request.session_id)
         
@@ -62,30 +61,20 @@ def chat_with_agent(
             logger.info(f"Initializing new agent for session {request.session_id}")
             agent = get_agent(agent_name)
             if not agent:
-                raise HTTPException(status_code=404, detail="Agent not found")
+                raise HTTPException(status_code=404, detail=f"Agent {agent_name} not found")
             session_manager.set_agent_for_session(request.session_id, agent)
         
         # Generate response
         logger.info("Generating response...")
         response = session.agent.generate_response(request.message, session.history)
         
-        # Validate response
-        if not response or response.isspace():
-            raise ValueError("Empty response generated")
+        # Update history
+        session.add_to_history(request.message, response)
         
-        # Add to history
-        session.add_interaction(request.message, response)
-        
-        # Log timing
-        duration = time.time() - start_time
-        logger.info(f"Response generated in {duration:.2f} seconds")
-        
-        return ChatResponse(response=response, session_id=request.session_id)
+        return {"response": response}
         
     except Exception as e:
-        logger.error(f"Error in chat_with_agent: {str(e)}")
-        if isinstance(e, HTTPException):
-            raise
+        logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/sessions/{session_id}")

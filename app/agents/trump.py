@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import os
 from .base import BaseAgent
 from peft import PeftModel
@@ -38,13 +38,91 @@ class TrumpAgent(BaseAgent):
             
             # Set to evaluation mode
             self.model.eval()
+            logger.info("Model set to evaluation mode")
+            
+            # Verify model is ready for inference
+            logger.info("Verifying model readiness...")
+            self._verify_model_ready()
+            
             total_time = time.time() - start_time
             logger.info(f"Trump agent initialization completed in {total_time:.2f}s")
             
         except Exception as e:
             logger.error(f"Error initializing Trump agent: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to initialize Trump agent: {str(e)}")
-    
+
+    def _verify_model_ready(self):
+        """Verify the model is properly initialized and ready for inference"""
+        try:
+            logger.info("Running test inference...")
+            test_input = "Hello"
+            formatted_prompt = self.format_prompt(test_input, [])
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
+            
+            with torch.no_grad():
+                logger.info("Generating test response...")
+                outputs = self.model.generate(
+                    **inputs,
+                    max_length=20,
+                    num_return_sequences=1,
+                    temperature=0.7,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.pad_token_id
+                )
+            
+            logger.info("Test inference successful")
+            torch.cuda.empty_cache()
+            
+        except Exception as e:
+            logger.error(f"Model verification failed: {str(e)}", exc_info=True)
+            raise RuntimeError(f"Model verification failed: {str(e)}")
+
+    def generate_response(
+        self,
+        user_input: str,
+        history: Optional[List[tuple[str, str]]] = None
+    ) -> str:
+        """Generate a response using the model"""
+        try:
+            logger.info("Starting response generation...")
+            start_time = time.time()
+            
+            if history is None:
+                history = []
+            
+            # Format prompt
+            formatted_prompt = self.format_prompt(user_input, history)
+            logger.info(f"Prompt formatted, length: {len(formatted_prompt)}")
+            
+            # Tokenize
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
+            logger.info("Input tokenized and moved to GPU")
+            
+            # Generate
+            with torch.no_grad():
+                logger.info("Generating response...")
+                outputs = self.model.generate(
+                    **inputs,
+                    max_length=512,
+                    num_return_sequences=1,
+                    temperature=0.7,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.pad_token_id
+                )
+            
+            # Decode
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            logger.info(f"Response generated in {time.time() - start_time:.2f}s")
+            
+            # Clean up
+            torch.cuda.empty_cache()
+            
+            return response.replace(formatted_prompt, "").strip()
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}", exc_info=True)
+            raise RuntimeError(f"Failed to generate response: {str(e)}")
+
     def format_prompt(self, user_input: str, history: List[tuple[str, str]]) -> str:
         """Format the prompt in Mistral's instruction format"""
         # Simple prompt format matching working implementation
