@@ -1,6 +1,19 @@
+# API Framework
 fastapi>=0.68.0
 uvicorn>=0.15.0
+pydantic>=1.8.0
+
+# ML/DL Libraries
 torch>=2.0.0
 transformers>=4.30.0
-python-dotenv>=0.19.0
+peft>=0.5.0
 accelerate>=0.20.0
+bitsandbytes>=0.41.0
+sentencepiece>=0.1.99
+scipy>=1.11.0
+
+# Utilities
+python-dotenv>=0.19.0
+huggingface-hub>=0.16.0
+numpy>=1.24.0
+tqdm>=4.65.0
