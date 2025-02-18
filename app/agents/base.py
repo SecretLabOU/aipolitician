@@ -6,6 +6,8 @@ from peft import PeftModel
 from app.models.secure_config import get_model_config, get_api_key
 from huggingface_hub import login
 import logging
+import asyncio
+from functools import partial
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -73,20 +75,12 @@ class BaseAgent(ABC):
         """Format the prompt according to the model's expected format"""
         pass
     
-    def generate_response(
+    def _generate_response_sync(
         self,
-        user_input: str,
-        history: Optional[List[tuple[str, str]]] = None
+        formatted_prompt: str,
     ) -> str:
-        """Generate a response using the model"""
-        if history is None:
-            history = []
-            
+        """Synchronous generation function to be run in executor"""
         try:
-            # Format prompt using model-specific formatting
-            formatted_prompt = self.format_prompt(user_input, history)
-            logger.info(f"Generated prompt length: {len(formatted_prompt)}")
-            
             # Tokenize input
             logger.info("Tokenizing input...")
             inputs = self.tokenizer(
@@ -125,6 +119,37 @@ class BaseAgent(ABC):
             
             return response
             
+        except Exception as e:
+            logger.error(f"Error in _generate_response_sync: {str(e)}")
+            raise RuntimeError(f"Error generating response: {str(e)}")
+    
+    async def generate_response(
+        self,
+        user_input: str,
+        history: Optional[List[tuple[str, str]]] = None
+    ) -> str:
+        """Asynchronously generate a response using the model"""
+        if history is None:
+            history = []
+            
+        try:
+            # Format prompt using model-specific formatting
+            formatted_prompt = self.format_prompt(user_input, history)
+            logger.info(f"Generated prompt length: {len(formatted_prompt)}")
+            
+            # Run generation in thread pool to not block
+            loop = asyncio.get_event_loop()
+            async with asyncio.timeout(30):  # 30 second timeout
+                response = await loop.run_in_executor(
+                    None,
+                    partial(self._generate_response_sync, formatted_prompt)
+                )
+            
+            return response
+            
+        except asyncio.TimeoutError:
+            logger.error("Response generation timed out after 30 seconds")
+            raise RuntimeError("Response generation timed out")
         except Exception as e:
             logger.error(f"Error in generate_response: {str(e)}")
             raise RuntimeError(f"Error generating response: {str(e)}")

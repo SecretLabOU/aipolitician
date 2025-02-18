@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import logging
 import time
+import asyncio
 from app.sessions import SessionManager
 from app.agents import get_agent
 from app.models.secure_config import validate_model_path
@@ -49,7 +50,6 @@ async def health_check():
 async def chat_with_agent(
     agent_name: str,
     request: ChatRequest,
-    background_tasks: BackgroundTasks
 ) -> ChatResponse:
     """Chat with an AI agent"""
     start_time = time.time()
@@ -60,26 +60,36 @@ async def chat_with_agent(
         
         # Initialize agent if needed
         if not session.agent:
+            logger.info(f"Initializing new agent for session {request.session_id}")
             agent = get_agent(agent_name)
             if not agent:
                 raise HTTPException(status_code=404, detail="Agent not found")
             session_manager.set_agent_for_session(request.session_id, agent)
         
-        # Generate response
-        response = session.agent.generate_response(request.message, session.history)
-        
-        # Validate response
-        if not response or response.isspace():
-            raise ValueError("Empty response generated")
-        
-        # Add to history
-        session.add_interaction(request.message, response)
-        
-        # Log timing
-        duration = time.time() - start_time
-        logger.info(f"Response generated in {duration:.2f} seconds")
-        
-        return ChatResponse(response=response, session_id=request.session_id)
+        # Generate response with timeout
+        try:
+            logger.info("Starting response generation...")
+            response = await session.agent.generate_response(request.message, session.history)
+            
+            # Validate response
+            if not response or response.isspace():
+                raise ValueError("Empty response generated")
+            
+            # Add to history
+            session.add_interaction(request.message, response)
+            
+            # Log timing
+            duration = time.time() - start_time
+            logger.info(f"Response generated in {duration:.2f} seconds")
+            
+            return ChatResponse(response=response, session_id=request.session_id)
+            
+        except asyncio.TimeoutError:
+            logger.error("Response generation timed out")
+            raise HTTPException(
+                status_code=504,
+                detail="Response generation timed out. Please try again."
+            )
         
     except Exception as e:
         logger.error(f"Error in chat_with_agent: {str(e)}")
