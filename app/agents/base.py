@@ -40,14 +40,19 @@ class BaseAgent(ABC):
                 bnb_4bit_use_double_quant=True,
             )
             
+            # Force model to use RTX 8000 (GPU index 3)
+            device_map = {"": 3}
+            logger.info("Setting device map to RTX 8000 (GPU 3)")
+            
             # Load model with proper configuration
             logger.info("Loading base model...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.config["base_model"],
                 quantization_config=quantization_config,
                 torch_dtype=torch_dtype,
-                device_map=self.config.get("device_map", "auto"),
-                trust_remote_code=True
+                device_map=device_map,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
             )
             
             # Set padding token if needed
@@ -56,6 +61,7 @@ class BaseAgent(ABC):
                 logger.info("Set padding token to EOS token")
             
             self.model.eval()  # Set to evaluation mode
+            torch.cuda.synchronize(device=3)  # Ensure model is loaded
             logger.info("Base model initialization complete")
             
         except Exception as e:
@@ -89,26 +95,26 @@ class BaseAgent(ABC):
                 padding=True,
                 truncation=True,
                 max_length=self.config.get("max_length", 1024)
-            ).to(self.model.device)
+            ).to("cuda:3")  # Force to RTX 8000
             
             # Log generation parameters
             gen_params = {
-                "max_new_tokens": 512,
+                "max_new_tokens": 256,  # Reduced for faster generation
                 "temperature": self.config.get("temperature", 0.7),
                 "top_p": self.config.get("top_p", 0.9),
-                "repetition_penalty": 1.2,
-                "no_repeat_ngram_size": 3
+                "do_sample": True,
+                "num_return_sequences": 1,
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "early_stopping": True,
+                "repetition_penalty": 1.2
             }
             logger.info(f"Generation parameters: {gen_params}")
             
             # Generate response with better control
             logger.info("Generating response...")
-            outputs = self.model.generate(
-                **inputs,
-                **gen_params,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id,
-            )
+            with torch.inference_mode():
+                outputs = self.model.generate(**inputs, **gen_params)
+                torch.cuda.synchronize(device=3)  # Ensure generation is complete
             
             # Decode response
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -130,4 +136,5 @@ class BaseAgent(ABC):
             self.model.cpu()  # Move model to CPU
             del self.model
             torch.cuda.empty_cache()  # Clear GPU memory
+            torch.cuda.synchronize(device=3)  # Ensure cleanup is complete
             logger.info("Cleanup complete")

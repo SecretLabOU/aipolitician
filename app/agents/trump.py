@@ -1,8 +1,8 @@
 from typing import List
 import os
+import torch
 from .base import BaseAgent
 from peft import PeftModel
-import torch
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,11 +28,12 @@ class TrumpAgent(BaseAgent):
                 self.model,
                 lora_path,
                 torch_dtype=self.config.get("torch_dtype", torch.float16),
-                device_map=self.config.get("device_map", "auto"),
+                device_map={"": 3},  # Force to RTX 8000
             )
             
             # Ensure model is in evaluation mode
             self.model.eval()
+            torch.cuda.synchronize(device=3)  # Ensure LoRA weights are loaded
             logger.info("Trump agent initialization complete")
             
         except Exception as e:
