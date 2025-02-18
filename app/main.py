@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional
 import logging
 import time
-import asyncio
 from app.sessions import SessionManager
 from app.agents import get_agent
 from app.models.secure_config import validate_model_path
@@ -36,18 +35,18 @@ class ChatResponse(BaseModel):
     session_id: str
 
 @app.on_event("startup")
-async def startup_event():
+def startup_event():
     """Validate model paths on startup"""
     if not validate_model_path("trump-mistral"):
         raise RuntimeError("Trump model files not found at specified path")
 
 @app.get("/health")
-async def health_check():
+def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
 
 @app.post("/chat/{agent_name}")
-async def chat_with_agent(
+def chat_with_agent(
     agent_name: str,
     request: ChatRequest,
 ) -> ChatResponse:
@@ -66,30 +65,22 @@ async def chat_with_agent(
                 raise HTTPException(status_code=404, detail="Agent not found")
             session_manager.set_agent_for_session(request.session_id, agent)
         
-        # Generate response with timeout
-        try:
-            logger.info("Starting response generation...")
-            response = await session.agent.generate_response(request.message, session.history)
-            
-            # Validate response
-            if not response or response.isspace():
-                raise ValueError("Empty response generated")
-            
-            # Add to history
-            session.add_interaction(request.message, response)
-            
-            # Log timing
-            duration = time.time() - start_time
-            logger.info(f"Response generated in {duration:.2f} seconds")
-            
-            return ChatResponse(response=response, session_id=request.session_id)
-            
-        except asyncio.TimeoutError:
-            logger.error("Response generation timed out")
-            raise HTTPException(
-                status_code=504,
-                detail="Response generation timed out. Please try again."
-            )
+        # Generate response
+        logger.info("Generating response...")
+        response = session.agent.generate_response(request.message, session.history)
+        
+        # Validate response
+        if not response or response.isspace():
+            raise ValueError("Empty response generated")
+        
+        # Add to history
+        session.add_interaction(request.message, response)
+        
+        # Log timing
+        duration = time.time() - start_time
+        logger.info(f"Response generated in {duration:.2f} seconds")
+        
+        return ChatResponse(response=response, session_id=request.session_id)
         
     except Exception as e:
         logger.error(f"Error in chat_with_agent: {str(e)}")
@@ -98,7 +89,7 @@ async def chat_with_agent(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/sessions/{session_id}")
-async def end_session(session_id: str):
+def end_session(session_id: str):
     """End a chat session and clean up resources"""
     try:
         session_manager.cleanup_session(session_id)

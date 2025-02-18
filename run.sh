@@ -7,26 +7,20 @@ if [ ! -f .env ]; then
 fi
 
 # Environment setup
-ENV_NAME="aipolitician"
-REQUIREMENTS="requirements.txt"
-
-# Create/update conda environment
-if ! conda env list | grep -q $ENV_NAME; then
-    echo "Creating conda environment..."
-    conda create -n $ENV_NAME python=3.10 -y
-fi
+ENV_NAME="mistral-finetune"  # Match the working environment name
 
 # Activate environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate $ENV_NAME
 
-# Install requirements
-pip install -r $REQUIREMENTS
-
 # Load environment variables
 set -a
 source .env
 set +a
+
+# Activate GPU environment
+genv activate --id nat
+genv attach --index 0
 
 # Run server
 echo "Starting server..."
