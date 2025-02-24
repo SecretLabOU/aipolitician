@@ -64,11 +64,19 @@ class BaseAgent(ABC):
                 bnb_4bit_use_double_quant=True,
             )
 
+            # Load model with all configurations from config
+            model_kwargs = {
+                "quantization_config": bnb_config,
+                "device_map": self.config.get("device_map", "auto"),
+                "torch_dtype": self.config.get("torch_dtype", torch.bfloat16),
+                "trust_remote_code": True,
+                "use_flash_attention_2": self.config.get("use_flash_attention", True),
+            }
+            
+            logger.info(f"Loading model with kwargs: {model_kwargs}")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.config["base_model"],
-                quantization_config=bnb_config,
-                device_map="auto",
-                torch_dtype=torch.bfloat16,
+                **model_kwargs
             )
             
             if torch.cuda.is_available():

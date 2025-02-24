@@ -26,10 +26,28 @@ class TrumpAgent(BaseAgent):
             if torch.cuda.is_available():
                 logger.info(f"GPU Memory before LoRA: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
             
-            self.model = PeftModel.from_pretrained(
-                self.model,
-                self.config["lora_weights"],
-            )
+            # Load LoRA weights with proper configuration
+            try:
+                logger.info("Loading LoRA adapter...")
+                self.model = PeftModel.from_pretrained(
+                    self.model,
+                    self.config["lora_weights"],
+                    torch_dtype=self.config.get("torch_dtype", torch.bfloat16),
+                    device_map=self.config.get("device_map", "auto"),
+                )
+                logger.info("LoRA adapter loaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to load LoRA adapter: {str(e)}")
+                # Try alternative loading method
+                try:
+                    logger.info("Attempting alternative loading method...")
+                    from safetensors.torch import load_file
+                    adapter_path = os.path.join(self.config["lora_weights"], "adapter_model.safetensors")
+                    state_dict = load_file(adapter_path)
+                    self.model.load_state_dict(state_dict, strict=False)
+                    logger.info("Alternative loading method successful")
+                except Exception as e2:
+                    raise RuntimeError(f"All loading attempts failed. First error: {str(e)}, Second error: {str(e2)}")
             
             if torch.cuda.is_available():
                 logger.info(f"GPU Memory after LoRA: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
