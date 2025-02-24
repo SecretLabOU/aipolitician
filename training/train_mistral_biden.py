@@ -87,8 +87,6 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     trust_remote_code=True,
     torch_dtype=compute_dtype,
-    use_flash_attention=False,
-    use_sdpa=False
 )
 
 # Prepare model for training
@@ -172,15 +170,15 @@ data_collator = DataCollatorForSeq2Seq(
     padding=True
 )
 
-# Training arguments with adjusted batch size and no gradient checkpointing
+# Training arguments - match Trump training exactly
 training_args = TrainingArguments(
     output_dir="./mistral-biden",
     eval_strategy="steps",
     eval_steps=50,
     save_strategy="steps",
-    per_device_train_batch_size=2,  # Reduced batch size
-    per_device_eval_batch_size=2,   # Reduced batch size
-    gradient_accumulation_steps=8,   # Increased to compensate
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=4,
     save_steps=100,
     logging_steps=25,
     learning_rate=2e-4,
@@ -194,7 +192,7 @@ training_args = TrainingArguments(
     optim="paged_adamw_8bit",
     logging_dir="./logs",
     report_to="none",
-    gradient_checkpointing=False,  # Disabled
+    gradient_checkpointing=True,
     save_total_limit=3,
     push_to_hub=False,
     ddp_find_unused_parameters=False,
