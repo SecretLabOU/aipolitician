@@ -5,112 +5,45 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import Dataset
 import torch
 from typing import Dict, Sequence, List
-import os
-from dotenv import load_dotenv
-import re
-import random
 import pandas as pd
 from zipfile import ZipFile
-import io
 
-# Load environment variables
-load_dotenv()
+# Enable Memory-Efficient Loading with 4-bit Quantization
+compute_dtype = torch.bfloat16  # Match Trump training
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=compute_dtype,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+)
 
 def clean_tweet(text: str) -> str:
     """Clean tweet text by removing URLs, handling mentions and hashtags"""
+    import re
     # Remove URLs
     text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-    
     # Convert @mentions to "someone"
     text = re.sub(r'@\w+', 'someone', text)
-    
     # Remove hashtag symbol but keep the text
     text = re.sub(r'#(\w+)', r'\1', text)
-    
     # Remove multiple spaces and trim
-    text = ' '.join(text.split())
-    
-    return text.strip()
-
-def split_speech_into_segments(text: str, max_length: int = 512) -> List[str]:
-    """Split speech into meaningful segments"""
-    # Split by sentences first
-    sentences = re.split(r'(?<=[.!?])\s+', text)
-    
-    segments = []
-    current_segment = []
-    current_length = 0
-    
-    for sentence in sentences:
-        # If adding this sentence would exceed max_length, save current segment
-        if current_length + len(sentence) > max_length and current_segment:
-            segments.append(' '.join(current_segment))
-            current_segment = []
-            current_length = 0
-        
-        current_segment.append(sentence)
-        current_length += len(sentence) + 1  # +1 for space
-    
-    # Add the last segment if it exists
-    if current_segment:
-        segments.append(' '.join(current_segment))
-    
-    return segments
-
-def create_instruction_templates() -> List[Dict[str, str]]:
-    """Create varied instruction templates for Biden's style"""
-    return [
-        {
-            "instruction": "How would you address this issue?",
-            "response_prefix": "Look, here's the deal folks - "
-        },
-        {
-            "instruction": "What's your perspective on this?",
-            "response_prefix": "Let me be clear about something - "
-        },
-        {
-            "instruction": "How would you respond to this situation?",
-            "response_prefix": "I've been saying this for years, and I'll say it again - "
-        },
-        {
-            "instruction": "What's your message to the American people?",
-            "response_prefix": "Listen folks, here's what I know - "
-        },
-        {
-            "instruction": "How would you handle this challenge?",
-            "response_prefix": "Here's what we're going to do - "
-        }
-    ]
+    return ' '.join(text.split()).strip()
 
 def process_tweet(text: str) -> str:
-    """Process tweet into instruction format"""
-    tweet = clean_tweet(text)
-    if not tweet:
+    """Format tweet into instruction format"""
+    text = clean_tweet(text)
+    if not text:
         return ""
-    
-    # Select random template
-    template = random.choice(create_instruction_templates())
-    
-    # Format as instruction
-    return f"<s>[INST] {template['instruction']} [/INST] {template['response_prefix']}{tweet}</s>"
+    return f"<s>[INST] Continue speaking in Joe Biden's style: [/INST] {text}</s>"
 
-def process_speech(text: str) -> List[str]:
-    """Process speech segment into instruction format"""
+def process_speech(text: str) -> str:
+    """Format speech into instruction format"""
     if not text or not isinstance(text, str):
-        return []
-    
-    # Split into segments
-    segments = split_speech_into_segments(text)
-    
-    # Process each segment
-    processed_segments = []
-    for segment in segments:
-        template = random.choice(create_instruction_templates())
-        processed_segments.append(
-            f"<s>[INST] {template['instruction']} [/INST] {template['response_prefix']}{segment}</s>"
-        )
-    
-    return processed_segments
+        return ""
+    text = text.strip()
+    if not text:
+        return ""
+    return f"<s>[INST] Continue speaking in Joe Biden's style: [/INST] {text}</s>"
 
 def load_tweets_dataset(zip_path: str) -> Dataset:
     """Load and process tweets from ZIP file"""
@@ -121,7 +54,7 @@ def load_tweets_dataset(zip_path: str) -> Dataset:
     
     # Process tweets
     texts = []
-    for tweet in df['tweet']:  # Column name from JoeBidenTweets.csv
+    for tweet in df['tweet']:  # Using 'tweet' column
         processed = process_tweet(tweet)
         if processed:
             texts.append(processed)
@@ -137,20 +70,12 @@ def load_speech_dataset(zip_path: str) -> Dataset:
     
     # Process speech segments
     texts = []
-    for text in df['TEXT']:  # Column name from joe_biden_dnc_2020.csv
-        segments = process_speech(text)
-        texts.extend(segments)
+    for text in df['TEXT']:  # Using 'TEXT' column
+        processed = process_speech(text)
+        if processed:
+            texts.append(processed)
     
     return Dataset.from_dict({"text": texts})
-
-# Enable Memory-Efficient Training
-compute_dtype = torch.float16  # Changed to float16 for better compatibility
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_compute_dtype=compute_dtype,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_use_double_quant=True,
-)
 
 # Load base model and tokenizer
 print("Loading base model and tokenizer...")
@@ -170,9 +95,9 @@ model.config.use_cache = False
 model.config.pretraining_tp = 1
 model = prepare_model_for_kbit_training(model)
 
-# Configure LoRA
+# Apply LoRA for fine-tuning
 peft_config = LoraConfig(
-    r=32,  # Increased for better adaptation
+    r=16,  # Match Trump training
     lora_alpha=64,
     target_modules=[
         "q_proj",
@@ -188,7 +113,6 @@ peft_config = LoraConfig(
     task_type="CAUSAL_LM",
     inference_mode=False,
 )
-
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
 
@@ -246,17 +170,17 @@ data_collator = DataCollatorForSeq2Seq(
     padding=True
 )
 
-# Training arguments
+# Training arguments - match Trump training exactly
 training_args = TrainingArguments(
     output_dir="./mistral-biden",
-    evaluation_strategy="steps",
+    eval_strategy="steps",
     eval_steps=50,
     save_strategy="steps",
-    save_steps=100,
-    save_total_limit=3,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
     gradient_accumulation_steps=4,
+    save_steps=100,
+    logging_steps=25,
     learning_rate=2e-4,
     num_train_epochs=3,
     max_grad_norm=0.3,
@@ -264,12 +188,12 @@ training_args = TrainingArguments(
     warmup_ratio=0.03,
     group_by_length=True,
     lr_scheduler_type="cosine",
-    optim="paged_adamw_8bit",
     bf16=True,
-    gradient_checkpointing=True,
+    optim="paged_adamw_8bit",
     logging_dir="./logs",
-    logging_steps=25,
     report_to="none",
+    gradient_checkpointing=True,
+    save_total_limit=3,
     push_to_hub=False,
     ddp_find_unused_parameters=False,
     remove_unused_columns=False
