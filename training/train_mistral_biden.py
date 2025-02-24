@@ -212,6 +212,7 @@ trainer = Trainer(
 # Train
 print("Starting training...")
 try:
+    model.train()
     trainer.train()
 except Exception as e:
     print(f"An error occurred during training: {str(e)}")
