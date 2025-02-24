@@ -70,7 +70,7 @@ class BaseAgent(ABC):
                 "device_map": self.config.get("device_map", "auto"),
                 "torch_dtype": self.config.get("torch_dtype", torch.bfloat16),
                 "trust_remote_code": True,
-                "use_flash_attention_2": self.config.get("use_flash_attention", True),
+                "attn_implementation": "sdpa"  # Use PyTorch's scaled dot product attention instead of Flash Attention
             }
             
             logger.info(f"Loading model with kwargs: {model_kwargs}")

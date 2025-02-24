@@ -15,12 +15,11 @@ MODELS = {
 
 MODEL_TYPE_CONFIGS = {
     "mistral": {
-        "torch_dtype": torch.bfloat16,  # Use actual torch type instead of string
+        "torch_dtype": torch.bfloat16,
         "load_in_4bit": True,
-        "use_flash_attention": True,
+        "use_flash_attention": False,  # Disabled Flash Attention
         "device_map": "auto",
-        "max_memory": {0: "12GiB"},  # Reserve memory for LoRA
-        "offload_folder": "offload",  # Enable disk offloading if needed
-        "revision": "v0.2",  # Specific model version
+        "max_memory": {0: "14GiB"},  # Increased memory allocation since we're not using Flash Attention
+        "revision": "v0.2",
     }
 }
