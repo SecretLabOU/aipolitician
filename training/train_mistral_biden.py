@@ -179,7 +179,7 @@ data_collator = DataCollatorForSeq2Seq(
 # Training arguments - match Trump training exactly
 training_args = TrainingArguments(
     output_dir="./mistral-biden",
-    eval_strategy="steps",
+    evaluation_strategy="steps",
     eval_steps=50,
     save_strategy="steps",
     per_device_train_batch_size=4,
