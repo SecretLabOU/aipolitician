@@ -80,11 +80,7 @@ def load_speech_dataset(zip_path: str) -> Dataset:
 # Load base model and tokenizer
 print("Loading base model and tokenizer...")
 model_id = "mistralai/Mistral-7B-Instruct-v0.2"
-tokenizer = AutoTokenizer.from_pretrained(
-    model_id,
-    padding_side="right",
-    trust_remote_code=True
-)
+tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="right")
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
     quantization_config=bnb_config,
