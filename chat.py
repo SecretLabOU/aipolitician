@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 import torch
 from dotenv import load_dotenv
@@ -22,7 +22,8 @@ def generate_response(prompt, model, tokenizer, max_length=512):
             num_return_sequences=1,
             temperature=0.7,
             do_sample=True,
-            pad_token_id=tokenizer.pad_token_id
+            pad_token_id=tokenizer.pad_token_id,
+            use_cache=True
         )
     
     # Decode and clean response
@@ -38,13 +39,28 @@ def main():
     # Load base model and tokenizer
     print("Loading model...")
     base_model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+    
+    # Create BitsAndBytesConfig for 4-bit quantization
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,  # Match compute dtype with model dtype
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+    
+    # Load model with proper configuration
     model = AutoModelForCausalLM.from_pretrained(
         base_model_id,
-        torch_dtype=torch.float16,
+        quantization_config=bnb_config,
         device_map="auto",
-        load_in_4bit=True
+        torch_dtype=torch.float16,
+        attn_implementation="eager"  # Don't use Flash Attention
     )
     tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+    
+    # Set padding token if needed
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     
     # Load the fine-tuned LoRA weights
     print("Loading fine-tuned weights...")
@@ -71,6 +87,8 @@ def main():
             break
         except Exception as e:
             print(f"Error: {str(e)}")
+            import traceback
+            traceback.print_exc()  # Print full error trace for debugging
     
     # Cleanup
     print("\nCleaning up...")
