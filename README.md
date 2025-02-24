@@ -1,119 +1,66 @@
-# AI Politician
+# AI Politician - Trump Model
 
-An AI-powered application that simulates conversations with political figures, featuring a fine-tuned Mistral-7B model trained to emulate Donald Trump's speaking style.
-
-## Prerequisites
-
-- Python 3.10.16
-- CUDA-compatible GPU (recommended)
-- Conda or Miniconda
-- HuggingFace API key with access to the Mistral-7B-Instruct-v0.2 model (gated model)
-
-## Environment Details
-
-The project uses a conda environment with specific package versions that were used to train the model:
-
-- Python: 3.10.16
-- Key ML Libraries:
-  * torch>=2.0.0
-  * transformers>=4.30.0
-  * peft==0.14.0
-  * accelerate==1.4.0
-  * bitsandbytes==0.45.2
-
-The complete list of dependencies is in `requirements.txt`. The environment is automatically set up by the `run.sh` script.
-
-Note: The environment name is 'aipolitician' to maintain consistency with the training setup.
-
-## Model Access
-
-This project uses the Mistral-7B-Instruct-v0.2 model, which is a gated model on HuggingFace. To use this project:
-
-1. Request access to the model at: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2
-2. Create a HuggingFace API key at: https://huggingface.co/settings/tokens
-3. Add your API key to the .env file
-
-## Shared Model Location
-
-The fine-tuned model weights are stored in a shared location accessible to all users:
-```
-/home/shared_models/aipolitician/fine_tuned_trump_mistral/
-```
-
-This location is automatically configured in the application settings.
+A fine-tuned Mistral-7B model that emulates Donald Trump's speaking style.
 
 ## Setup
 
-1. Clone the repository:
-```bash
-git clone [repository-url]
-cd aipolitician
-```
-
-2. Create environment file:
+1. Create a `.env` file from the example:
 ```bash
 cp .env.example .env
 ```
 
-3. Edit .env and add your HuggingFace API key:
+2. Add your HuggingFace API key to `.env`:
 ```
 HUGGINGFACE_API_KEY=your_key_here
+SHARED_MODELS_PATH=/path/to/models
 ```
 
-4. Run the application:
+3. Install dependencies:
 ```bash
-chmod +x run.sh
-./run.sh
+pip install -r requirements.txt
 ```
-
-The server will start at http://localhost:8000
-
-## API Endpoints
-
-- `POST /chat/donald-trump` - Chat with Trump AI
-- `GET /health` - Health check endpoint
-- `DELETE /sessions/{session_id}` - End a chat session
 
 ## Training
 
-The model training code is located in the `training/` directory. To train the model:
-
-1. Ensure you have access to the Mistral-7B-Instruct-v0.2 model
-2. Set up your HuggingFace API key in your environment
-3. Run the training script:
+To train the model:
 ```bash
 python training/train_mistral_trump.py
 ```
 
+This will:
+- Load the Mistral-7B-Instruct-v0.2 base model
+- Fine-tune it on Trump's speeches and interviews
+- Save the resulting model to the path specified in SHARED_MODELS_PATH
+
+## Chat Interface
+
+To chat with the model:
+```bash
+python chat.py
+```
+
+This provides an interactive terminal interface where you can:
+- Type messages and get responses in Trump's style
+- Type 'quit' to exit
+- Use Ctrl+C to exit at any time
+
 ## Project Structure
 
 ```
-aipolitician/
-├── app/
-│   ├── agents/         # AI agent implementations
-│   ├── models/         # Model configurations
-│   └── utils/          # Utility functions
-├── training/           # Model training code
-└── .env.example        # Environment template
+.
+├── .env                    # Environment variables
+├── .env.example           # Example environment file
+├── requirements.txt       # Python dependencies
+├── chat.py               # Interactive chat interface
+└── training/             # Training code
+    └── train_mistral_trump.py
 ```
 
-## Environment Variables
+## Model Details
 
-- `HUGGINGFACE_API_KEY`: Your HuggingFace API key (required)
-- `SHARED_MODELS_PATH`: Path to shared models (default: /home/shared_models/aipolitician)
-- `MAX_REQUEST_TOKENS`: Maximum tokens per request (default: 1000)
-- `REQUEST_TIMEOUT`: Request timeout in seconds (default: 300)
-
-## GPU Requirements
-
-The application is optimized for GPU usage and will automatically:
-- Detect available GPUs
-- Configure appropriate worker counts
-- Manage GPU memory efficiently
-- Clean up resources when sessions are inactive
-
-## Security Notes
-
-- Keep your .env file secure and never commit it to version control
-- The HuggingFace API key must have access to the Mistral model
-- The application includes automatic session cleanup for security
+- Base Model: Mistral-7B-Instruct-v0.2
+- Training Data:
+  - Trump interviews dataset
+  - Trump speeches dataset
+- Uses LoRA for efficient fine-tuning
+- 4-bit quantization for reduced memory usage
