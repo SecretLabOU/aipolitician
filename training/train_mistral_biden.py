@@ -121,7 +121,7 @@ def load_tweets_dataset(zip_path: str) -> Dataset:
     
     # Process tweets
     texts = []
-    for tweet in df['text']:  # Adjust column name if different
+    for tweet in df['tweet']:  # Column name from JoeBidenTweets.csv
         processed = process_tweet(tweet)
         if processed:
             texts.append(processed)
@@ -137,7 +137,7 @@ def load_speech_dataset(zip_path: str) -> Dataset:
     
     # Process speech segments
     texts = []
-    for text in df['text']:  # Adjust column name if different
+    for text in df['TEXT']:  # Column name from joe_biden_dnc_2020.csv
         segments = process_speech(text)
         texts.extend(segments)
     
