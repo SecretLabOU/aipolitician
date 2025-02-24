@@ -80,7 +80,13 @@ def load_speech_dataset(zip_path: str) -> Dataset:
 # Load base model and tokenizer
 print("Loading base model and tokenizer...")
 model_id = "mistralai/Mistral-7B-Instruct-v0.2"
-tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="right")
+print("Loading tokenizer...")
+try:
+    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="right", use_fast=False)
+    print("Tokenizer loaded successfully")
+except Exception as e:
+    print(f"Error loading tokenizer: {str(e)}")
+    raise
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
     quantization_config=bnb_config,
