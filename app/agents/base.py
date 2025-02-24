@@ -64,19 +64,13 @@ class BaseAgent(ABC):
                 bnb_4bit_use_double_quant=True,
             )
 
-            # Load model with all configurations from config
-            model_kwargs = {
-                "quantization_config": bnb_config,
-                "device_map": self.config.get("device_map", "auto"),
-                "torch_dtype": self.config.get("torch_dtype", torch.bfloat16),
-                "trust_remote_code": True,
-                "attn_implementation": "sdpa"  # Use PyTorch's scaled dot product attention instead of Flash Attention
-            }
-            
-            logger.info(f"Loading model with kwargs: {model_kwargs}")
+            # Load model with minimal configuration matching working implementation
+            logger.info("Loading model with working configuration...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.config["base_model"],
-                **model_kwargs
+                torch_dtype=self.config.get("torch_dtype", torch.float16),
+                device_map=self.config.get("device_map", "auto"),
+                load_in_4bit=True
             )
             
             if torch.cuda.is_available():
@@ -106,29 +100,25 @@ class BaseAgent(ABC):
         history: Optional[List[tuple[str, str]]] = None
     ) -> str:
         """Generate a response using the model"""
-        if history is None:
-            history = []
-            
         try:
             # Format prompt using model-specific formatting
-            formatted_prompt = self.format_prompt(user_input, history)
+            formatted_prompt = self.format_prompt(user_input, history or [])
             logger.info(f"Generated prompt length: {len(formatted_prompt)}")
             
-            # Tokenize input and generate response
+            # Generate response using working implementation
             inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
-            outputs = self.model.generate(
-                **inputs,
-                max_length=512,
-                num_return_sequences=1,
-                temperature=0.7,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id
-            )
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_length=512,
+                    num_return_sequences=1,
+                    temperature=0.7,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.pad_token_id
+                )
             
-            # Decode response
+            # Extract response using working implementation's method
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract only the model's response (after the prompt)
             response = response.split("[/INST]")[-1].strip()
             logger.info(f"Generated response length: {len(response)}")
             

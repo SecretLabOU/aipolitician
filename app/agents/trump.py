@@ -26,28 +26,13 @@ class TrumpAgent(BaseAgent):
             if torch.cuda.is_available():
                 logger.info(f"GPU Memory before LoRA: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
             
-            # Load LoRA weights with proper configuration
-            try:
-                logger.info("Loading LoRA adapter...")
-                self.model = PeftModel.from_pretrained(
-                    self.model,
-                    self.config["lora_weights"],
-                    torch_dtype=self.config.get("torch_dtype", torch.bfloat16),
-                    device_map=self.config.get("device_map", "auto"),
-                )
-                logger.info("LoRA adapter loaded successfully")
-            except Exception as e:
-                logger.error(f"Failed to load LoRA adapter: {str(e)}")
-                # Try alternative loading method
-                try:
-                    logger.info("Attempting alternative loading method...")
-                    from safetensors.torch import load_file
-                    adapter_path = os.path.join(self.config["lora_weights"], "adapter_model.safetensors")
-                    state_dict = load_file(adapter_path)
-                    self.model.load_state_dict(state_dict, strict=False)
-                    logger.info("Alternative loading method successful")
-                except Exception as e2:
-                    raise RuntimeError(f"All loading attempts failed. First error: {str(e)}, Second error: {str(e2)}")
+            # Load LoRA weights using working implementation's method
+            logger.info("Loading LoRA adapter...")
+            self.model = PeftModel.from_pretrained(
+                self.model,
+                self.config["lora_weights"]
+            )
+            logger.info("LoRA adapter loaded successfully")
             
             if torch.cuda.is_available():
                 logger.info(f"GPU Memory after LoRA: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
@@ -74,23 +59,12 @@ class TrumpAgent(BaseAgent):
         try:
             logger.info("Running test inference...")
             test_input = "Hello"
-            formatted_prompt = self.format_prompt(test_input, [])
-            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
-            
-            with torch.no_grad():
-                logger.info("Generating test response...")
-                outputs = self.model.generate(
-                    **inputs,
-                    max_length=20,
-                    num_return_sequences=1,
-                    temperature=0.7,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.pad_token_id
-                )
-            
-            logger.info("Test inference successful")
-            torch.cuda.empty_cache()
-            
+            response = self.generate_response(test_input)
+            if response:
+                logger.info("Test inference successful")
+                torch.cuda.empty_cache()
+            else:
+                raise RuntimeError("Test inference returned empty response")
         except Exception as e:
             logger.error(f"Model verification failed: {str(e)}", exc_info=True)
             raise RuntimeError(f"Model verification failed: {str(e)}")

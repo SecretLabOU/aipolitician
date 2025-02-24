@@ -15,11 +15,8 @@ MODELS = {
 
 MODEL_TYPE_CONFIGS = {
     "mistral": {
-        "torch_dtype": torch.bfloat16,
+        "torch_dtype": torch.float16,  # Changed to float16 to match working implementation
         "load_in_4bit": True,
-        "use_flash_attention": False,  # Disabled Flash Attention
-        "device_map": "auto",
-        "max_memory": {0: "14GiB"},  # Increased memory allocation since we're not using Flash Attention
-        "revision": "v0.2",
+        "device_map": "auto"
     }
 }
