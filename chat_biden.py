@@ -56,7 +56,7 @@ def main():
         torch_dtype=torch.float16,
         attn_implementation="eager"  # Don't use Flash Attention
     )
-    tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=False)
     
     # Set padding token if needed
     if tokenizer.pad_token is None:
