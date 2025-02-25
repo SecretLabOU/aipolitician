@@ -2,7 +2,8 @@
   "dependencies": ["."],
   "graphs": {
     "indexer": "./src/index_graph/graph.py:graph",
-    "retrieval_graph": "./src/retrieval_graph/graph.py:graph"
+    "retrieval_graph": "./src/retrieval_graph/graph.py:graph",
+    "politician_graph": "./src/political_agent_graph/graph.py:graph"
   },
   "env": ".env"
 }
