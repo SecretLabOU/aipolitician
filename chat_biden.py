@@ -34,7 +34,7 @@ def generate_response(prompt, model, tokenizer, max_length=512):
 def main():
     # Get model path from environment
     SHARED_MODELS_PATH = os.getenv("SHARED_MODELS_PATH", "/home/shared_models/aipolitician")
-    LORA_PATH = os.path.join(SHARED_MODELS_PATH, "fine_tuned_trump_mistral")
+    LORA_PATH = os.path.join(SHARED_MODELS_PATH, "fine_tuned_biden_mistral")
     
     # Load base model and tokenizer
     print("Loading model...")
@@ -56,7 +56,7 @@ def main():
         torch_dtype=torch.float16,
         attn_implementation="eager"  # Don't use Flash Attention
     )
-    tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=False)
     
     # Set padding token if needed
     if tokenizer.pad_token is None:
@@ -69,9 +69,9 @@ def main():
     
     print("\nModel loaded! Enter your prompts (type 'quit' to exit)")
     print("\nExample prompts:")
-    print("1. What do you think about the economy?")
-    print("2. How would you make America great again?")
-    print("3. Tell me about your achievements.")
+    print("1. What's your vision for America's future?")
+    print("2. How would you help the middle class?")
+    print("3. Tell me about your infrastructure plan.")
     
     while True:
         try:
@@ -80,7 +80,7 @@ def main():
                 break
                 
             response = generate_response(prompt, model, tokenizer)
-            print(f"\nTrump: {response}")
+            print(f"\nBiden: {response}")
             
         except KeyboardInterrupt:
             print("\nExiting...")

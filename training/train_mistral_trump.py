@@ -5,21 +5,12 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset, concatenate_datasets
 import torch
 from typing import Dict, Sequence
-import os
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
-
-# Get API key from environment
-HUGGING_FACE_KEY = os.getenv("HUGGINGFACE_API_KEY")
-if not HUGGING_FACE_KEY:
-    raise ValueError("HUGGINGFACE_API_KEY not found in environment variables")
-
-# Login to Hugging Face
+# Step 1: Login to Hugging Face
+HUGGING_FACE_KEY = "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"  # Replace with your Hugging Face token
 login(token=HUGGING_FACE_KEY)
 
-# Enable Memory-Efficient Loading with 4-bit Quantization
+# Step 2: Enable Memory-Efficient Loading with 4-bit Quantization
 compute_dtype = torch.bfloat16
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -28,7 +19,7 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-# Load the Mistral model and tokenizer
+# Step 3: Load the Mistral model and tokenizer
 model_id = "mistralai/Mistral-7B-Instruct-v0.2"
 tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="right")
 model = AutoModelForCausalLM.from_pretrained(
@@ -69,11 +60,11 @@ model.print_trainable_parameters()  # Print trainable parameters info
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-# Load the datasets
+# Step 4: Load the datasets
 dataset1 = load_dataset("pookie3000/trump-interviews")  # Contains 'conversations'
 dataset2 = load_dataset("bananabot/TrumpSpeeches")  # Might contain 'train'
 
-# Preprocess dataset1 (Trump Interviews)
+# Step 5: Preprocess dataset1 (Trump Interviews)
 def process_interview(example):
     """Format the conversation in Mistral's instruction format"""
     conversations = example["conversations"]
@@ -108,7 +99,7 @@ dataset1 = dataset1.map(
 )
 dataset1 = dataset1.filter(lambda x: len(x["text"]) > 0, desc="Filtering valid interviews")
 
-# Process Trump Speeches dataset
+# Step 6: Process Trump Speeches dataset
 def process_speech(example):
     """Format the speech in Mistral's instruction format"""
     text = example.get("text", "").strip()
@@ -125,15 +116,15 @@ dataset2 = dataset2.map(
 )
 dataset2 = dataset2.filter(lambda x: len(x["text"]) > 0, desc="Filtering valid speeches")
 
-# Merge the two datasets properly
+# Step 7: Merge the two datasets properly
 merged_dataset = concatenate_datasets([dataset1["train"], dataset2["train"]])
 
-# Split dataset into 90% training and 10% evaluation
+# Step 8: Split dataset into 90% training and 10% evaluation
 dataset = merged_dataset.train_test_split(test_size=0.1)
 train_dataset = dataset["train"]
 eval_dataset = dataset["test"]
 
-# Tokenize the datasets
+# Step 9: Tokenize the datasets
 def tokenize_function(examples: Dict[str, Sequence[str]]) -> dict:
     """Tokenize with proper labels for casual language modeling"""
     # Tokenize the texts
@@ -172,7 +163,7 @@ data_collator = DataCollatorForSeq2Seq(
     padding=True
 )
 
-# Define optimized training arguments for 24GB VRAM
+# Step 10: Define optimized training arguments for 24GB VRAM
 training_args = TrainingArguments(
     output_dir="./mistral-trump",
     eval_strategy="steps",
@@ -201,7 +192,7 @@ training_args = TrainingArguments(
     remove_unused_columns=False
 )
 
-# Set up training with proper error handling
+# Step 11: Set up training with proper error handling
 try:
     print("Starting training...")
     trainer = Trainer(
@@ -222,7 +213,7 @@ except Exception as e:
     print(f"An error occurred during training: {str(e)}")
     raise
 
-# Save the fine-tuned model
+# Step 12: Save the fine-tuned model
 model.save_pretrained("./fine_tuned_trump_mistral")
 tokenizer.save_pretrained("./fine_tuned_trump_mistral")
 
