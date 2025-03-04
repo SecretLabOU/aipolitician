@@ -95,17 +95,61 @@ Each script provides:
 - Type 'quit' to exit
 - Use Ctrl+C to exit at any time
 
+## Database RAG System
+
+The project includes a Retrieval-Augmented Generation (RAG) database system that provides factual information to the AI models. This system improves factual accuracy by retrieving relevant information from a set of structured databases.
+
+### Database Setup
+
+1. Create the database directory:
+```bash
+mkdir -p /home/natalie/Databases/political_rag
+```
+
+2. Initialize the databases:
+```bash
+conda activate chat-env
+python -m db.scripts.initialize_databases
+```
+
+### Using RAG in Chat
+
+By default, the chat interfaces will use the RAG system if available. To disable RAG:
+
+```bash
+python3 chat_biden.py --no-rag
+python3 chat_trump.py --no-rag
+```
+
+### Database Structure
+
+The system includes 17 specialized databases:
+- Biography Database
+- Policy Database
+- Voting Record Database
+- Public Statements Database
+- And many more...
+
+For full details, see the [Database README](db/README.md).
+
 ## Project Structure
 
 ```
 .
-├── .env                    # Environment variables
-├── .env.example           # Example environment file
-├── requirements-training.txt  # Training environment dependencies
+├── .env                      # Environment variables
+├── .env.example              # Example environment file
+├── requirements-training.txt # Training environment dependencies
 ├── requirements-chat.txt     # Chat environment dependencies
-├── chat_biden.py         # Biden chat interface
-├── chat_trump.py         # Trump chat interface
-└── training/             # Training code
+├── chat_biden.py             # Biden chat interface
+├── chat_trump.py             # Trump chat interface
+├── db/                       # Database RAG system
+│   ├── config.py             # Database configuration
+│   ├── database.py           # Base database interface
+│   ├── README.md             # Database documentation
+│   ├── schemas/              # Database schema definitions
+│   ├── scripts/              # Database scripts
+│   └── utils/                # Database utilities
+└── training/                 # Training code
     ├── train_mistral_biden.py
     └── train_mistral_trump.py
 ```

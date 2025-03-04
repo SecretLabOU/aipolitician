@@ -4,14 +4,38 @@ from peft import PeftModel
 import torch
 from dotenv import load_dotenv
 import os
+import argparse
+from pathlib import Path
+
+# Add project root to the Python path
+root_dir = Path(__file__).parent.absolute()
+import sys
+sys.path.insert(0, str(root_dir))
+
+# Import database utils if they exist
+try:
+    from db.utils.rag_utils import integrate_with_chat
+    HAS_RAG = True
+except ImportError:
+    HAS_RAG = False
+    print("RAG database system not available. Running without RAG.")
 
 # Load environment variables
 load_dotenv()
 
-def generate_response(prompt, model, tokenizer, max_length=512):
-    """Generate a response using the model"""
-    # Format the prompt in Mistral's instruction format
-    formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+def generate_response(prompt, model, tokenizer, use_rag=True, max_length=512):
+    """Generate a response using the model, optionally with RAG"""
+    # Use RAG if available and enabled
+    if HAS_RAG and use_rag:
+        # Get contextual information from the database
+        context = integrate_with_chat(prompt, "Joe Biden")
+        
+        # Combine context with prompt
+        rag_prompt = f"{context}\n\nUser Question: {prompt}"
+        formatted_prompt = f"<s>[INST] {rag_prompt} [/INST]"
+    else:
+        # Standard prompt without RAG
+        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
     
     # Generate response
     inputs = tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
@@ -32,6 +56,12 @@ def generate_response(prompt, model, tokenizer, max_length=512):
     return response
 
 def main():
+    # Set up command line arguments
+    parser = argparse.ArgumentParser(description="Chat with Biden AI model")
+    parser.add_argument("--no-rag", action="store_true", help="Disable RAG and use pure generation")
+    parser.add_argument("--max-length", type=int, default=512, help="Maximum response length")
+    args = parser.parse_args()
+    
     # Get model path from environment
     SHARED_MODELS_PATH = os.getenv("SHARED_MODELS_PATH", "/home/shared_models/aipolitician")
     LORA_PATH = os.path.join(SHARED_MODELS_PATH, "fine_tuned_biden_mistral")
@@ -67,19 +97,32 @@ def main():
     model = PeftModel.from_pretrained(model, LORA_PATH)
     model.eval()  # Set to evaluation mode
     
+    # Print status
+    if HAS_RAG and not args.no_rag:
+        print("\nRAG system enabled. Using database for factual answers.")
+    
     print("\nModel loaded! Enter your prompts (type 'quit' to exit)")
     print("\nExample prompts:")
     print("1. What's your vision for America's future?")
     print("2. How would you help the middle class?")
     print("3. Tell me about your infrastructure plan.")
+    print("4. When were you born?")
+    print("5. What was your position on the American Recovery and Reinvestment Act?")
     
     while True:
         try:
             prompt = input("\nYou: ")
             if prompt.lower() == 'quit':
                 break
-                
-            response = generate_response(prompt, model, tokenizer)
+            
+            # Generate response with or without RAG
+            response = generate_response(
+                prompt, 
+                model, 
+                tokenizer, 
+                use_rag=(HAS_RAG and not args.no_rag),
+                max_length=args.max_length
+            )
             print(f"\nBiden: {response}")
             
         except KeyboardInterrupt:

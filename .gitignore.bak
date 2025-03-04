@@ -4,6 +4,7 @@
 !.env.example
 
 # Python
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -24,12 +25,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# Specific __pycache__ directories to ignore
-db/__pycache__/
-db/schemas/__pycache__/
-db/scripts/__pycache__/
-db/utils/__pycache__/
-
 # Virtual Environment
 venv/
 ENV/
@@ -49,18 +44,6 @@ env/
 logs/
 *.sqlite
 *.db
-*.db-journal
-*.db-shm
-*.db-wal
-*.sqlite3
-
-# Data exports
-*.csv
-*.xlsx
-
-# Test coverage
-.coverage
-htmlcov/
 
 # Training outputs
 mistral-trump/
