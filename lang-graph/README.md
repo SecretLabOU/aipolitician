@@ -28,9 +28,8 @@ python src/main.py --demo
 ## Available Politicians
 
 - **Donald Trump** - Republican (use: `donald_trump`)
-- **Alexandria Ocasio-Cortez** - Democrat (use: `alexandria_ocasio_cortez`)
-- **Bernie Sanders** - Independent (use: `bernie_sanders`)
-- **Jacinda Ardern** - New Zealand Labour (use: `jacinda_ardern`)
+
+*More politicians coming soon!*
 
 ## Example Usage
 

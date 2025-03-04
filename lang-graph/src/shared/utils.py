@@ -1,129 +1,78 @@
 """Shared utility functions used in the project."""
 
 import os
-from typing import Optional, Dict, Any
+import json
+from typing import Optional, Dict, Any, List, Tuple
+from pathlib import Path
 
-from langchain.chat_models import init_chat_model
-from langchain_core.documents import Document
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import BaseLLM
 from langchain_community.llms import LlamaCpp, Ollama
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_core.chat_models import BaseChatModel
+from langchain_openai import OpenAI
 
 
-# Import local model configuration
-try:
-    from political_agent_graph.local_models import (
-        load_model_config,
-        get_default_model,
-        get_model_details
-    )
-    # Load the model configuration
-    _config = load_model_config()
-    _default_model = get_default_model()
-except ImportError:
-    # Fallback default configuration
-    _config = {
-        "models": {
-            "mixtral": {
-                "type": "ollama",
-                "model": "mixtral",
-                "temperature": 0.7
-            }
+def format_conversation_for_prompt(conversation_history: List[Dict[str, str]], max_length: int = 5) -> str:
+    """Format conversation history for prompts.
+    
+    Args:
+        conversation_history: A list of message dictionaries
+        max_length: Maximum number of messages to include
+        
+    Returns:
+        Formatted conversation history as a string
+    """
+    # Take only the most recent messages
+    recent_history = conversation_history[-max_length:] if len(conversation_history) > max_length else conversation_history
+    
+    formatted = ""
+    for message in recent_history:
+        speaker = message.get("speaker", "Unknown")
+        text = message.get("text", "")
+        formatted += f"{speaker}: {text}\n\n"
+    
+    return formatted
+
+
+def load_json_file(file_path: str) -> Dict[str, Any]:
+    """Load and parse a JSON file.
+    
+    Args:
+        file_path: Path to the JSON file
+        
+    Returns:
+        Parsed JSON content as a dictionary
+    """
+    try:
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Warning: File not found: {file_path}")
+        return {}
+    except json.JSONDecodeError:
+        print(f"Warning: Invalid JSON in file: {file_path}")
+        return {}
+
+
+def get_model_config() -> Dict[str, Any]:
+    """Get the model configuration.
+    
+    Returns:
+        Model configuration dictionary
+    """
+    # Look for config.json in models directory
+    config_path = Path(__file__).parent.parent.parent / "models" / "config.json"
+    
+    if config_path.exists():
+        return load_json_file(str(config_path))
+    else:
+        # Default configuration
+        return {
+            "models": {
+                "mistral": {
+                    "type": "ollama",
+                    "model": "mistral",
+                    "temperature": 0.7,
+                    "description": "Mistral 7B instruct model via Ollama"
+                }
+            },
+            "default_model": "mistral"
         }
-    }
-    _default_model = "mixtral"
-
-# Model provider mappings
-MODEL_PROVIDER_MAP = {
-    "anthropic": ChatAnthropic,
-    "openai": ChatOpenAI,
-    "local": None,  # Handled specially
-}
-
-def load_chat_model(model_identifier: str, **kwargs) -> BaseChatModel:
-    """Load a chat model based on the identifier.
-    
-    Args:
-        model_identifier: String in format 'provider/model' or 'local/model_name'
-        
-    Returns:
-        An instance of a chat model
-    """
-    # Check for local model specification
-    if model_identifier.startswith("local/"):
-        _, model_name = model_identifier.split("/", 1)
-        return load_local_model(model_name, **kwargs)
-    
-    # For API-based models
-    if "/" in model_identifier:
-        provider, model = model_identifier.split("/", 1)
-        if provider in MODEL_PROVIDER_MAP:
-            model_class = MODEL_PROVIDER_MAP[provider]
-            if model_class:
-                try:
-                    return model_class(model=model, **kwargs)
-                except Exception as e:
-                    print(f"Warning: Failed to load {model_identifier} with error: {str(e)}")
-    
-    # Try langchain's init_chat_model
-    try:
-        if "/" in model_identifier:
-            provider, model = model_identifier.split("/", 1)
-        else:
-            provider = ""
-            model = model_identifier
-        return init_chat_model(model, model_provider=provider, **kwargs)
-    except Exception as e:
-        # Fallback to default local model if API access fails
-        print(f"Warning: Failed to load {model_identifier}: {e}")
-        print(f"Falling back to default local model: {_default_model}")
-        return load_local_model(_default_model, **kwargs)
-
-def load_local_model(model_name: str, **kwargs) -> BaseChatModel:
-    """Load a local language model.
-    
-    Args:
-        model_name: Name of the local model to load
-        
-    Returns:
-        A chat model instance
-    """
-    try:
-        # Get model details from configuration
-        if model_name not in _config["models"]:
-            available_models = list(_config["models"].keys())
-            print(f"Unknown model: {model_name}. Available models: {available_models}")
-            model_name = _default_model
-        
-        model_config = get_model_details(model_name)
-        config = model_config.copy()
-        config.update(kwargs)
-        
-        model_type = config.pop("type")
-        
-        if model_type == "llamacpp":
-            path = config.pop("path")
-            # Handle relative paths
-            if not os.path.isabs(path):
-                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                path = os.path.join(base_dir, path)
-            
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Model file not found: {path}")
-            
-            return LlamaCpp(model_path=path, **config)
-        
-        elif model_type == "ollama":
-            ollama_model = config.pop("model")
-            return Ollama(model=ollama_model, **config)
-        
-        else:
-            raise ValueError(f"Unknown model type: {model_type}")
-    
-    except Exception as e:
-        print(f"Error loading model {model_name}: {e}")
-        # Last resort fallback to Ollama with mixtral
-        print("Using last resort fallback to Ollama with mixtral")
-        return Ollama(model="mixtral", temperature=0.7)
