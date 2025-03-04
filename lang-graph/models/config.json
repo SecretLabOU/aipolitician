@@ -1,13 +1,5 @@
 {
   "models": {
-    "llama3": {
-      "type": "llamacpp",
-      "path": "models/llama-3-8b-instruct.Q4_K_M.gguf",
-      "n_gpu_layers": 1,
-      "n_ctx": 4096,
-      "temperature": 0.7,
-      "description": "Llama 3 8B instruct model (quantized)"
-    },
     "mistral": {
       "type": "ollama",
       "model": "mistral",

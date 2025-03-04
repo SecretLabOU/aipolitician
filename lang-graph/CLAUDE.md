@@ -8,9 +8,6 @@ make test
 # Run a single test file
 make test TEST_FILE=tests/unit_tests/test_configuration.py
 
-# Run tests in watch mode
-make test_watch
-
 # Run tests with profiling
 make test_profile
 

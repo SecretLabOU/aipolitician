@@ -23,15 +23,10 @@ requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["retrieval_graph", "index_graph", "shared", "political_agent_graph"]
+packages = ["political_agent_graph", "shared"]
 [tool.setuptools.package-dir]
-"langgraph.templates.retrieval_graph" = "src/retrieval_graph"
-"langgraph.templates.index_graph" = "src/index_graph"
-"retrieval_graph" = "src/retrieval_graph"
-"index_graph" = "src/index_graph"
-"shared" = "src/shared"
 "political_agent_graph" = "src/political_agent_graph"
-
+"shared" = "src/shared"
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]

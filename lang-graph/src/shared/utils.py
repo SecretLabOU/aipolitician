@@ -1,9 +1,4 @@
-"""Shared utility functions used in the project.
-
-Functions:
-    format_docs: Convert documents to an xml-formatted string.
-    load_chat_model: Load a chat model (local or API-based).
-"""
+"""Shared utility functions used in the project."""
 
 import os
 from typing import Optional, Dict, Any
@@ -15,26 +10,6 @@ from langchain_community.llms import LlamaCpp, Ollama
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_core.chat_models import BaseChatModel
-
-
-def _format_doc(doc: Document) -> str:
-    """Format a single document as XML."""
-    metadata = doc.metadata or {}
-    meta = "".join(f" {k}={v!r}" for k, v in metadata.items())
-    if meta:
-        meta = f" {meta}"
-
-    return f"<document{meta}>\n{doc.page_content}\n</document>"
-
-
-def format_docs(docs: Optional[list[Document]]) -> str:
-    """Format a list of documents as XML."""
-    if not docs:
-        return "<documents></documents>"
-    formatted = "\n".join(_format_doc(doc) for doc in docs)
-    return f"""<documents>
-{formatted}
-</documents>"""
 
 
 # Import local model configuration

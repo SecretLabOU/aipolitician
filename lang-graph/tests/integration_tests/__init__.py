@@ -1,1 +1,1 @@
-"""Integration tests for your graph."""
+"""Integration tests package."""
