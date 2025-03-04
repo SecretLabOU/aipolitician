@@ -1,0 +1,34 @@
+{
+  "models": {
+    "llama3": {
+      "type": "llamacpp",
+      "path": "models/llama-3-8b-instruct.Q4_K_M.gguf",
+      "n_gpu_layers": 1,
+      "n_ctx": 4096,
+      "temperature": 0.7,
+      "description": "Llama 3 8B instruct model (quantized)"
+    },
+    "mistral": {
+      "type": "ollama",
+      "model": "mistral",
+      "temperature": 0.7,
+      "description": "Mistral 7B instruct model via Ollama"
+    },
+    "mixtral": {
+      "type": "ollama",
+      "model": "mixtral",
+      "temperature": 0.7,
+      "description": "Mixtral 8x7B instruct model via Ollama"
+    },
+    "trump_mistral": {
+      "type": "llamacpp",
+      "path": "../../fine_tuned_trump_mistral/model.gguf",
+      "n_gpu_layers": 1,
+      "n_ctx": 4096,
+      "temperature": 0.8,
+      "description": "Fine-tuned Mistral Trump model"
+    }
+  },
+  "default_model": "trump_mistral",
+  "model_folder": "models"
+}
