@@ -82,3 +82,11 @@ checkpoints/
 
 # Local development
 local_settings.py
+
+# Additional __pycache__ directories to ignore
+db/milvus/__pycache__/
+db/milvus/scripts/__pycache__/
+db/milvus/test/__pycache__/
+
+# Milvus logs
+db/milvus/logs/
