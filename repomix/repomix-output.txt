@@ -45,6 +45,19 @@ Additional Info:
 ================================================================
 Directory Structure
 ================================================================
+db/
+  milvus/
+    scripts/
+      initialize_db.py
+      schema.py
+      search.py
+    test/
+      insert_sample.py
+      test_search.py
+    cleanup.sh
+    docker-compose.yml
+    README.md
+    setup.sh
 test/
   test_db.py
 training/
@@ -55,12 +68,1066 @@ training/
 chat_biden.py
 chat_trump.py
 README.md
-requirements-chat.txt
 requirements-training.txt
 
 ================================================================
 Files
 ================================================================
+
+================
+File: db/milvus/scripts/initialize_db.py
+================
+#!/usr/bin/env python3
+import sys
+import os
+import logging
+import traceback
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+#!/usr/bin/env python3
+"""
+Initialize the Milvus database for AI Politician project.
+This script sets up the Milvus collection and indexes.
+"""
+
+import os
+import sys
+from pathlib import Path
+current_dir = Path(__file__).resolve().parent
+parent_dir = current_dir.parent.parent
+sys.path.append(str(parent_dir))
+
+from scripts.schema import connect_to_milvus, create_political_figures_collection, create_hnsw_index
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(os.path.join(current_dir.parent, "logs", "initialize_db.log"))
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+def wait_for_milvus_ready(max_attempts=30, wait_time=5):
+    """Wait for Milvus server to be ready, with retry"""
+    logger.info("Waiting for Milvus server to be ready...")
+    
+    for attempt in range(max_attempts):
+        try:
+            if connect_to_milvus():
+                logger.info("Milvus server is ready")
+                return True
+            else:
+                logger.warning(f"Milvus not ready yet. Attempt {attempt+1}/{max_attempts}")
+                time.sleep(wait_time)
+        except Exception as e:
+            logger.warning(f"Error connecting to Milvus: {str(e)}. Attempt {attempt+1}/{max_attempts}")
+            time.sleep(wait_time)
+    
+    logger.error(f"Milvus server not ready after {max_attempts} attempts")
+    return False
+
+def initialize_database(recreate=False):
+    """Initialize the database with collections and indexes"""
+    logger.info("Initializing Milvus database...")
+    
+    # Wait for Milvus to be ready
+    if not wait_for_milvus_ready():
+        logger.error("Failed to connect to Milvus. Please check if Milvus is running.")
+        return False
+    
+    try:
+        # Create collection
+        collection = create_political_figures_collection(drop_existing=recreate)
+        logger.info(f"Collection ready: {collection.name}")
+        
+        # Create index if needed
+        if recreate or not collection.has_index():
+            create_hnsw_index(collection.name)
+            logger.info("Index created successfully")
+        else:
+            logger.info("Index already exists")
+        
+        logger.info("Database initialization completed successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Initialize Milvus database for AI Politician")
+    parser.add_argument("--recreate", action="store_true", help="Drop and recreate existing collections")
+    args = parser.parse_args()
+    
+    success = initialize_database(recreate=args.recreate)
+    
+    if success:
+        print("Database initialization completed successfully")
+        sys.exit(0)
+    else:
+        print("Database initialization failed. See logs for details.")
+        sys.exit(1)
+
+================
+File: db/milvus/scripts/schema.py
+================
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+"""
+AI Politician Milvus Database Schema
+
+This module defines the schema for the Milvus database used to store and retrieve
+political figure information for the AI debate system.
+"""
+
+from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def connect_to_milvus(host="localhost", port="19530"):
+    """
+    Establish connection to Milvus server.
+    
+    Args:
+        host (str): Milvus server hostname
+        port (str): Milvus server port
+        
+    Returns:
+        bool: True if connection was successful
+    """
+    try:
+        connections.connect("default", host=host, port=port)
+        logger.info(f"Connected to Milvus server at {host}:{port}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to connect to Milvus: {str(e)}")
+        return False
+
+def create_political_figures_collection(drop_existing=False):
+    """
+    Create the political_figures collection with appropriate schema.
+    
+    Args:
+        drop_existing (bool): Whether to drop the collection if it exists
+        
+    Returns:
+        Collection: The created or existing collection
+    """
+    collection_name = "political_figures"
+    
+    # Check if collection exists
+    if utility.has_collection(collection_name):
+        if drop_existing:
+            logger.info(f"Dropping existing collection '{collection_name}'")
+            utility.drop_collection(collection_name)
+        else:
+            logger.info(f"Collection '{collection_name}' already exists")
+            return Collection(name=collection_name)
+    
+    # Define fields
+    fields = [
+        FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=36, is_primary=True),
+        FieldSchema(name="name", dtype=DataType.VARCHAR, max_length=255),
+        FieldSchema(name="date_of_birth", dtype=DataType.VARCHAR, max_length=10),  # Store as YYYY-MM-DD
+        FieldSchema(name="nationality", dtype=DataType.VARCHAR, max_length=100),
+        FieldSchema(name="political_affiliation", dtype=DataType.VARCHAR, max_length=100),
+        FieldSchema(name="biography", dtype=DataType.VARCHAR, max_length=65535),
+        FieldSchema(name="positions", dtype=DataType.JSON),
+        FieldSchema(name="policies", dtype=DataType.JSON),
+        FieldSchema(name="legislative_actions", dtype=DataType.JSON),
+        FieldSchema(name="public_communications", dtype=DataType.JSON),
+        FieldSchema(name="timeline", dtype=DataType.JSON),
+        FieldSchema(name="campaigns", dtype=DataType.JSON),
+        FieldSchema(name="media", dtype=DataType.JSON),
+        FieldSchema(name="philanthropy", dtype=DataType.JSON),
+        FieldSchema(name="personal_details", dtype=DataType.JSON),
+        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=768)
+    ]
+    
+    schema = CollectionSchema(fields, description="Political figures vector database for AI debate system")
+    collection = Collection(name=collection_name, schema=schema)
+    
+    logger.info(f"Collection '{collection_name}' created successfully")
+    return collection
+
+def create_hnsw_index(collection_name="political_figures"):
+    """
+    Create HNSW index on the embedding field.
+    
+    Args:
+        collection_name (str): Name of the collection to index
+        
+    Returns:
+        Collection: The indexed collection
+    """
+    try:
+        collection = Collection(name=collection_name)
+        
+        # Define index parameters
+        index_params = {
+            "index_type": "HNSW",
+            "metric_type": "L2",
+            "params": {
+                "M": 16,                # Max number of connections per layer
+                "efConstruction": 200,  # Size of dynamic candidate list
+            }
+        }
+        
+        # Create index on the embedding field
+        collection.create_index(field_name="embedding", index_params=index_params)
+        logger.info(f"HNSW index created on 'embedding' field in '{collection_name}' collection")
+        
+        # Configure search parameters
+        collection.load()
+        logger.info(f"Collection '{collection_name}' loaded into memory")
+        
+        return collection
+    except Exception as e:
+        logger.error(f"Failed to create index: {str(e)}")
+        raise
+
+def initialize_database():
+    """
+    Initialize the database by connecting, creating collection, and index.
+    
+    Returns:
+        Collection: The initialized collection
+    """
+    if not connect_to_milvus():
+        raise ConnectionError("Could not connect to Milvus database")
+    
+    collection = create_political_figures_collection()
+    create_hnsw_index(collection.name)
+    
+    return collection
+
+if __name__ == "__main__":
+    print("Initializing Milvus database schema...")
+    initialize_database()
+    print("Schema initialization complete!")
+
+================
+File: db/milvus/scripts/search.py
+================
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+"""
+AI Politician Milvus Search Utilities
+
+This module provides functions for searching and retrieving political figure
+information from the Milvus vector database.
+"""
+
+from pymilvus import Collection, connections, utility
+from sentence_transformers import SentenceTransformer
+import logging
+import json
+import uuid
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize the sentence transformer model for generating embeddings
+model = None
+
+def get_embedding_model():
+    """
+    Get or initialize the sentence transformer model.
+    
+    Returns:
+        SentenceTransformer: The embedding model
+    """
+    global model
+    if model is None:
+        try:
+            # Using a well-supported model for embedding generation
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info("Embedding model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load embedding model: {str(e)}")
+            raise
+    return model
+
+def connect_to_milvus(host="localhost", port="19530"):
+    """
+    Establish connection to Milvus server.
+    
+    Args:
+        host (str): Milvus server hostname
+        port (str): Milvus server port
+        
+    Returns:
+        bool: True if connection was successful
+    """
+    try:
+        connections.connect("default", host=host, port=port)
+        logger.info(f"Connected to Milvus server at {host}:{port}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to connect to Milvus: {str(e)}")
+        return False
+
+def get_collection(collection_name="political_figures"):
+    """
+    Get a Milvus collection and ensure it's loaded.
+    
+    Args:
+        collection_name (str): Name of the collection
+        
+    Returns:
+        Collection: The Milvus collection
+    """
+    if not utility.has_collection(collection_name):
+        raise ValueError(f"Collection '{collection_name}' does not exist")
+    
+    collection = Collection(name=collection_name)
+    
+    # Load collection if not already loaded
+    if not collection.is_loaded():
+        collection.load()
+        logger.info(f"Collection '{collection_name}' loaded into memory")
+    
+    return collection
+
+def search_political_figures(query, limit=5, output_fields=None):
+    """
+    Search for political figures based on semantic similarity to the query.
+    
+    Args:
+        query (str): The search query
+        limit (int): Maximum number of results to return
+        output_fields (list): List of fields to include in the results
+        
+    Returns:
+        list: List of search results
+    """
+    # Connect to Milvus
+    if not connections.has_connection("default"):
+        connect_to_milvus()
+    
+    # Default output fields if none provided
+    if output_fields is None:
+        output_fields = ["name", "political_affiliation", "biography"]
+    
+    # Get collection
+    collection = get_collection()
+    
+    # Generate embedding for query
+    model = get_embedding_model()
+    query_embedding = model.encode(query).tolist()
+    
+    # Search parameters
+    search_params = {
+        "metric_type": "L2",
+        "params": {"ef": 100}  # Size of final candidate list for search
+    }
+    
+    # Execute search
+    try:
+        results = collection.search(
+            data=[query_embedding],
+            anns_field="embedding",
+            param=search_params,
+            limit=limit,
+            output_fields=output_fields
+        )
+        
+        # Format results
+        search_results = []
+        for hits in results:
+            for hit in hits:
+                result = {field: hit.entity.get(field) for field in output_fields}
+                result["score"] = 1.0 / (1.0 + hit.distance)  # Convert distance to similarity score
+                search_results.append(result)
+        
+        return search_results
+    except Exception as e:
+        logger.error(f"Search failed: {str(e)}")
+        raise
+
+def insert_political_figure(politician_data):
+    """
+    Insert a political figure into the database.
+    
+    Args:
+        politician_data (dict): Dictionary containing politician information
+        
+    Returns:
+        str: The ID of the inserted politician
+    """
+    # Connect to Milvus
+    if not connections.has_connection("default"):
+        connect_to_milvus()
+    
+    # Get collection
+    collection = get_collection()
+    
+    # Ensure politician_data has all required fields
+    required_fields = ["name", "biography"]
+    for field in required_fields:
+        if field not in politician_data:
+            raise ValueError(f"Missing required field: {field}")
+    
+    # Generate embedding for biography
+    model = get_embedding_model()
+    embedding = model.encode(politician_data["biography"]).tolist()
+    
+    # Generate UUID if not provided
+    if "id" not in politician_data:
+        politician_data["id"] = str(uuid.uuid4())
+    
+    # Ad
+
+================
+File: db/milvus/test/insert_sample.py
+================
+#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+#!/usr/bin/env python3
+"""
+Insert sample data into the Milvus database.
+This script adds a test political figure to verify database functionality.
+"""
+
+import sys
+import json
+import uuid
+from pathlib import Path
+import logging
+from sentence_transformers import SentenceTransformer
+
+# Add the parent directory to the Python path
+current_dir = Path(__file__).resolve().parent
+parent_dir = current_dir.parent.parent
+sys.path.append(str(parent_dir))
+
+from scripts.schema import connect_to_milvus, create_political_figures_collection
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def insert_sample_data():
+    """Insert a sample political figure record"""
+    # Connect to Milvus
+    if not connect_to_milvus():
+        logger.error("Failed to connect to Milvus")
+        return False
+    
+    # Get the collection
+    collection = create_political_figures_collection()
+    
+    # Load the embedding model that produces 768-dimensional vectors
+    model = SentenceTransformer('all-mpnet-base-v2')  # This model produces 768-dimensional vectors
+    
+    # Sample data for Joe Biden
+    sample_data = {
+        "id": str(uuid.uuid4()),
+        "name": "Joe Biden",
+        "date_of_birth": "1942-11-20",
+        "nationality": "American",
+        "political_affiliation": "Democratic Party",
+        "biography": "Joseph Robinette Biden Jr. is an American politician who is the 46th president of the United States. A member of the Democratic Party, he previously served as the 47th vice president from 2009 to 2017 under President Barack Obama and represented Delaware in the United States Senate from 1973 to 2009.",
+        "positions": json.dumps([
+            {"title": "President of the United States", "start_year": 2021, "end_year": None},
+            {"title": "Vice President of the United States", "start_year": 2009, "end_year": 2017},
+            {"title": "U.S. Senator from Delaware", "start_year": 1973, "end_year": 2009}
+        ]),
+        "policies": json.dumps({
+            "healthcare": "Supporter of the Affordable Care Act",
+            "climate": "Committed to addressing climate change, rejoined Paris Agreement",
+            "economy": "Focus on middle-class growth and infrastructure investment"
+        }),
+        "legislative_actions": json.dumps([
+            {"title": "American Rescue Plan", "year": 2021, "description": "COVID-19 economic stimulus package"},
+            {"title": "Infrastructure Investment and Jobs Act", "year": 2021, "description": "Bipartisan infrastructure bill"}
+        ]),
+        "public_communications": json.dumps({
+            "speeches": ["Inaugural Address", "State of the Union"],
+            "interviews": ["60 Minutes", "CNN Town Hall"]
+        }),
+        "timeline": json.dumps([
+            {"year": 1942, "event": "Born in Scranton, Pennsylvania"},
+            {"year": 1972, "event": "Elected to the U.S. Senate"},
+            {"year": 2009, "event": "Became Vice President"},
+            {"year": 2021, "event": "Inaugurated as 46th President"}
+        ]),
+        "campaigns": json.dumps([
+            {"year": 1988, "position": "President", "outcome": "Withdrew during primaries"},
+            {"year": 2008, "position": "President", "outcome": "Withdrew during primaries"},
+            {"year": 2020, "position": "President", "outcome": "Won general election"}
+        ]),
+        "media": json.dumps({
+            "books": ["Promise Me, Dad", "Promises to Keep"],
+            "documentaries": ["Joe Biden: American Dreamer"]
+        }),
+        "philanthropy": json.dumps({
+            "foundations": ["Biden Foundation", "Biden Cancer Initiative"],
+            "causes": ["Cancer research", "Violence against women"]
+        }),
+        "personal_details": json.dumps({
+            "religion": "Roman Catholic",
+            "education": "University of Delaware, Syracuse University Law School",
+            "family": "Married to Jill Biden, father to Hunter, Ashley, and the late Beau and Naomi"
+        })
+    }
+    
+    # Generate embedding from biography
+    sample_data["embedding"] = model.encode(sample_data["biography"]).tolist()
+    
+    # Insert the data
+    try:
+        collection.insert([sample_data])
+        logger.info(f"Sample record for {sample_data['name']} inserted successfully")
+        logger.info(f"Record ID: {sample_data['id']}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to insert sample record: {str(e)}")
+        return False
+
+if __name__ == "__main__":
+    print("Inserting sample data into Milvus database...")
+    if insert_sample_data():
+        print("Sample data inserted successfully!")
+    else:
+        print("Failed to insert sample data.")
+        sys.exit(1)
+
+================
+File: db/milvus/test/test_search.py
+================
+#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+#!/usr/bin/env python3
+import sys
+import logging
+from sentence_transformers import SentenceTransformer
+from pymilvus import Collection, connections
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def connect_to_milvus(host="localhost", port="19530"):
+    """Establish connection to Milvus server."""
+    try:
+        connections.connect("default", host=host, port=port)
+        logger.info(f"Connected to Milvus server at {host}:{port}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to connect to Milvus: {str(e)}")
+        return False
+
+def search_politicians(query, limit=3):
+    """Search for politicians matching the query."""
+    # Connect to Milvus
+    if not connect_to_milvus():
+        logger.error("Failed to connect to Milvus")
+        return
+    
+    # Get the collection
+    collection = Collection(name="political_figures")
+    collection.load()
+    
+    # Load the embedding model
+    model = SentenceTransformer('all-mpnet-base-v2')  # Using model that produces 768-dim vectors
+    
+    # Generate embedding for query
+    query_embedding = model.encode(query).tolist()
+    
+    # Define search parameters
+    search_params = {
+        "metric_type": "L2",
+        "params": {"ef": 100}
+    }
+    
+    # Execute search
+    results = collection.search(
+        data=[query_embedding], 
+        anns_field="embedding", 
+        param=search_params,
+        limit=limit,
+        output_fields=["id", "name", "political_affiliation", "biography"]
+    )
+    
+    # Process results
+    search_results = []
+    for hits in results:
+        for hit in hits:
+            result = {
+                "id": hit.entity.get("id"),
+                "name": hit.entity.get("name"),
+                "political_affiliation": hit.entity.get("political_affiliation"),
+                "biography": hit.entity.get("biography"),
+                "similarity": hit.score
+            }
+            search_results.append(result)
+            
+    return search_results
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python test_search.py <search_query>")
+        sys.exit(1)
+        
+    query = sys.argv[1]
+    print(f"Searching for: {query}")
+    
+    results = search_politicians(query)
+    
+    if not results:
+        print("No results found.")
+    else:
+        print(f"\nFound {len(results)} results:")
+        for i, result in enumerate(results, 1):
+            print(f"\n--- Result {i} ---")
+            print(f"Name: {result['name']}")
+            print(f"Political Affiliation: {result['political_affiliation']}")
+            print(f"Similarity Score: {result['similarity']:.4f}")
+            print(f"Biography: {result['biography'][:200]}...")
+
+================
+File: db/milvus/cleanup.sh
+================
+#!/bin/bash
+
+# Cleanup script for Milvus database
+# This script stops Docker containers and optionally removes data
+
+# Define colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Print section header
+section() {
+    echo -e "\n${GREEN}=== $1 ===${NC}\n"
+}
+
+# Print information messages
+info() {
+    echo -e "${YELLOW}INFO:${NC} $1"
+}
+
+# Print error messages
+error() {
+    echo -e "${RED}ERROR:${NC} $1"
+}
+
+# Function to ask for confirmation
+confirm() {
+    read -p "$1 (y/n): " answer
+    case ${answer:0:1} in
+        y|Y )
+            return 0
+        ;;
+        * )
+            return 1
+        ;;
+    esac
+}
+
+# Check if Docker is installed
+section "Checking Prerequisites"
+if ! command -v docker &> /dev/null; then
+    error "Docker is not installed. Cannot proceed with cleanup."
+    exit 1
+fi
+
+if ! command -v docker compose &> /dev/null; then
+    error "Docker Compose is not installed. Cannot proceed with cleanup."
+    exit 1
+fi
+
+# Stop Milvus containers
+section "Stopping Milvus Containers"
+info "Stopping all Milvus-related containers using Docker Compose"
+cd "$(dirname "$0")"
+
+if docker ps | grep -q "ai_politician_milvus\|milvus-etcd\|milvus-minio"; then
+    docker compose down
+    info "Milvus containers have been stopped"
+else
+    info "No Milvus containers are currently running"
+fi
+
+# Data cleanup section - now with a clearer warning
+section "Data Management"
+echo -e "${YELLOW}NOTE:${NC} For normal usage, you do NOT need to delete your data."
+echo -e "Only delete data if you're sure you want to reset everything and lose all stored information."
+
+if confirm "Do you want to remove all Milvus data? This is NOT recommended for regular cleanup and will DELETE ALL stored data (cannot be undone)"; then
+    if confirm "Are you ABSOLUTELY SURE? This will permanently delete ALL database content"; then
+        info "Removing Milvus data directories..."
+        rm -rf /home/natalie/Databases/ai_politician_milvus/data/*
+        rm -rf /home/natalie/Databases/ai_politician_milvus/etcd/*
+        rm -rf /home/natalie/Databases/ai_politician_milvus/minio/*
+        info "Milvus data has been removed"
+    else
+        info "Data deletion cancelled. Your data is preserved."
+    fi
+else
+    info "Good choice! Data cleanup skipped. Your database content is preserved for future use."
+fi
+
+# Success message
+section "Cleanup Complete"
+echo -e "${GREEN}Milvus database cleanup is complete!${NC}"
+echo -e "All Milvus containers have been stopped but your data is preserved."
+echo -e "To restart Milvus, run the setup.sh script."
+
+================
+File: db/milvus/docker-compose.yml
+================
+services:
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - /home/natalie/Databases/ai_politician_milvus/etcd:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - /home/natalie/Databases/ai_politician_milvus/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  standalone:
+    container_name: ai_politician_milvus
+    image: milvusdb/milvus:v2.5.5
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+    - seccomp:unconfined
+    environment:
+      MINIO_REGION: us-east-1
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - /home/natalie/Databases/ai_politician_milvus/data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - "etcd"
+      - "minio"
+
+networks:
+  default:
+    name: milvus
+    external: true
+
+================
+File: db/milvus/README.md
+================
+# Milvus Database for Political Figure Retrieval
+
+## 1. Overview
+
+This database is designed for real-time political figure retrieval to support AI debates. It leverages Milvus as a vector database to enable semantic search functionality for political information.
+
+Key Milvus features used in this project:
+- **Vector Similarity Search**: Find relevant political information using semantic similarity
+- **Schema Flexibility**: Combine structured data with vector embeddings
+- **HNSW Indexing**: High-performance approximate nearest neighbor search
+
+## 2. Installation
+
+### Docker Deployment
+
+The easiest way to set up the environment is using the provided scripts:
+
+```bash
+# Set up Milvus and dependencies
+./setup.sh
+
+# To tear down the environment when done
+./cleanup.sh
+```
+
+Alternatively, you can run Milvus directly with Docker:
+
+```bash
+docker run -d --name milvus -p 19530:19530 milvusdb/milvus:latest
+```
+
+Or use the provided docker-compose.yml file:
+
+```bash
+docker compose up -d
+```
+
+### Python Dependencies
+
+```python
+pymilvus==2.2.0
+sentence-transformers==2.2.2
+```
+
+You can install the dependencies using:
+
+```bash
+pip install pymilvus==2.2.0 sentence-transformers==2.2.2
+```
+
+## 3. Database Schema
+
+The political figures collection has the following schema:
+
+| Field | Type | Description |
+|---|---|---|
+| id | VARCHAR(36) | Primary key, UUID |
+| name | VARCHAR(255) | Political figure's name |
+| date_of_birth | VARCHAR(10) | Birth date (YYYY-MM-DD) |
+| nationality | VARCHAR(100) | Country of origin |
+| political_affiliation | VARCHAR(100) | Party or political leaning |
+| biography | VARCHAR(65535) | Full biography text |
+| positions | JSON | Political positions held |
+| policies | JSON | Political stance data |
+| legislative_actions | JSON | Voting records and sponsored bills |
+| public_communications | JSON | Speeches and public statements |
+| timeline | JSON | Key events timeline |
+| campaigns | JSON | Campaign information |
+| media | JSON | Media appearances and links |
+| philanthropy | JSON | Charitable activities |
+| personal_details | JSON | Additional personal information |
+| embedding | FLOAT_VECTOR(768) | all-MiniLM-L6-v2 output vector |
+
+## 4. Script Usage
+
+### Database Initialization
+
+To initialize or reset the database:
+
+```bash
+python3 scripts/initialize_db.py --recreate
+```
+
+This script:
+- Establishes connection to Milvus
+- Creates the political_figures collection with the schema above
+- Builds HNSW index on the embedding field
+
+### Search API Usage
+
+Example code for searching political figures:
+
+```python
+from scripts.search import search_political_figures
+
+# Search for political figures based on a query
+results = search_political_figures(
+    query="What is the stance on climate change?",
+    limit=5,
+    output_fields=["name", "political_affiliation", "policies"]
+)
+
+# Print results
+for result in results:
+    print(f"Name: {result['name']}")
+    print(f"Affiliation: {result['political_affiliation']}")
+    print(f"Score: {result['score']}")
+    print(f"Policies: {result['policies']}")
+    print("---")
+```
+
+## 5. Embedding Strategy
+
+This project uses the following embedding approach:
+
+- **Model**: all-MiniLM-L6-v2 sentence transformer model
+- **Vector Dimensions**: 768-dimensional float vectors
+- **Index Type**: HNSW (Hierarchical Navigable Small World)
+- **Index Parameters**:
+    - M=16 (maximum number of connections per layer)
+    - efConstruction=200 (size of dynamic candidate list during construction)
+- **Search Parameters**:
+    - ef=100 (size of the dynamic candidate list during search)
+    - Metric: L2 (Euclidean distance)
+
+The embedding model converts politician biographical text and policy statements into numerical vectors, enabling semantic similarity search.
+
+## 6. Directory Structure
+
+```
+./
+├── scripts/
+│   ├── initialize_db.py   # Database initialization
+│   ├── schema.py          # Collection definition
+│   └── search.py          # Vector query logic
+├── logs/                  # Application logs
+├── docker-compose.yml     # Docker configuration
+├── setup.sh               # Setup script for environment
+├── cleanup.sh             # Cleanup script for environment
+└── README.md              # This documentation
+```
+
+## 7. Troubleshooting
+
+### Common Errors
+
+**Milvus Connection Issues**
+- Error: "Failed to connect to Milvus server"
+- Solution: Ensure Milvus container is running with `docker ps` and check logs with `docker logs milvus`
+
+**Index Creation Failures**
+- Error: "Failed to create index"
+- Solution: Verify sufficient memory is available for index creation
+- Alternative: Adjust index parameters (M, efConstruction) for lower memory usage
+
+**JSON Field Format Requirements**
+- Error: "Invalid field value type"
+- Solution: Ensure JSON fields contain valid JSON structures
+- Example: `policies` field should use the format:
+  ```json
+  {
+    "climate_change": {"position": "supportive", "details": "..."},
+    "economy": {"position": "mixed", "details": "..."}
+  }
+  ```
+
+### Performance Optimization
+
+- Increase `M` parameter for better search accuracy (at the cost of memory)
+- Decrease `efConstruction` for faster index building (at the cost of recall)
+- Adjust `ef` search parameter based on query performance requirements
+
+================
+File: db/milvus/setup.sh
+================
+#!/bin/bash
+
+# Setup script for Milvus database
+# This script initializes the Milvus database for the AI Politician project
+
+# Exit on error
+set -e
+
+# Define colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Print section header
+section() {
+    echo -e "\n${GREEN}=== $1 ===${NC}\n"
+}
+
+# Print information messages
+info() {
+    echo -e "${YELLOW}INFO:${NC} $1"
+}
+
+# Print error messages
+error() {
+    echo -e "${RED}ERROR:${NC} $1"
+}
+
+# Check if Docker is installed
+section "Checking Prerequisites"
+if ! command -v docker &> /dev/null; then
+    error "Docker is not installed. Please install Docker first."
+    exit 1
+fi
+
+if ! command -v docker compose &> /dev/null; then
+    error "Docker Compose is not installed. Please install Docker Compose first."
+    exit 1
+fi
+
+# Create database directories
+section "Creating Database Directories"
+info "Setting up directories at /home/natalie/Databases/ai_politician_milvus"
+
+mkdir -p /home/natalie/Databases/ai_politician_milvus/data
+mkdir -p /home/natalie/Databases/ai_politician_milvus/conf
+mkdir -p /home/natalie/Databases/ai_politician_milvus/logs
+
+# Set proper permissions
+info "Setting directory permissions"
+chmod -R 755 /home/natalie/Databases/ai_politician_milvus
+
+# Start Milvus with Docker Compose
+section "Starting Milvus Database"
+info "Starting Milvus container using Docker Compose"
+cd "$(dirname "$0")"
+docker compose up -d
+
+# Wait for Milvus to be ready
+info "Waiting for Milvus to be ready..."
+sleep 10
+
+# Check if Milvus is running
+if docker ps | grep -q ai_politician_milvus; then
+    info "Milvus container is running"
+else
+    error "Milvus container is not running. Please check docker logs."
+    exit 1
+fi
+
+# Success message
+section "Setup Complete"
+echo -e "${GREEN}Milvus database setup is complete!${NC}"
+echo -e "Milvus server is running at: localhost:19530"
+echo -e "You can now use the Python scripts to create collections and indexes."
+echo -e "\nTo stop Milvus: docker-compose down"
+echo -e "To view logs: docker logs ai_politician_milvus"
 
 ================
 File: test/test_db.py
@@ -700,6 +1767,14 @@ checkpoints/
 # Local development
 local_settings.py
 
+# Additional __pycache__ directories to ignore
+db/milvus/__pycache__/
+db/milvus/scripts/__pycache__/
+db/milvus/test/__pycache__/
+
+# Milvus logs
+db/milvus/logs/
+
 ================
 File: chat_biden.py
 ================
@@ -1208,28 +2283,6 @@ For full details, see the [Database README](db/README.md).
    - Ensure all required model files are present
 
 For additional help or to report issues, please open a GitHub issue.
-
-================
-File: requirements-chat.txt
-================
-transformers>=4.36.0
-peft>=0.7.0
-torch>=2.1.0
-accelerate>=0.25.0
-bitsandbytes>=0.41.0
-datasets>=2.15.0
-python-dotenv>=1.0.0
-safetensors>=0.4.0
-huggingface-hub>=0.19.0
-sentencepiece
-protobuf
-
-# Database RAG System Dependencies
-requests>=2.28.0
-beautifulsoup4>=4.11.0
-sentence-transformers>=2.2.0
-scikit-learn>=1.0.0
-numpy>=1.22.0
 
 ================
 File: requirements-training.txt
