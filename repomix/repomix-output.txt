@@ -1,0 +1,1258 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+test/
+  test_db.py
+training/
+  train_mistral_biden.py
+  train_mistral_trump.py
+.env.example
+.gitignore
+chat_biden.py
+chat_trump.py
+README.md
+requirements-chat.txt
+requirements-training.txt
+
+================================================================
+Files
+================================================================
+
+================
+File: test/test_db.py
+================
+#!/usr/bin/env python3
+"""
+Test script for the political RAG database system.
+"""
+import sys
+from db.database import get_database
+from db.utils.rag_utils import retrieve_context_for_query
+
+def display_politician_bio(name, politician_id):
+    """Display basic biographical information about a politician."""
+    print(f"\n===== {name}'s Biography =====")
+    bio_db = get_database('biography')
+    bio = bio_db.get_complete_biography(politician_id)
+    
+    # Basic info
+    print(f"Name: {bio['politician']['name']}")
+    if bio['politician']['birth_date']:
+        print(f"Birth Date: {bio['politician']['birth_date']}")
+    if bio['politician']['birth_place']:
+        print(f"Birth Place: {bio['politician']['birth_place']}")
+    
+    # Education
+    if bio['education']:
+        print("\nEducation:")
+        for edu in bio['education']:
+            degree_info = f"{edu['degree']} in {edu['field_of_study']}" if edu['degree'] and edu['field_of_study'] else edu['degree'] or "Attended"
+            years = f"{edu['start_year']} - {edu['end_year'] or 'present'}" if edu['start_year'] else ""
+            print(f"- {edu['institution']}: {degree_info} ({years})")
+    
+    # Career
+    if bio['career']:
+        print("\nCareer:")
+        for career in bio['career']:
+            years = f"{career['start_year']} - {career['end_year'] or 'present'}" if career['start_year'] else ""
+            print(f"- {career['role']} at {career['organization']} ({years})")
+            if career['description']:
+                print(f"  {career['description']}")
+    
+    # Family
+    if bio['family']:
+        print("\nFamily:")
+        for member in bio['family']:
+            print(f"- {member['relationship'].capitalize()}: {member['name']}")
+            if member['description']:
+                print(f"  {member['description']}")
+
+def test_search_query(query, politician):
+    """Test searching the databases with a query."""
+    print(f"\n===== Query: '{query}' (for {politician}) =====")
+    context = retrieve_context_for_query(query, politician)
+    print(context)
+
+def main():
+    """Main function to run tests."""
+    print("Political RAG Database System Test\n")
+    
+    # Display Trump and Biden bios
+    display_politician_bio("Donald Trump", 1)
+    display_politician_bio("Joe Biden", 2)
+    
+    # Test queries
+    queries = [
+        ("What is Donald Trump's education?", "Donald Trump"),
+        ("What positions did Biden hold in government?", "Joe Biden"),
+        ("When was Trump born?", "Donald Trump"),
+        ("Tell me about Biden's family", "Joe Biden"),
+    ]
+    
+    for query, politician in queries:
+        test_search_query(query, politician)
+
+if __name__ == "__main__":
+    main()
+
+================
+File: training/train_mistral_biden.py
+================
+#!/usr/bin/env python3
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, BitsAndBytesConfig
+from transformers import DataCollatorForSeq2Seq
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from datasets import Dataset
+import torch
+from typing import Dict, Sequence, List
+import pandas as pd
+from zipfile import ZipFile
+
+# Enable Memory-Efficient Loading with 4-bit Quantization
+compute_dtype = torch.bfloat16  # Match Trump training
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=compute_dtype,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+)
+
+def clean_tweet(text: str) -> str:
+    """Clean tweet text by removing URLs, handling mentions and hashtags"""
+    import re
+    # Remove URLs
+    text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
+    # Convert @mentions to "someone"
+    text = re.sub(r'@\w+', 'someone', text)
+    # Remove hashtag symbol but keep the text
+    text = re.sub(r'#(\w+)', r'\1', text)
+    # Remove multiple spaces and trim
+    return ' '.join(text.split()).strip()
+
+def process_tweet(text: str) -> str:
+    """Format tweet into instruction format"""
+    text = clean_tweet(text)
+    if not text:
+        return ""
+    return f"<s>[INST] Continue speaking in Joe Biden's style: [/INST] {text}</s>"
+
+def process_speech(text: str) -> str:
+    """Format speech into instruction format"""
+    if not text or not isinstance(text, str):
+        return ""
+    text = text.strip()
+    if not text:
+        return ""
+    return f"<s>[INST] Continue speaking in Joe Biden's style: [/INST] {text}</s>"
+
+def load_tweets_dataset(zip_path: str) -> Dataset:
+    """Load and process tweets from ZIP file"""
+    print("Loading tweets dataset...")
+    with ZipFile(zip_path) as zf:
+        with zf.open('JoeBidenTweets.csv') as f:
+            df = pd.read_csv(f)
+    
+    # Process tweets
+    texts = []
+    for tweet in df['tweet']:  # Using 'tweet' column
+        processed = process_tweet(tweet)
+        if processed:
+            texts.append(processed)
+    
+    return Dataset.from_dict({"text": texts})
+
+def load_speech_dataset(zip_path: str) -> Dataset:
+    """Load and process speech from ZIP file"""
+    print("Loading speech dataset...")
+    with ZipFile(zip_path) as zf:
+        with zf.open('joe_biden_dnc_2020.csv') as f:
+            df = pd.read_csv(f)
+    
+    # Process speech segments
+    texts = []
+    for text in df['TEXT']:  # Using 'TEXT' column
+        processed = process_speech(text)
+        if processed:
+            texts.append(processed)
+    
+    return Dataset.from_dict({"text": texts})
+
+# Load base model and tokenizer
+print("Loading base model and tokenizer...")
+model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+print("Loading tokenizer...")
+try:
+    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="right", use_fast=False)
+    print("Tokenizer loaded successfully")
+except Exception as e:
+    print(f"Error loading tokenizer: {str(e)}")
+    raise
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    quantization_config=bnb_config,
+    device_map="auto",
+    trust_remote_code=True,
+    torch_dtype=compute_dtype,
+)
+
+# Prepare model for training
+print("Preparing model for training...")
+model.config.use_cache = False
+model.config.pretraining_tp = 1
+model = prepare_model_for_kbit_training(model)
+
+# Apply LoRA for fine-tuning
+peft_config = LoraConfig(
+    r=16,  # Match Trump training
+    lora_alpha=64,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    ],
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM",
+    inference_mode=False,
+)
+model = get_peft_model(model, peft_config)
+model.print_trainable_parameters()
+
+# Set padding token
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+# Load datasets from ZIP files
+tweets_dataset = load_tweets_dataset("/home/natalie/datasets/biden/joe-biden-tweets.zip")
+speech_dataset = load_speech_dataset("/home/natalie/datasets/biden/joe-biden-2020-dnc-speech.zip")
+
+# Merge datasets
+merged_dataset = Dataset.from_dict({
+    "text": tweets_dataset["text"] + speech_dataset["text"]
+})
+
+# Split dataset
+dataset = merged_dataset.train_test_split(test_size=0.1)
+train_dataset = dataset["train"]
+eval_dataset = dataset["test"]
+
+# Tokenization function
+def tokenize_function(examples: Dict[str, Sequence[str]]) -> dict:
+    """Tokenize with proper labels"""
+    tokenized = tokenizer(
+        examples["text"],
+        truncation=True,
+        max_length=1024,
+        padding=False,
+        return_tensors=None,
+    )
+    tokenized["labels"] = tokenized["input_ids"].copy()
+    return tokenized
+
+# Process datasets
+print("Tokenizing datasets...")
+tokenized_train = train_dataset.map(
+    tokenize_function,
+    batched=True,
+    remove_columns=train_dataset.column_names,
+    desc="Tokenizing training dataset"
+)
+tokenized_eval = eval_dataset.map(
+    tokenize_function,
+    batched=True,
+    remove_columns=eval_dataset.column_names,
+    desc="Tokenizing validation dataset"
+)
+
+# Configure data collator
+data_collator = DataCollatorForSeq2Seq(
+    tokenizer=tokenizer,
+    pad_to_multiple_of=8,
+    return_tensors="pt",
+    padding=True
+)
+
+# Training arguments - match Trump training exactly
+training_args = TrainingArguments(
+    output_dir="./mistral-biden",
+    evaluation_strategy="steps",
+    eval_steps=50,
+    save_strategy="steps",
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=4,
+    save_steps=100,
+    logging_steps=25,
+    learning_rate=2e-4,
+    num_train_epochs=3,
+    max_grad_norm=0.3,
+    max_steps=-1,
+    warmup_ratio=0.03,
+    group_by_length=True,
+    lr_scheduler_type="cosine",
+    bf16=True,
+    optim="paged_adamw_8bit",
+    logging_dir="./logs",
+    report_to="none",
+    gradient_checkpointing=True,
+    save_total_limit=3,
+    push_to_hub=False,
+    ddp_find_unused_parameters=False,
+    remove_unused_columns=False
+)
+
+# Initialize trainer
+print("Initializing trainer...")
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_train,
+    eval_dataset=tokenized_eval,
+    data_collator=data_collator,
+)
+
+# Train
+print("Starting training...")
+try:
+    model.train()
+    trainer.train()
+except Exception as e:
+    print(f"An error occurred during training: {str(e)}")
+    raise
+
+# Save the model
+print("Saving model...")
+save_path = "./fine_tuned_biden_mistral"
+model.save_pretrained(save_path)
+tokenizer.save_pretrained(save_path)
+
+print("Training completed successfully!")
+
+================
+File: training/train_mistral_trump.py
+================
+from huggingface_hub import login
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, BitsAndBytesConfig
+from transformers import DataCollatorForSeq2Seq
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from datasets import load_dataset, concatenate_datasets
+import torch
+from typing import Dict, Sequence
+
+# Step 1: Login to Hugging Face
+HUGGING_FACE_KEY = "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"  # Replace with your Hugging Face token
+login(token=HUGGING_FACE_KEY)
+
+# Step 2: Enable Memory-Efficient Loading with 4-bit Quantization
+compute_dtype = torch.bfloat16
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=compute_dtype,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+)
+
+# Step 3: Load the Mistral model and tokenizer
+model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="right")
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    quantization_config=bnb_config,
+    device_map="auto",
+    trust_remote_code=True,
+    torch_dtype=compute_dtype,
+)
+
+# Prepare the model for training
+model.config.use_cache = False
+model.config.pretraining_tp = 1
+model = prepare_model_for_kbit_training(model)
+
+# Apply LoRA for fine-tuning
+peft_config = LoraConfig(
+    r=16,
+    lora_alpha=64,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    ],
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM",
+    inference_mode=False,
+)
+model = get_peft_model(model, peft_config)
+model.print_trainable_parameters()  # Print trainable parameters info
+
+# Set padding token
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+# Step 4: Load the datasets
+dataset1 = load_dataset("pookie3000/trump-interviews")  # Contains 'conversations'
+dataset2 = load_dataset("bananabot/TrumpSpeeches")  # Might contain 'train'
+
+# Step 5: Preprocess dataset1 (Trump Interviews)
+def process_interview(example):
+    """Format the conversation in Mistral's instruction format"""
+    conversations = example["conversations"]
+    
+    # Safety check for conversation length
+    if len(conversations) < 2:
+        return {"text": ""}
+        
+    # Find first user and first assistant message
+    user_msg = None
+    assistant_msg = None
+    
+    for conv in conversations:
+        if conv["role"].lower() == "user" and user_msg is None:
+            user_msg = conv["content"]
+        elif conv["role"].lower() == "assistant" and assistant_msg is None:
+            assistant_msg = conv["content"]
+            
+        if user_msg and assistant_msg:
+            break
+    
+    # Only format if we have both messages
+    if user_msg and assistant_msg:
+        return {"text": f"<s>[INST] {user_msg} [/INST] {assistant_msg}</s>"}
+    return {"text": ""}
+
+# Process interviews dataset and filter out empty examples
+dataset1 = dataset1.map(
+    process_interview,
+    remove_columns=["conversations"],
+    desc="Processing interviews"
+)
+dataset1 = dataset1.filter(lambda x: len(x["text"]) > 0, desc="Filtering valid interviews")
+
+# Step 6: Process Trump Speeches dataset
+def process_speech(example):
+    """Format the speech in Mistral's instruction format"""
+    text = example.get("text", "").strip()
+    if not text:
+        return {"text": ""}
+    return {
+        "text": f"<s>[INST] Continue speaking in Donald Trump's style: [/INST] {text}</s>"
+    }
+
+# Process speeches dataset and filter out empty examples
+dataset2 = dataset2.map(
+    process_speech,
+    desc="Processing speeches"
+)
+dataset2 = dataset2.filter(lambda x: len(x["text"]) > 0, desc="Filtering valid speeches")
+
+# Step 7: Merge the two datasets properly
+merged_dataset = concatenate_datasets([dataset1["train"], dataset2["train"]])
+
+# Step 8: Split dataset into 90% training and 10% evaluation
+dataset = merged_dataset.train_test_split(test_size=0.1)
+train_dataset = dataset["train"]
+eval_dataset = dataset["test"]
+
+# Step 9: Tokenize the datasets
+def tokenize_function(examples: Dict[str, Sequence[str]]) -> dict:
+    """Tokenize with proper labels for casual language modeling"""
+    # Tokenize the texts
+    tokenized = tokenizer(
+        examples["text"],
+        truncation=True,
+        max_length=1024,
+        padding=False,
+        return_tensors=None,
+    )
+    
+    # Create labels for casual language modeling
+    tokenized["labels"] = tokenized["input_ids"].copy()
+    
+    return tokenized
+
+# Process datasets with proper batching
+tokenized_train_dataset = train_dataset.map(
+    tokenize_function,
+    batched=True,
+    remove_columns=train_dataset.column_names,
+    desc="Tokenizing training dataset"
+)
+tokenized_eval_dataset = eval_dataset.map(
+    tokenize_function,
+    batched=True,
+    remove_columns=eval_dataset.column_names,
+    desc="Tokenizing validation dataset"
+)
+
+# Configure data collator for sequence-to-sequence training
+data_collator = DataCollatorForSeq2Seq(
+    tokenizer=tokenizer,
+    pad_to_multiple_of=8,
+    return_tensors="pt",
+    padding=True
+)
+
+# Step 10: Define optimized training arguments for 24GB VRAM
+training_args = TrainingArguments(
+    output_dir="./mistral-trump",
+    eval_strategy="steps",
+    eval_steps=50,
+    save_strategy="steps",
+    per_device_train_batch_size=4,  # Increased for 24GB VRAM
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=4,
+    save_steps=100,
+    logging_steps=25,
+    learning_rate=2e-4,
+    num_train_epochs=3,
+    max_grad_norm=0.3,
+    max_steps=-1,
+    warmup_ratio=0.03,
+    group_by_length=True,
+    lr_scheduler_type="cosine",  # Changed to cosine for better convergence
+    bf16=True,  # Changed to bf16 for better training stability
+    optim="paged_adamw_8bit",  # Changed to 8-bit optimizer
+    logging_dir="./logs",
+    report_to="none",
+    gradient_checkpointing=True,
+    save_total_limit=3,
+    push_to_hub=False,
+    ddp_find_unused_parameters=False,
+    remove_unused_columns=False
+)
+
+# Step 11: Set up training with proper error handling
+try:
+    print("Starting training...")
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_train_dataset,
+        eval_dataset=tokenized_eval_dataset,
+        data_collator=data_collator,
+    )
+    
+    # Ensure model is in training mode
+    model.train()
+    
+    # Start training
+    trainer.train()
+    
+except Exception as e:
+    print(f"An error occurred during training: {str(e)}")
+    raise
+
+# Step 12: Save the fine-tuned model
+model.save_pretrained("./fine_tuned_trump_mistral")
+tokenizer.save_pretrained("./fine_tuned_trump_mistral")
+
+print("Training completed and model saved.")
+
+================
+File: .env.example
+================
+# HuggingFace API key with access to:
+# - mistralai/Mistral-7B-Instruct-v0.2
+# - Trump dataset
+HUGGINGFACE_API_KEY=your_key_here
+
+# Path where models will be saved/loaded
+# Default: /home/shared_models/aipolitician
+SHARED_MODELS_PATH=/path/to/models
+
+================
+File: .gitignore
+================
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Specific __pycache__ directories to ignore
+db/__pycache__/
+db/schemas/__pycache__/
+db/scripts/__pycache__/
+db/utils/__pycache__/
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs and databases
+*.log
+logs/
+*.sqlite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# Data exports
+*.csv
+*.xlsx
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Training outputs
+mistral-trump/
+fine_tuned_trump_mistral/
+training/mistral-trump/
+training/fine_tuned_trump_mistral/
+
+# Model checkpoints
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.model
+*.ckpt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Local development
+local_settings.py
+
+================
+File: chat_biden.py
+================
+#!/usr/bin/env python3
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import PeftModel
+import torch
+from dotenv import load_dotenv
+import os
+import argparse
+from pathlib import Path
+
+# Add project root to the Python path
+root_dir = Path(__file__).parent.absolute()
+import sys
+sys.path.insert(0, str(root_dir))
+
+# Import database utils if they exist
+try:
+    from db.utils.rag_utils import integrate_with_chat
+    HAS_RAG = True
+except ImportError:
+    HAS_RAG = False
+    print("RAG database system not available. Running without RAG.")
+
+# Load environment variables
+load_dotenv()
+
+def generate_response(prompt, model, tokenizer, use_rag=True, max_length=512):
+    """Generate a response using the model, optionally with RAG"""
+    # Use RAG if available and enabled
+    if HAS_RAG and use_rag:
+        # Get contextual information from the database
+        context = integrate_with_chat(prompt, "Joe Biden")
+        
+        # Combine context with prompt
+        rag_prompt = f"{context}\n\nUser Question: {prompt}"
+        formatted_prompt = f"<s>[INST] {rag_prompt} [/INST]"
+    else:
+        # Standard prompt without RAG
+        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+    
+    # Generate response
+    inputs = tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_length=max_length,
+            num_return_sequences=1,
+            temperature=0.7,
+            do_sample=True,
+            pad_token_id=tokenizer.pad_token_id,
+            use_cache=True
+        )
+    
+    # Decode and clean response
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response = response.split("[/INST]")[-1].strip()
+    return response
+
+def main():
+    # Set up command line arguments
+    parser = argparse.ArgumentParser(description="Chat with Biden AI model")
+    parser.add_argument("--no-rag", action="store_true", help="Disable RAG and use pure generation")
+    parser.add_argument("--max-length", type=int, default=512, help="Maximum response length")
+    args = parser.parse_args()
+    
+    # Get model path from environment
+    SHARED_MODELS_PATH = os.getenv("SHARED_MODELS_PATH", "/home/shared_models/aipolitician")
+    LORA_PATH = os.path.join(SHARED_MODELS_PATH, "fine_tuned_biden_mistral")
+    
+    # Load base model and tokenizer
+    print("Loading model...")
+    base_model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+    
+    # Create BitsAndBytesConfig for 4-bit quantization
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,  # Match compute dtype with model dtype
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+    
+    # Load model with proper configuration
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_id,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.float16,
+        attn_implementation="eager"  # Don't use Flash Attention
+    )
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=False)
+    
+    # Set padding token if needed
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load the fine-tuned LoRA weights
+    print("Loading fine-tuned weights...")
+    model = PeftModel.from_pretrained(model, LORA_PATH)
+    model.eval()  # Set to evaluation mode
+    
+    # Print status
+    if HAS_RAG and not args.no_rag:
+        print("\nRAG system enabled. Using database for factual answers.")
+    
+    print("\nModel loaded! Enter your prompts (type 'quit' to exit)")
+    print("\nExample prompts:")
+    print("1. What's your vision for America's future?")
+    print("2. How would you help the middle class?")
+    print("3. Tell me about your infrastructure plan.")
+    print("4. When were you born?")
+    print("5. What was your position on the American Recovery and Reinvestment Act?")
+    
+    while True:
+        try:
+            prompt = input("\nYou: ")
+            if prompt.lower() == 'quit':
+                break
+            
+            # Generate response with or without RAG
+            response = generate_response(
+                prompt, 
+                model, 
+                tokenizer, 
+                use_rag=(HAS_RAG and not args.no_rag),
+                max_length=args.max_length
+            )
+            print(f"\nBiden: {response}")
+            
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            import traceback
+            traceback.print_exc()  # Print full error trace for debugging
+    
+    # Cleanup
+    print("\nCleaning up...")
+    del model
+    torch.cuda.empty_cache()
+
+if __name__ == "__main__":
+    main()
+
+================
+File: chat_trump.py
+================
+#!/usr/bin/env python3
+"""
+Chat with a Donald Trump AI model.
+
+This module provides functionality to interact with a LLaMA model fine-tuned
+on Donald Trump's speaking style and positions.
+"""
+
+import argparse  # Added for command-line arguments
+import os
+import sys
+import gc
+import torch
+from pathlib import Path  # Added for path handling
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import PeftModel
+from dotenv import load_dotenv
+
+# Add the root directory to the Python path for module resolution
+root_dir = Path(__file__).resolve().parent
+sys.path.append(str(root_dir))
+
+# Add RAG utilities import with try/except
+try:
+    from db.utils.rag_utils import integrate_with_chat
+    HAS_RAG = True
+except ImportError:
+    HAS_RAG = False
+    print("RAG database system not available. Running without RAG.")
+
+# Load environment variables
+load_dotenv()
+
+def generate_response(model, tokenizer, prompt, max_length=512, use_rag=True):
+    """
+    Generate a response using the model
+    
+    Args:
+        model: The language model
+        tokenizer: The tokenizer for the model
+        prompt: The user's input prompt
+        max_length: Maximum length of the generated response
+        use_rag: Whether to use RAG for enhancing responses with facts
+        
+    Returns:
+        The generated response text
+    """
+    # Use RAG to get context if available and enabled
+    if HAS_RAG and use_rag:
+        context = integrate_with_chat(prompt, "Donald Trump")
+        rag_prompt = f"{context}\n\nUser Question: {prompt}"
+        formatted_prompt = f"<s>[INST] {rag_prompt} [/INST]"
+    else:
+        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+    
+    # Generate response
+    inputs = tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_length=max_length,
+            num_return_sequences=1,
+            temperature=0.7,
+            do_sample=True,
+            pad_token_id=tokenizer.pad_token_id,
+            use_cache=True
+        )
+    
+    # Decode and clean response
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response = response.split("[/INST]")[-1].strip()
+    return response
+
+def main():
+    # Add command-line arguments
+    parser = argparse.ArgumentParser(description="Chat with Trump AI model")
+    parser.add_argument("--no-rag", action="store_true", 
+                    help="Disable RAG and use pure generation")
+    parser.add_argument("--max-length", type=int, default=512, 
+                    help="Maximum response length")
+    args = parser.parse_args()
+    
+    # Get model path from environment
+    SHARED_MODELS_PATH = os.getenv("SHARED_MODELS_PATH", "/home/shared_models/aipolitician")
+    LORA_PATH = os.path.join(SHARED_MODELS_PATH, "fine_tuned_trump_mistral")
+    
+    # Load base model and tokenizer
+    print("Loading model...")
+    base_model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+    
+    # Create BitsAndBytesConfig for 4-bit quantization
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,  # Match compute dtype with model dtype
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+    
+    # Load model with proper configuration
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_id,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.float16,
+        attn_implementation="eager"  # Don't use Flash Attention
+    )
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=False)
+    
+    # Set padding token if needed
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load the fine-tuned LoRA weights
+    print("Loading fine-tuned weights...")
+    model = PeftModel.from_pretrained(model, LORA_PATH)
+    model.eval()  # Set to evaluation mode
+    
+    # Show RAG status message
+    if HAS_RAG and not args.no_rag:
+        print("\nRAG system enabled. Using database for factual answers.")
+    
+    print("\n🇺🇸 Trump AI Chat 🇺🇸")
+    print("===================")
+    print("Type 'quit', 'exit', or press Ctrl+C to end the conversation.")
+    print("\nExample questions:")
+    # Updated example prompts
+    print("1. What's your plan for border security?")
+    print("2. How would you handle trade with China?")
+    print("3. Tell me about your tax reform achievements")
+    print("4. When were you born?")
+    print("5. What was your position on the Paris Climate Agreement?")
+    
+    while True:
+        try:
+            user_input = input("\nYou: ")
+            if user_input.lower() in ['quit', 'exit']:
+                break
+                
+            print("\nTrump: ", end="", flush=True)
+            # Pass use_rag parameter to generate_response
+            response = generate_response(model, tokenizer, user_input, 
+                                      max_length=args.max_length,
+                                      use_rag=not args.no_rag)
+            print(response)
+            
+        except KeyboardInterrupt:
+            print("\nExiting chat...")
+            break
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            import traceback
+            traceback.print_exc()  # Print full error trace for debugging
+    
+    # Cleanup
+    print("\nCleaning up...")
+    del model
+    del tokenizer
+    torch.cuda.empty_cache()
+    gc.collect()
+
+if __name__ == "__main__":
+    main()
+
+================
+File: README.md
+================
+# AI Politician
+
+Fine-tuned Mistral-7B models that emulate Donald Trump's and Joe Biden's speaking styles.
+
+## Prerequisites
+
+### CUDA Setup
+- CUDA compatible GPU required
+- CUDA toolkit and drivers must be installed
+- Note: The project was tested with CUDA 12.4
+
+### Environment Setup
+This project requires two separate conda environments due to specific version requirements:
+
+1. Training Environment:
+```bash
+conda create -n training-env python=3.10
+conda activate training-env
+pip install -r requirements-training.txt
+```
+
+2. Chat Environment:
+```bash
+conda create -n chat-env python=3.10
+conda activate chat-env
+pip install -r requirements-chat.txt
+```
+
+### HuggingFace Setup
+1. Create a HuggingFace account and get your API key
+2. The API key needs access to:
+   - mistralai/Mistral-7B-Instruct-v0.2
+   - Trump dataset (specific access requirements)
+
+### Environment Variables
+1. Create a `.env` file from the example:
+```bash
+cp .env.example .env
+```
+
+2. Configure your environment:
+```
+HUGGINGFACE_API_KEY=your_key_here
+SHARED_MODELS_PATH=/path/to/models  # Default: /home/shared_models/aipolitician
+```
+
+## Dataset Setup
+
+### Required Datasets
+1. Biden Datasets:
+   - Joe Biden tweets dataset
+   - Joe Biden 2020 DNC speech
+   Place in: `/home/natalie/datasets/biden/`
+   - joe-biden-tweets.zip
+   - joe-biden-2020-dnc-speech.zip
+
+2. Trump Datasets:
+   - Trump interviews dataset
+   - Trump speeches dataset
+   (Specific dataset locations and formats to be documented)
+
+## Training
+
+### Important Note
+Use the `python` command for training scripts in the training environment:
+
+```bash
+conda activate training-env
+python training/train_mistral_trump.py
+python training/train_mistral_biden.py
+```
+
+The training process:
+- Loads Mistral-7B-Instruct-v0.2 base model
+- Fine-tunes using LoRA
+- Uses 4-bit quantization for memory efficiency
+- Saves models to:
+  - `mistral-trump/` and `fine_tuned_trump_mistral/`
+  - `mistral-biden/` and `fine_tuned_biden_mistral/`
+
+## Chat Interface
+
+### Important Note
+Use the `python3` command for chat scripts in the chat environment:
+
+```bash
+conda activate chat-env
+python3 chat_trump.py  # Chat with Trump AI
+python3 chat_biden.py  # Chat with Biden AI
+```
+
+Each script provides:
+- Interactive terminal interface
+- Type messages and get responses in the respective style
+- Type 'quit' to exit
+- Use Ctrl+C to exit at any time
+
+## Database RAG System
+
+The project includes a Retrieval-Augmented Generation (RAG) database system that provides factual information to the AI models. This system improves factual accuracy by retrieving relevant information from a set of structured databases.
+
+### Database Setup
+
+1. Create the database directory:
+```bash
+mkdir -p /home/natalie/Databases/political_rag
+```
+
+2. Initialize the databases:
+```bash
+conda activate chat-env
+python -m db.scripts.initialize_databases
+```
+
+### Using RAG in Chat
+
+By default, the chat interfaces will use the RAG system if available. To disable RAG:
+
+```bash
+python3 chat_biden.py --no-rag
+python3 chat_trump.py --no-rag
+```
+
+### Database Structure
+
+The system includes 17 specialized databases:
+- Biography Database
+- Policy Database
+- Voting Record Database
+- Public Statements Database
+- And many more...
+
+For full details, see the [Database README](db/README.md).
+
+## Project Structure
+
+```
+.
+├── .env                      # Environment variables
+├── .env.example              # Example environment file
+├── requirements-training.txt # Training environment dependencies
+├── requirements-chat.txt     # Chat environment dependencies
+├── chat_biden.py             # Biden chat interface
+├── chat_trump.py             # Trump chat interface
+├── db/                       # Database RAG system
+│   ├── config.py             # Database configuration
+│   ├── database.py           # Base database interface
+│   ├── README.md             # Database documentation
+│   ├── schemas/              # Database schema definitions
+│   ├── scripts/              # Database scripts
+│   └── utils/                # Database utilities
+└── training/                 # Training code
+    ├── train_mistral_biden.py
+    └── train_mistral_trump.py
+```
+
+## Version Compatibility
+
+### Training Environment
+- Specific versions required for training stability
+- See requirements-training.txt for exact versions
+- Key packages:
+  - torch==2.0.1
+  - transformers==4.36.0
+  - peft==0.7.0
+
+### Chat Environment
+- More flexible version requirements
+- See requirements-chat.txt for minimum versions
+- Key packages:
+  - torch>=2.1.0
+  - transformers>=4.36.0
+  - peft>=0.7.0
+
+## Troubleshooting
+
+### Common Issues
+1. Version Conflicts
+   - Ensure you're using the correct conda environment
+   - Check that you're using the right python command (python for training, python3 for chat)
+   - Verify package versions match requirements files
+
+2. CUDA Issues
+   - Verify CUDA is properly installed
+   - Check GPU availability with `nvidia-smi`
+   - Ensure CUDA version compatibility
+
+3. Model Loading Issues
+   - Verify model paths in .env file
+   - Check HuggingFace API key permissions
+   - Ensure all required model files are present
+
+For additional help or to report issues, please open a GitHub issue.
+
+================
+File: requirements-chat.txt
+================
+transformers>=4.36.0
+peft>=0.7.0
+torch>=2.1.0
+accelerate>=0.25.0
+bitsandbytes>=0.41.0
+datasets>=2.15.0
+python-dotenv>=1.0.0
+safetensors>=0.4.0
+huggingface-hub>=0.19.0
+sentencepiece
+protobuf
+
+# Database RAG System Dependencies
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+sentence-transformers>=2.2.0
+scikit-learn>=1.0.0
+numpy>=1.22.0
+
+================
+File: requirements-training.txt
+================
+torch==2.0.1
+transformers==4.36.0
+tokenizers==0.15.2
+accelerate==0.25.0
+bitsandbytes==0.41.1
+peft==0.7.0
+datasets==2.15.0
+numpy==1.24.3
+pandas
+python-dotenv
+scipy==1.10.1
+safetensors>=0.4.0
+huggingface-hub>=0.19.0
+triton==2.0.0
+sentencepiece
+protobuf
+
+
+
+================================================================
+End of Codebase
+================================================================
