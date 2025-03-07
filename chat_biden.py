@@ -63,8 +63,7 @@ def main():
     args = parser.parse_args()
     
     # Get model path from environment
-    SHARED_MODELS_PATH = os.getenv("SHARED_MODELS_PATH", "/home/shared_models/aipolitician")
-    LORA_PATH = os.path.join(SHARED_MODELS_PATH, "fine_tuned_biden_mistral")
+    LORA_PATH = "nnat03/biden-mistral-adapter"
     
     # Load base model and tokenizer
     print("Loading model...")
