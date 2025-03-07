@@ -1,138 +1,172 @@
-# AI Politician
+# AI Politician 🇺🇸
 
-Fine-tuned Mistral-7B models that emulate Donald Trump's and Joe Biden's speaking styles.
+[![Mistral AI](https://img.shields.io/badge/Mistral--7B-Powered-blue)](https://mistral.ai/)
+[![Fine-tuned](https://img.shields.io/badge/Custom-Fine--tuned-green)](https://huggingface.co/nnat03)
+[![Python 3.10](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
+[![CUDA 12.4](https://img.shields.io/badge/CUDA-12.4-76B900.svg)](https://developer.nvidia.com/cuda-toolkit)
 
-## Prerequisites
+Fine-tuned Mistral-7B language models that emulate Donald Trump's and Joe Biden's speaking styles, discourse patterns, and policy positions. Talk to AI versions of both political figures using advanced NLP models enhanced with factual knowledge through a Retrieval-Augmented Generation (RAG) system.
 
-### CUDA Setup
-- CUDA compatible GPU required
-- CUDA toolkit and drivers must be installed
-- Note: The project was tested with CUDA 12.4
+## 🌟 Features
 
-### Environment Setup
+- **Personality-based Response Generation**: Chat with AI models fine-tuned to capture the distinct communication styles of Trump and Biden
+- **RAG System Integration**: Ensures factual accuracy by retrieving real information from specialized political databases
+- **Memory-Efficient Inference**: Optimized using 4-bit quantization for better performance on consumer hardware
+- **Interactive Chat Interface**: Simple command-line interface for conversing with either political figure
+- **Milvus Vector Database**: Semantic search capabilities for efficient information retrieval
+
+## 🔗 Pretrained Models
+
+The models are hosted on Hugging Face and can be accessed here:
+
+- [Trump Model (nnat03/trump-mistral-adapter)](https://huggingface.co/nnat03/trump-mistral-adapter)
+- [Biden Model (nnat03/biden-mistral-adapter)](https://huggingface.co/nnat03/biden-mistral-adapter)
+
+These are LoRA adapters designed to be applied to the [Mistral-7B-Instruct-v0.2](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2) base model.
+
+## 📋 Prerequisites
+
+### Hardware Requirements
+- CUDA-compatible GPU (8GB+ VRAM recommended)
+- 16GB+ system RAM
+- 20GB+ free disk space
+
+### Software Requirements
+- CUDA Toolkit and drivers (tested with CUDA 12.4)
+- Python 3.10
+- Conda package manager
+- Docker (for database functionality)
+
+## 🛠️ Installation
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/aipolitician.git
+cd aipolitician
+```
+
+### 2. Environment Setup
 This project requires two separate conda environments due to specific version requirements:
 
-1. Training Environment:
+#### Training Environment
 ```bash
 conda create -n training-env python=3.10
 conda activate training-env
 pip install -r requirements-training.txt
 ```
 
-2. Chat Environment:
+#### Chat Environment
 ```bash
 conda create -n chat-env python=3.10
 conda activate chat-env
 pip install -r requirements-chat.txt
 ```
 
-### HuggingFace Setup
-1. Create a HuggingFace account and get your API key
-2. The API key needs access to:
-   - mistralai/Mistral-7B-Instruct-v0.2
-   - Trump dataset (specific access requirements)
-
-### Environment Variables
-1. Create a `.env` file from the example:
+### 3. Hugging Face API Setup
+1. Create a [Hugging Face account](https://huggingface.co/join)
+2. Generate an API key from your [settings page](https://huggingface.co/settings/tokens)
+3. Configure environment variables:
 ```bash
 cp .env.example .env
+# Edit .env with your Hugging Face API key
 ```
 
-2. Configure your environment:
+### 4. RAG Database Setup (Optional)
+For enhanced factual responses, set up the Milvus vector database:
+
+```bash
+# Create database directories
+mkdir -p /home/natalie/Databases/ai_politician_milvus/data
+mkdir -p /home/natalie/Databases/ai_politician_milvus/etcd
+mkdir -p /home/natalie/Databases/ai_politician_milvus/minio
+
+# Set up Milvus using Docker
+cd db/milvus
+./setup.sh
+
+# Initialize the database schema
+python scripts/initialize_db.py --recreate
 ```
-HUGGINGFACE_API_KEY=your_key_here
-SHARED_MODELS_PATH=/path/to/models  # Default: /home/shared_models/aipolitician
+
+## 💬 Usage
+
+### Chatting with Trump AI
+```bash
+conda activate chat-env
+python3 chat_trump.py  # Basic mode
+python3 chat_trump.py --rag  # With RAG for factual responses
 ```
 
-## Dataset Setup
+### Chatting with Biden AI
+```bash
+conda activate chat-env
+python3 chat_biden.py  # Basic mode
+python3 chat_biden.py --rag  # With RAG for factual responses
+```
 
-### Required Datasets
-1. Biden Datasets:
-   - Joe Biden tweets dataset
-   - Joe Biden 2020 DNC speech
-   Place in: `/home/natalie/datasets/biden/`
-   - joe-biden-tweets.zip
-   - joe-biden-2020-dnc-speech.zip
+### Command-Line Options
+- `--rag`: Enable Retrieval-Augmented Generation for factual accuracy
+- `--max-length INT`: Set maximum response length (default: 512 tokens)
 
-2. Trump Datasets:
-   - Trump interviews dataset
-   - Trump speeches dataset
-   (Specific dataset locations and formats to be documented)
+### Example Questions
+- "What's your plan for border security?"
+- "How would you handle trade with China?"
+- "Tell me about your healthcare policy."
+- "What was your position on the Paris Climate Agreement?"
+- "How would you address inflation?"
 
-## Training
+## 🗄️ Vector Database System
 
-### Important Note
-Use the `python` command for training scripts in the training environment:
+The project includes a Retrieval-Augmented Generation (RAG) database system that provides factual information to enhance model responses. This system is built on Milvus, a powerful vector database.
 
+### Database Features
+- **Vector Similarity Search**: Find relevant information using semantic similarity
+- **Schema Flexibility**: Combine structured data with vector embeddings
+- **HNSW Indexing**: High-performance approximate nearest neighbor search
+- **768-Dimensional Embeddings**: Using all-MiniLM-L6-v2 sentence transformer model
+
+### Database Schema
+The political figures collection contains comprehensive information including:
+- Biographical details
+- Policy positions
+- Legislative records
+- Public statements
+- Timeline events
+- Campaign history
+- Personal information
+
+For detailed database documentation, see [db/milvus/README.md](db/milvus/README.md).
+
+## 🔄 Fine-tuning Process
+
+The models were fine-tuned using the following datasets:
+
+### Trump Model
+- [Trump interviews dataset](https://huggingface.co/datasets/pookie3000/trump-interviews)
+- [Trump speeches dataset](https://huggingface.co/datasets/bananabot/TrumpSpeeches)
+
+### Biden Model
+- [Biden tweets dataset (2007-2020)](https://www.kaggle.com/datasets/rohanrao/joe-biden-tweets)
+- [Biden 2020 DNC speech dataset](https://www.kaggle.com/datasets/christianlillelund/joe-biden-2020-dnc-speech)
+
+Place datasets in: `/home/natalie/datasets/biden/`
+- joe-biden-tweets.zip
+- joe-biden-2020-dnc-speech.zip
+
+The training process:
+- Used LoRA (Low-Rank Adaptation) for parameter-efficient fine-tuning
+- Applied 4-bit quantization for memory efficiency
+- Fine-tuned for 3 epochs with a cosine learning rate schedule
+- Used a special instruction format to guide stylistic emulation
+
+To run your own fine-tuning:
 ```bash
 conda activate training-env
 python training/train_mistral_trump.py
 python training/train_mistral_biden.py
 ```
 
-The training process:
-- Loads Mistral-7B-Instruct-v0.2 base model
-- Fine-tunes using LoRA
-- Uses 4-bit quantization for memory efficiency
-- Saves models to:
-  - `mistral-trump/` and `fine_tuned_trump_mistral/`
-  - `mistral-biden/` and `fine_tuned_biden_mistral/`
-
-## Chat Interface
-
-### Important Note
-Use the `python3` command for chat scripts in the chat environment:
-
-```bash
-conda activate chat-env
-python3 chat_trump.py  # Chat with Trump AI
-python3 chat_biden.py  # Chat with Biden AI
-```
-
-Each script provides:
-- Interactive terminal interface
-- Type messages and get responses in the respective style
-- Type 'quit' to exit
-- Use Ctrl+C to exit at any time
-
-## Database RAG System
-
-The project includes a Retrieval-Augmented Generation (RAG) database system that provides factual information to the AI models. This system improves factual accuracy by retrieving relevant information from a set of structured databases.
-
-### Database Setup
-
-1. Create the database directory:
-```bash
-mkdir -p /home/natalie/Databases/political_rag
-```
-
-2. Initialize the databases:
-```bash
-conda activate chat-env
-python -m db.scripts.initialize_databases
-```
-
-### Using RAG in Chat
-
-By default, the chat interfaces will use the RAG system if available. To disable RAG:
-
-```bash
-python3 chat_biden.py --no-rag
-python3 chat_trump.py --no-rag
-```
-
-### Database Structure
-
-The system includes 17 specialized databases:
-- Biography Database
-- Policy Database
-- Voting Record Database
-- Public Statements Database
-- And many more...
-
-For full details, see the [Database README](db/README.md).
-
-## Project Structure
+## 📂 Project Structure
 
 ```
 .
@@ -143,51 +177,64 @@ For full details, see the [Database README](db/README.md).
 ├── chat_biden.py             # Biden chat interface
 ├── chat_trump.py             # Trump chat interface
 ├── db/                       # Database RAG system
-│   ├── config.py             # Database configuration
-│   ├── database.py           # Base database interface
-│   ├── README.md             # Database documentation
-│   ├── schemas/              # Database schema definitions
-│   ├── scripts/              # Database scripts
-│   └── utils/                # Database utilities
+│   ├── milvus/               # Milvus vector database
+│   │   ├── scripts/          # Database initialization and search scripts
+│   │   ├── docker-compose.yml # Docker configuration
+│   │   ├── setup.sh          # Database setup script
+│   │   └── cleanup.sh        # Database cleanup script
+├── test/                     # Test scripts
+│   ├── test_biden_model.py   # Test Biden model loading
+│   ├── test_db.py            # Test database functionality
+│   └── test_trump_model.py   # Test Trump model loading
 └── training/                 # Training code
     ├── train_mistral_biden.py
     └── train_mistral_trump.py
 ```
 
-## Version Compatibility
-
-### Training Environment
-- Specific versions required for training stability
-- See requirements-training.txt for exact versions
-- Key packages:
-  - torch==2.0.1
-  - transformers==4.36.0
-  - peft==0.7.0
-
-### Chat Environment
-- More flexible version requirements
-- See requirements-chat.txt for minimum versions
-- Key packages:
-  - torch>=2.1.0
-  - transformers>=4.36.0
-  - peft>=0.7.0
-
-## Troubleshooting
+## 🚧 Troubleshooting
 
 ### Common Issues
-1. Version Conflicts
-   - Ensure you're using the correct conda environment
-   - Check that you're using the right python command (python for training, python3 for chat)
-   - Verify package versions match requirements files
 
-2. CUDA Issues
-   - Verify CUDA is properly installed
-   - Check GPU availability with `nvidia-smi`
-   - Ensure CUDA version compatibility
+#### 1. Model Loading Issues
+- **Symptom**: `Error loading model` or CUDA out-of-memory errors
+- **Solutions**:
+  - Ensure you have sufficient GPU memory
+  - Verify CUDA is properly installed (`nvidia-smi`)
+  - Check your HuggingFace API key has necessary permissions
 
-3. Model Loading Issues
-   - Verify model paths in .env file
-   - Check HuggingFace API key permissions
-   - Ensure all required model files are present
+#### 2. Database Connection Issues
+- **Symptom**: `Failed to connect to Milvus server`
+- **Solutions**:
+  - Ensure Docker is running
+  - Check if Milvus container is active: `docker ps | grep milvus`
+  - Restart the database: `./db/milvus/setup.sh`
 
-For additional help or to report issues, please open a GitHub issue.
+#### 3. Environment Conflicts
+- **Symptom**: Import errors or version conflicts
+- **Solutions**:
+  - Make sure you're in the correct conda environment
+  - Ensure you used the right requirements file
+  - For training issues, use `python` command
+  - For chat issues, use `python3` command
+
+#### 4. Out-of-Memory Errors During Training
+- **Symptom**: CUDA out-of-memory errors during training
+- **Solutions**:
+  - Reduce batch size in training scripts
+  - Increase gradient accumulation steps
+  - Use a GPU with more VRAM
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- [Mistral AI](https://mistral.ai/) for the base Mistral-7B model
+- [Hugging Face](https://huggingface.co/) for hosting the models and datasets
+- [Milvus](https://milvus.io/) for the vector database technology
+- The open-source NLP and AI community
+
+---
+
+*Disclaimer: This project is created for educational and research purposes. The AI models attempt to mimic the speaking styles of public figures but do not represent their actual views or statements. Use responsibly.*
