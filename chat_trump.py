@@ -31,7 +31,7 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-def generate_response(model, tokenizer, prompt, max_length=512, use_rag=True):
+def generate_response(model, tokenizer, prompt, max_length=512, use_rag=False):
     """
     Generate a response using the model
     
@@ -74,8 +74,8 @@ def generate_response(model, tokenizer, prompt, max_length=512, use_rag=True):
 def main():
     # Add command-line arguments
     parser = argparse.ArgumentParser(description="Chat with Trump AI model")
-    parser.add_argument("--no-rag", action="store_true", 
-                    help="Disable RAG and use pure generation")
+    parser.add_argument("--rag", action="store_true", 
+                    help="Enable RAG for factual context")
     parser.add_argument("--max-length", type=int, default=512, 
                     help="Maximum response length")
     args = parser.parse_args()
@@ -116,7 +116,7 @@ def main():
     model.eval()  # Set to evaluation mode
     
     # Show RAG status message
-    if HAS_RAG and not args.no_rag:
+    if HAS_RAG and args.rag:
         print("\nRAG system enabled. Using database for factual answers.")
     
     print("\n🇺🇸 Trump AI Chat 🇺🇸")
@@ -140,7 +140,7 @@ def main():
             # Pass use_rag parameter to generate_response
             response = generate_response(model, tokenizer, user_input, 
                                       max_length=args.max_length,
-                                      use_rag=not args.no_rag)
+                                      use_rag=args.rag)
             print(response)
             
         except KeyboardInterrupt:
