@@ -20,9 +20,10 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
-# Crawl4AI imports
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
-from crawl4ai.strategies import LLMStrategy, SimpleCSSSelectorStrategy, ContentSelectionConfig
+# Crawl4AI imports - Updated to match current library structure
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+from crawl4ai.extraction_strategy import LLMExtractionStrategy, CSSExtractionStrategy
+from crawl4ai.config import ContentSelectionConfig
 
 # Add the project root to path to import from db module
 # Get the project root directory (parent of the scraper directory)
@@ -125,45 +126,52 @@ class PoliticianScraper:
         Returns:
             Dict containing structured data
         """
-        # Define a strategy to extract structured data
-        strategy = LLMStrategy(
-            prompt=f"""
-            Extract information about {self.politician_name} from the content.
-            Please provide this information in a structured format:
-            
-            - date_of_birth: YYYY-MM-DD format if available, otherwise leave empty
-            - nationality: Country of origin
-            - political_affiliation: Political party or alignment
-            - biography_summary: A brief summary of their life and career (up to 300 words)
-            - key_positions: Up to 5 political positions held (title and years)
-            - policy_stances: Their stance on at least 3 major policy areas
-            - recent_statements: Up to 3 recent notable public statements
-            """,
+        # Define a strategy to extract structured data - Updated to use LLMExtractionStrategy
+        extraction_prompt = f"""
+        Extract information about {self.politician_name} from the content.
+        Please provide this information in a structured format:
+        
+        - date_of_birth: YYYY-MM-DD format if available, otherwise leave empty
+        - nationality: Country of origin
+        - political_affiliation: Political party or alignment
+        - biography_summary: A brief summary of their life and career (up to 300 words)
+        - key_positions: Up to 5 political positions held (title and years)
+        - policy_stances: Their stance on at least 3 major policy areas
+        - recent_statements: Up to 3 recent notable public statements
+        """
+        
+        # Configure the LLM extraction strategy
+        llm_strategy = LLMExtractionStrategy(
             # You can use OpenAI or other available models
             # If using OpenAI, you would need to set the API key in env vars
-            use_local_model=True, # Set to False to use OpenAI
-            local_model_name="gpt4all-j", # Default lightweight model
-            output_format="json"
+            provider="local/gpt4all-j" if os.getenv('OPENAI_API_KEY') is None else "openai/gpt-3.5-turbo",
+            api_token=os.getenv('OPENAI_API_KEY'),
+            instruction=extraction_prompt,
+            extraction_type="json",
+            input_format="markdown"
         )
         
         try:
             # Run the crawler with the LLM strategy
+            crawl_config = CrawlerRunConfig(
+                extraction_strategy=llm_strategy,
+                content_selection=ContentSelectionConfig(
+                    main_content_only=True
+                ),
+                cache_mode=CacheMode.BYPASS
+            )
+            
             result = await crawler.arun(
                 url=url,
-                extraction_strategy=strategy,
-                run_config=CrawlerRunConfig(
-                    content_selection=ContentSelectionConfig(
-                        main_content_only=True
-                    )
-                )
+                config=crawl_config
             )
             
             # Parse the extracted JSON result
-            if result.extraction_result:
+            if result.extracted_content:
                 try:
-                    if isinstance(result.extraction_result, str):
-                        return json.loads(result.extraction_result)
-                    return result.extraction_result
+                    if isinstance(result.extracted_content, str):
+                        return json.loads(result.extracted_content)
+                    return result.extracted_content
                 except (json.JSONDecodeError, TypeError) as e:
                     logger.error(f"Error parsing JSON from extraction: {e}")
                     return {}
@@ -189,7 +197,7 @@ class PoliticianScraper:
             )
             
             # Create web crawler
-            async with AsyncWebCrawler(browser_config=browser_config) as crawler:
+            async with AsyncWebCrawler(config=browser_config) as crawler:
                 all_content = []
                 all_structured_data = []
                 
@@ -201,29 +209,32 @@ class PoliticianScraper:
                     search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
                     
                     # Set up a CSS selector strategy to extract search result links
-                    link_strategy = SimpleCSSSelectorStrategy(
+                    link_strategy = CSSExtractionStrategy(
                         selectors={
                             "links": ".yuRUbf > a"
                         },
-                        attribute_map={
-                            "links": {"href": "href"}
+                        attributes={
+                            "links": ["href"]
                         }
                     )
                     
                     try:
                         # Crawl the search page to get links
+                        link_config = CrawlerRunConfig(
+                            extraction_strategy=link_strategy,
+                            timeout=60000,
+                            cache_mode=CacheMode.BYPASS
+                        )
+                        
                         search_result = await crawler.arun(
                             url=search_url,
-                            extraction_strategy=link_strategy,
-                            run_config=CrawlerRunConfig(
-                                timeout=60000
-                            )
+                            config=link_config
                         )
                         
                         # Extract links from search results
                         links = []
-                        if search_result.extraction_result and "links" in search_result.extraction_result:
-                            for link_data in search_result.extraction_result["links"]:
+                        if search_result.extracted_content and "links" in search_result.extracted_content:
+                            for link_data in search_result.extracted_content["links"]:
                                 if isinstance(link_data, dict) and "href" in link_data:
                                     links.append(link_data["href"])
                         
@@ -235,19 +246,23 @@ class PoliticianScraper:
                             logger.info(f"Crawling content from: {link}")
                             
                             try:
+                                # Configure content extraction
+                                content_config = CrawlerRunConfig(
+                                    timeout=60000,
+                                    content_selection=ContentSelectionConfig(
+                                        main_content_only=True,
+                                        exclude_selectors=[
+                                            "nav", "header", "footer", ".navbar", 
+                                            ".menu", ".comments", ".ads", "aside"
+                                        ]
+                                    ),
+                                    cache_mode=CacheMode.BYPASS
+                                )
+                                
                                 # Get content from the page
                                 content_result = await crawler.arun(
                                     url=link,
-                                    run_config=CrawlerRunConfig(
-                                        timeout=60000,
-                                        content_selection=ContentSelectionConfig(
-                                            main_content_only=True,
-                                            exclude_selectors=[
-                                                "nav", "header", "footer", ".navbar", 
-                                                ".menu", ".comments", ".ads", "aside"
-                                            ]
-                                        )
-                                    )
+                                    config=content_config
                                 )
                                 
                                 # Store the markdown content
