@@ -21,9 +21,9 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
 # Crawl4AI imports
-from crawl4ai import AsyncWebCrawler
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
-from crawl4ai.config import BrowserConfig, CrawlerRunConfig, ContentSelectionConfig, CacheMode
+from crawl4ai.config import ContentSelectionConfig, LlmConfig
 
 # Add the project root to path to import from db module
 # Get the project root directory (parent of the scraper directory)
@@ -166,9 +166,13 @@ class PoliticianScraper:
                 return {}
                 
             # Set up LLM extraction strategy
-            llm_strategy = LLMExtractionStrategy(
+            llm_config_obj = LlmConfig(
                 provider="openai/gpt-4o-mini" if os.getenv('OPENAI_API_KEY') else "ollama/llama3",
-                api_token=os.getenv('OPENAI_API_KEY'),
+                api_token=os.getenv('OPENAI_API_KEY')
+            )
+            
+            llm_strategy = LLMExtractionStrategy(
+                llm_config=llm_config_obj,
                 schema=json.dumps({
                     "type": "object",
                     "properties": {
