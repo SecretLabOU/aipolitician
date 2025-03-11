@@ -20,9 +20,9 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
-# Crawl4AI imports - Using simplified imports
+# Crawl4AI imports - Correctly matched to current documentation
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-from crawl4ai.extraction_strategy import LLMExtractionStrategy
+from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
 from crawl4ai.config import ContentSelectionConfig
 
 # Add the project root to path to import from db module
@@ -127,7 +127,7 @@ class PoliticianScraper:
             Dict containing structured data
         """
         # Define the extraction prompt
-        extraction_prompt = f"""
+        instruction = f"""
         Extract information about {self.politician_name} from the content.
         Please provide this information in a structured format:
         
@@ -143,12 +143,16 @@ class PoliticianScraper:
         """
         
         try:
-            # Use a simpler approach: just get the markdown content and process it with LLM
+            # First get the page content with standard settings
             content_config = CrawlerRunConfig(
+                cache_mode=CacheMode.BYPASS,
                 content_selection=ContentSelectionConfig(
-                    main_content_only=True
-                ),
-                cache_mode=CacheMode.BYPASS
+                    main_content_only=True,
+                    exclude_selectors=[
+                        "nav", "header", "footer", ".navbar", 
+                        ".menu", ".comments", ".ads", "aside"
+                    ]
+                )
             )
             
             # Get the content
@@ -158,31 +162,35 @@ class PoliticianScraper:
             )
             
             if not result.markdown:
+                logger.warning(f"No markdown content extracted from {url}")
                 return {}
+                
+            # Set up LLM extraction strategy
+            extra_args = {"temperature": 0, "top_p": 0.9, "max_tokens": 2000}
             
-            # Configure the LLM extraction strategy
             llm_strategy = LLMExtractionStrategy(
                 provider="local/gpt4all-j" if os.getenv('OPENAI_API_KEY') is None else "openai/gpt-3.5-turbo",
                 api_token=os.getenv('OPENAI_API_KEY'),
-                instruction=extraction_prompt,
+                instruction=instruction,
                 extraction_type="json",
-                input_content=result.markdown[:12000],  # Limit content size to prevent token overflow
-                input_format="markdown"
+                input_content=result.markdown[:12000],  # Limit content size
+                input_format="markdown",
+                extra_args=extra_args
             )
             
-            # Create a new config with the LLM strategy
+            # Configure the LLM extraction run
             llm_config = CrawlerRunConfig(
                 extraction_strategy=llm_strategy,
                 cache_mode=CacheMode.BYPASS
             )
             
-            # Run the extraction
+            # Run extraction on the content
             extraction_result = await crawler.arun(
-                url="about:blank",  # Use a dummy URL since we're providing the content directly
+                url="about:blank",  # Dummy URL since we're providing content directly
                 config=llm_config
             )
             
-            # Parse the extracted JSON result
+            # Parse the result
             if extraction_result.extracted_content:
                 try:
                     if isinstance(extraction_result.extracted_content, str):
@@ -206,52 +214,71 @@ class PoliticianScraper:
         logger.info(f"Starting to scrape data for {self.politician_name}")
         
         try:
-            # Set up browser configuration
+            # Set up browser configuration according to docs
             browser_config = BrowserConfig(
                 headless=True,
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
+                verbose=True  # Help debug
             )
             
             # Create web crawler
             async with AsyncWebCrawler(config=browser_config) as crawler:
                 all_structured_data = []
                 
-                # We'll use a set of predefined URLs for each politician
-                if self.politician_name == "Donald Trump":
-                    links = [
-                        "https://en.wikipedia.org/wiki/Donald_Trump",
-                        "https://www.britannica.com/biography/Donald-Trump",
-                        "https://www.whitehouse.gov/about-the-white-house/presidents/donald-j-trump/"
-                    ]
-                elif self.politician_name == "Joe Biden":
-                    links = [
-                        "https://en.wikipedia.org/wiki/Joe_Biden",
-                        "https://www.britannica.com/biography/Joe-Biden",
-                        "https://www.whitehouse.gov/administration/president-biden/"
-                    ]
-                else:
-                    # For other politicians, try to create some reasonable URLs
-                    name_slug = self.politician_name.lower().replace(" ", "_")
-                    links = [
-                        f"https://en.wikipedia.org/wiki/{name_slug}",
-                        f"https://www.britannica.com/biography/{name_slug}"
-                    ]
+                # Try to get sources from Google search first
+                sources = []
+                for query in self.search_queries[:2]:  # Limit to first 2 queries to avoid too many requests
+                    urls = await self._get_google_search_results(crawler, query)
+                    sources.extend(urls)
                 
-                # Process each link
-                for link in links:
-                    logger.info(f"Crawling content from: {link}")
+                # If we couldn't get sources from Google, use predefined URLs
+                if not sources:
+                    logger.info("No results from Google search, using predefined sources")
+                    if self.politician_name == "Donald Trump":
+                        sources = [
+                            "https://en.wikipedia.org/wiki/Donald_Trump",
+                            "https://www.britannica.com/biography/Donald-Trump",
+                            "https://www.whitehouse.gov/about-the-white-house/presidents/donald-j-trump/"
+                        ]
+                    elif self.politician_name == "Joe Biden":
+                        sources = [
+                            "https://en.wikipedia.org/wiki/Joe_Biden",
+                            "https://www.britannica.com/biography/Joe-Biden",
+                            "https://www.whitehouse.gov/administration/president-biden/"
+                        ]
+                    else:
+                        # For other politicians, create reasonable URLs
+                        name_slug = self.politician_name.lower().replace(" ", "_")
+                        sources = [
+                            f"https://en.wikipedia.org/wiki/{name_slug}",
+                            f"https://www.britannica.com/biography/{name_slug}"
+                        ]
+                
+                # Make sources unique
+                sources = list(dict.fromkeys(sources))
+                
+                # Limit to first 5 sources
+                sources = sources[:5]
+                logger.info(f"Processing {len(sources)} sources: {sources}")
+                
+                # Process all sources sequentially
+                for url in sources:
+                    logger.info(f"Extracting data from: {url}")
                     
                     try:
-                        # Extract structured data
-                        structured_data = await self._extract_structured_data(crawler, link)
+                        # Process each source to extract structured data
+                        structured_data = await self._extract_structured_data(crawler, url)
                         if structured_data:
                             all_structured_data.append(structured_data)
+                            logger.info(f"Successfully extracted structured data from {url}")
+                        else:
+                            logger.warning(f"No structured data extracted from {url}")
                     
                     except Exception as e:
-                        logger.error(f"Error processing link {link}: {str(e)}")
+                        logger.error(f"Error processing source {url}: {str(e)}")
                         continue
                 
-                # Process and combine all scraped data
+                # Process the extracted data
                 self._process_data(all_structured_data)
                 
                 return self.data
@@ -359,6 +386,77 @@ class PoliticianScraper:
         except Exception as e:
             logger.error(f"Error saving to Milvus: {str(e)}")
             return False
+
+    async def _get_google_search_results(self, crawler: AsyncWebCrawler, query: str, limit: int = 3) -> List[str]:
+        """
+        Get URLs from Google search results using JsonCssExtractionStrategy.
+        
+        Args:
+            crawler: AsyncWebCrawler instance
+            query: Search query
+            limit: Maximum number of URLs to return
+            
+        Returns:
+            List of URLs from search results
+        """
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        logger.info(f"Searching Google for: {query}")
+        
+        try:
+            # Define the JsonCssExtractionStrategy with proper schema
+            schema = {
+                "name": "Google Search Results",
+                "baseSelector": ".yuRUbf",
+                "fields": [
+                    {
+                        "name": "url",
+                        "selector": "a",
+                        "type": "attribute",
+                        "attribute": "href"
+                    },
+                    {
+                        "name": "title",
+                        "selector": "h3",
+                        "type": "text"
+                    }
+                ]
+            }
+            
+            # Create extraction strategy
+            extraction_strategy = JsonCssExtractionStrategy(schema=schema, verbose=True)
+            
+            # Create config for search
+            search_config = CrawlerRunConfig(
+                extraction_strategy=extraction_strategy,
+                timeout=60000,
+                cache_mode=CacheMode.BYPASS
+            )
+            
+            # Execute search
+            search_result = await crawler.arun(
+                url=search_url,
+                config=search_config
+            )
+            
+            # Extract URLs from results
+            urls = []
+            if search_result.extracted_content:
+                results = search_result.extracted_content
+                if isinstance(results, list):
+                    for item in results[:limit]:
+                        if isinstance(item, dict) and "url" in item:
+                            urls.append(item["url"])
+                elif isinstance(results, dict) and "results" in results:
+                    for item in results["results"][:limit]:
+                        if isinstance(item, dict) and "url" in item:
+                            urls.append(item["url"])
+            
+            logger.info(f"Found {len(urls)} URLs from Google search: {urls}")
+            return urls
+            
+        except Exception as e:
+            logger.error(f"Error during Google search: {str(e)}")
+            return []
 
 
 async def main():

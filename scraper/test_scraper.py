@@ -12,6 +12,7 @@ Usage:
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 # Add project root to path
@@ -24,14 +25,22 @@ from scraper.politician_scraper import PoliticianScraper
 async def test_scraper(politician_name: str):
     """Test the scraper for a specific politician."""
     # Create the scraper
+    print(f"Initializing scraper for {politician_name}...")
     scraper = PoliticianScraper(politician_name)
     
+    # Show search queries
+    print("\nSearch queries that will be used:")
+    for i, query in enumerate(scraper.search_queries, 1):
+        print(f"  {i}. {query}")
+    
     # Run the scraper
-    print(f"Scraping data for {politician_name}...")
+    print(f"\nStarting scraping process for {politician_name}...")
+    start_time = time.time()
     data = await scraper.scrape()
+    end_time = time.time()
     
     # Print some summary information from the data
-    print("\n=== SCRAPING RESULTS ===")
+    print(f"\n=== SCRAPING RESULTS ({end_time - start_time:.2f} seconds) ===")
     print(f"Politician: {data['name']}")
     print(f"Date of Birth: {data.get('date_of_birth', 'N/A')}")
     print(f"Political Affiliation: {data.get('political_affiliation', 'N/A')}")
@@ -42,9 +51,12 @@ async def test_scraper(politician_name: str):
         if field in data and isinstance(data[field], str):
             try:
                 parsed = json.loads(data[field])
-                print(f"\n{field.title()}:")
-                for key, value in parsed.items():
-                    print(f"  - {key}: {value}")
+                if parsed:
+                    print(f"\n{field.title()}:")
+                    for key, value in parsed.items():
+                        print(f"  - {key}: {value}")
+                else:
+                    print(f"\n{field.title()}: None found")
             except json.JSONDecodeError:
                 print(f"\n{field.title()}: Unable to parse")
     
@@ -52,7 +64,11 @@ async def test_scraper(politician_name: str):
     if data.get('biography'):
         print("\nBiography Preview:")
         # Show first 500 characters
-        print(f"{data['biography'][:500]}...")
+        preview = data['biography'][:500]
+        print(f"{preview}...")
+        print(f"\nTotal biography length: {len(data['biography'])} characters")
+    else:
+        print("\nBiography: None found")
     
     print("\nTest completed!")
 
