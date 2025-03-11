@@ -23,7 +23,34 @@ from pathlib import Path
 # Crawl4AI imports
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
-from crawl4ai.config import ContentSelectionConfig, LlmConfig
+
+# Try different possible imports based on crawl4ai version
+try:
+    # Version where everything is in the main module
+    from crawl4ai import ContentSelectionConfig, LlmConfig
+except ImportError:
+    try:
+        # Version where these might be in config
+        from crawl4ai.config import ContentSelectionConfig, LlmConfig
+    except ImportError:
+        try:
+            # Version where they might be in separate modules
+            from crawl4ai.content import ContentSelectionConfig
+            from crawl4ai.llm import LlmConfig
+        except ImportError:
+            # If all else fails, create simplified versions for basic functionality
+            logger = logging.getLogger(__name__)
+            logger.warning("Could not import ContentSelectionConfig and LlmConfig. Using simplified fallback versions.")
+            
+            class ContentSelectionConfig:
+                def __init__(self, main_content_only=True, exclude_selectors=None):
+                    self.main_content_only = main_content_only
+                    self.exclude_selectors = exclude_selectors or []
+            
+            class LlmConfig:
+                def __init__(self, provider=None, api_token=None):
+                    self.provider = provider
+                    self.api_token = api_token
 
 # Add the project root to path to import from db module
 # Get the project root directory (parent of the scraper directory)
@@ -145,57 +172,115 @@ class PoliticianScraper:
         try:
             # First get the page content with standard settings
             content_config = CrawlerRunConfig(
-                content_selection=ContentSelectionConfig(
+                cache_mode=CacheMode.BYPASS
+            )
+            
+            # If ContentSelectionConfig is available, use it
+            if ContentSelectionConfig.__module__ != '__main__':  # Not our fallback implementation
+                content_config.content_selection = ContentSelectionConfig(
                     main_content_only=True,
                     exclude_selectors=[
                         "nav", "header", "footer", ".navbar", 
                         ".menu", ".comments", ".ads", "aside"
                     ]
-                ),
-                cache_mode=CacheMode.BYPASS
-            )
+                )
+            else:
+                # Fallback for when ContentSelectionConfig is unavailable
+                # Just set some common parameters directly if supported by the version
+                content_config.main_content_only = True
+                if hasattr(content_config, 'exclude_selectors'):
+                    content_config.exclude_selectors = [
+                        "nav", "header", "footer", ".navbar", 
+                        "menu", ".comments", ".ads", "aside"
+                    ]
             
-            # Get the content
-            result = await crawler.arun(
-                url=url,
-                config=content_config
-            )
+            # Get the content with flexible parameter handling
+            try:
+                # Try the modern version first
+                result = await crawler.arun(
+                    url=url,
+                    config=content_config
+                )
+            except TypeError:
+                try:
+                    # Try older version with different parameter name
+                    result = await crawler.arun(
+                        url=url,
+                        run_config=content_config
+                    )
+                except TypeError:
+                    # Fallback to simplest call
+                    result = await crawler.arun(url=url)
             
             if not result.markdown:
                 logger.warning(f"No markdown content extracted from {url}")
                 return {}
                 
             # Set up LLM extraction strategy
-            llm_config_obj = LlmConfig(
-                provider="openai/gpt-4o-mini" if os.getenv('OPENAI_API_KEY') else "ollama/llama3",
-                api_token=os.getenv('OPENAI_API_KEY')
-            )
+            provider = "openai/gpt-4o-mini" if os.getenv('OPENAI_API_KEY') else "ollama/llama3"
+            api_token = os.getenv('OPENAI_API_KEY')
             
-            llm_strategy = LLMExtractionStrategy(
-                llm_config=llm_config_obj,
-                schema=json.dumps({
-                    "type": "object",
-                    "properties": {
-                        "date_of_birth": {"type": "string", "description": "YYYY-MM-DD format if available, otherwise leave empty"},
-                        "nationality": {"type": "string", "description": "Country of origin"},
-                        "political_affiliation": {"type": "string", "description": "Political party or alignment"},
-                        "biography_summary": {"type": "string", "description": "A brief summary of their life and career (up to 300 words)"},
-                        "key_positions": {"type": "array", "items": {"type": "object", "properties": {
-                            "title": {"type": "string"},
-                            "years": {"type": "string"}
-                        }}},
-                        "policy_stances": {"type": "object", "additionalProperties": {"type": "string"}},
-                        "recent_statements": {"type": "array", "items": {"type": "string"}}
-                    }
-                }),
-                extraction_type="schema",
-                instruction=f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements.",
-                chunk_token_threshold=2000,
-                overlap_rate=0.1,
-                apply_chunking=True,
-                input_format="markdown",
-                extra_args={"temperature": 0.0, "max_tokens": 1000}
-            )
+            # Create schema
+            schema_json = json.dumps({
+                "type": "object",
+                "properties": {
+                    "date_of_birth": {"type": "string", "description": "YYYY-MM-DD format if available, otherwise leave empty"},
+                    "nationality": {"type": "string", "description": "Country of origin"},
+                    "political_affiliation": {"type": "string", "description": "Political party or alignment"},
+                    "biography_summary": {"type": "string", "description": "A brief summary of their life and career (up to 300 words)"},
+                    "key_positions": {"type": "array", "items": {"type": "object", "properties": {
+                        "title": {"type": "string"},
+                        "years": {"type": "string"}
+                    }}},
+                    "policy_stances": {"type": "object", "additionalProperties": {"type": "string"}},
+                    "recent_statements": {"type": "array", "items": {"type": "string"}}
+                }
+            })
+            
+            instruction = f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements."
+            
+            # Try creating LLMExtractionStrategy with different parameter combinations based on the version
+            try:
+                # Version with LlmConfig
+                llm_config_obj = LlmConfig(
+                    provider=provider,
+                    api_token=api_token
+                )
+                
+                llm_strategy = LLMExtractionStrategy(
+                    llm_config=llm_config_obj,
+                    schema=schema_json,
+                    extraction_type="schema",
+                    instruction=instruction,
+                    chunk_token_threshold=2000,
+                    overlap_rate=0.1,
+                    apply_chunking=True,
+                    input_format="markdown",
+                    extra_args={"temperature": 0.0, "max_tokens": 1000}
+                )
+            except (TypeError, ValueError):
+                try:
+                    # Version with direct provider parameters
+                    llm_strategy = LLMExtractionStrategy(
+                        provider=provider,
+                        api_token=api_token,
+                        schema=schema_json,
+                        extraction_type="schema",
+                        instruction=instruction,
+                        chunk_token_threshold=2000,
+                        overlap_rate=0.1,
+                        apply_chunking=True,
+                        input_format="markdown",
+                        extra_args={"temperature": 0.0, "max_tokens": 1000}
+                    )
+                except (TypeError, ValueError):
+                    # Older version with simpler parameters
+                    llm_strategy = LLMExtractionStrategy(
+                        prompt=instruction,
+                        output_format="json",
+                        use_local_model=not bool(api_token),
+                        local_model_name="gpt4all-j" if not bool(api_token) else None
+                    )
             
             # Configure the LLM extraction run with content override
             llm_config = CrawlerRunConfig(
@@ -208,11 +293,26 @@ class PoliticianScraper:
             if result and result.markdown:
                 llm_config.content_override = result.markdown[:12000]  # Limit content size
             
-            # Run extraction
-            extraction_result = await crawler.arun(
-                url=url,  # Use the original URL 
-                config=llm_config
-            )
+            # Run extraction with flexible parameter handling
+            try:
+                # Try the modern version first
+                extraction_result = await crawler.arun(
+                    url=url,  # Use the original URL 
+                    config=llm_config
+                )
+            except TypeError:
+                try:
+                    # Try older version with different parameter name
+                    extraction_result = await crawler.arun(
+                        url=url,
+                        run_config=llm_config
+                    )
+                except TypeError:
+                    # Fallback to simplest call with the most essential parameters
+                    extraction_result = await crawler.arun(
+                        url=url,
+                        extraction_strategy=llm_strategy
+                    )
             
             # Parse the result
             if extraction_result.extraction_result:
@@ -244,16 +344,39 @@ class PoliticianScraper:
         logger.info(f"Searching Google for: {query}")
         
         try:
-            # Define the SimpleCSSSelectorStrategy for 0.5.x
-            # This extracts links from Google search results
-            link_strategy = JsonCssExtractionStrategy(
-                selectors={
-                    "links": ".yuRUbf > a"
-                },
-                attribute_map={
-                    "links": {"href": "href"}
-                }
-            )
+            # Define the JsonCssExtractionStrategy for extracting links from Google search results
+            try:
+                # Try the modern version first
+                link_strategy = JsonCssExtractionStrategy(
+                    selectors={
+                        "links": ".yuRUbf > a"
+                    },
+                    attribute_map={
+                        "links": {"href": "href"}
+                    }
+                )
+            except (TypeError, ValueError):
+                try:
+                    # Try alternative API versions if available
+                    if hasattr(JsonCssExtractionStrategy, 'from_schema'):
+                        # Some versions use a schema-based approach
+                        link_strategy = JsonCssExtractionStrategy.from_schema({
+                            "name": "GoogleLinks",
+                            "baseSelector": ".yuRUbf",
+                            "fields": [
+                                {"name": "href", "selector": "a", "type": "attribute", "attribute": "href"}
+                            ]
+                        })
+                    else:
+                        # Fallback to simple approach
+                        link_strategy = JsonCssExtractionStrategy(
+                            selector=".yuRUbf > a",
+                            attribute="href"
+                        )
+                except Exception as e:
+                    # Log error and raise to notify user
+                    logger.error(f"Could not initialize JsonCssExtractionStrategy: {e}")
+                    raise
             
             # Create config for search
             search_config = CrawlerRunConfig(
@@ -262,11 +385,26 @@ class PoliticianScraper:
                 cache_mode=CacheMode.BYPASS
             )
             
-            # Execute search
-            search_result = await crawler.arun(
-                url=search_url,
-                config=search_config
-            )
+            # Execute search with flexible parameter handling
+            try:
+                # Try the modern version first
+                search_result = await crawler.arun(
+                    url=search_url,
+                    config=search_config
+                )
+            except TypeError:
+                try:
+                    # Try older version with different parameter name
+                    search_result = await crawler.arun(
+                        url=search_url,
+                        run_config=search_config
+                    )
+                except TypeError:
+                    # Fallback to simplest call
+                    search_result = await crawler.arun(
+                        url=search_url,
+                        extraction_strategy=link_strategy
+                    )
             
             # Extract URLs from results
             urls = []
@@ -295,15 +433,26 @@ class PoliticianScraper:
         logger.info(f"Starting to scrape data for {self.politician_name}")
         
         try:
-            # Set up browser configuration for 0.5.x
+            # Set up browser configuration
             browser_config = BrowserConfig(
                 headless=True,
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
                 verbose=True  # Help debug
             )
             
-            # Create web crawler
-            async with AsyncWebCrawler(config=browser_config) as crawler:
+            # Create web crawler with flexible parameters to handle different versions
+            try:
+                # Try the modern version first
+                crawler = AsyncWebCrawler(config=browser_config)
+            except TypeError:
+                try:
+                    # Try older version that might use different parameter name
+                    crawler = AsyncWebCrawler(browser_config=browser_config)
+                except TypeError:
+                    # Fallback to simplest initialization
+                    crawler = AsyncWebCrawler()
+            
+            async with crawler:
                 all_structured_data = []
                 
                 # Try to get sources from Google search first
