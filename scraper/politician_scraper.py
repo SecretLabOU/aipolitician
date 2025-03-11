@@ -9,12 +9,6 @@ import subprocess
 import sys
 import atexit
 from bs4 import BeautifulSoup
-from crawl4ai import (
-    AsyncWebCrawler, LLMExtractionStrategy, LLMConfig, 
-    BFSDeepCrawlStrategy, FilterChain, DomainFilter, 
-    URLPatternFilter, RegexChunking, LLMContentFilter,
-    CrawlerRunConfig
-)
 
 # GPU Environment Setup
 def setup_gpu_environment(env_id="nat", gpu_count=1):

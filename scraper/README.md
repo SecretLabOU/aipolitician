@@ -1,13 +1,13 @@
 # Political Figure Scraper
 
-A powerful AI-powered web scraper for extracting structured data about political figures using the `crawl4ai` package and Ollama's Llama3 model.
+A powerful AI-powered web scraper for extracting structured data about political figures using BeautifulSoup and Ollama's Llama3 model.
 
 ## Overview
 
 This scraper extracts comprehensive information about political figures from multiple sources including Wikipedia, Britannica, and Reuters. It leverages:
 
 - Local LLM inference using Ollama/Llama3 (no API keys required)
-- Intelligent content extraction and structuring
+- Efficient web scraping with BeautifulSoup
 - Multi-source aggregation for comprehensive data collection
 
 ## Installation
@@ -25,17 +25,12 @@ cd scraper
 pip install -r requirements.txt
 ```
 
-2. Install required browser binaries:
-```bash
-python -m playwright install
-```
-
-3. Start Ollama server (in a separate terminal):
+2. Start Ollama server (in a separate terminal):
 ```bash
 ollama serve
 ```
 
-4. Pull the Llama3 model:
+3. Pull the Llama3 model:
 ```bash
 ollama pull llama3
 ```
@@ -54,20 +49,16 @@ This will scrape data for Barack Obama (default example) and save it to `scraper
 
 ### Custom Political Figure
 
-Modify the `politician_scraper.py` file to change the target political figure:
-
-```python
-if __name__ == "__main__":
-    political_figure_name = "Joe Biden"  # Change to any political figure
-    main(political_figure_name)
-```
-
-### Quick Testing
-
-For a faster test that only scrapes Wikipedia:
+You can specify a political figure as a command-line argument:
 
 ```bash
-python test_scraper.py
+python politician_scraper.py "Joe Biden"
+```
+
+Or specify environment ID and GPU count:
+
+```bash
+python politician_scraper.py "Kamala Harris" nat 2
 ```
 
 ## Output Data
@@ -93,9 +84,6 @@ The scraper produces a JSON file with the following structure:
   ],
   "campaigns": [
     "List of notable campaigns"
-  ],
-  "achievements": [
-    "List of achievements"
   ]
 }
 ```
@@ -110,22 +98,35 @@ Edit the `get_sources()` function to add or remove source URLs.
 
 ### Extraction Parameters
 
-Adjust extraction parameters in `crawl_political_figure()`:
+Adjust extraction parameters:
 
-- `max_depth`: How many links deep to crawl (default: 1)
-- `max_pages`: Maximum pages to crawl per source (default: 3)
-- `chunk_token_threshold`: Token limit for LLM processing (default: 4000)
+- `max_length` in `extract_with_ollama()` to control how much text is sent to Ollama
+- Number of paragraphs to extract in `get_article_text()`
 
-### LLM Configuration
+### Ollama Models
 
-You can use different Ollama models by changing:
+You can use different Ollama models by changing the model name in the requests:
 
 ```python
-llm_config = LLMConfig(
-    provider="ollama/mistral",  # Change model here
-    base_url="http://localhost:11434"
+response = requests.post(
+    'http://localhost:11434/api/generate',
+    json={
+        'model': 'mistral',  # Change model here
+        'prompt': prompt,
+        'stream': False
+    }
 )
 ```
+
+## GPU Support
+
+The script automatically attempts to set up a GPU environment using `genv`. To ensure proper GPU initialization:
+
+```bash
+eval "$(genv shell --init)"
+```
+
+Before running the script.
 
 ## Troubleshooting
 
@@ -138,12 +139,10 @@ llm_config = LLMConfig(
 2. **No Data Extracted**
    - Check if the URLs are accessible
    - Try with a more well-known political figure
-   - Adjust the `word_count_threshold` to a lower value
 
-3. **Slow Performance**
-   - Local LLM inference can be slow depending on your hardware
-   - Reduce `max_pages` and `max_depth` for faster results
-   - Use the test_scraper.py for quicker testing
+3. **GPU Environment Issues**
+   - Initialize your shell with `eval "$(genv shell --init)"`
+   - Ensure you have GPU access permissions
 
 ## License
 
