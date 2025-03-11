@@ -13,6 +13,7 @@ json5>=0.9.6
 # Type hints
 typing-extensions>=4.3.0
 
-# Note: We're using the Crawl4AI API via Docker, not as a Python package
-# Run the Docker container with:
-# docker run --platform linux/amd64 -p 11235:11235 unclecode/crawl4ai:latest 
+# Note: We're using the mock crawler by default since Crawl4AI Docker image
+# is only available for ARM64 architecture. If you're on an ARM64 system,
+# you can run the Docker container with:
+# docker run -p 11235:11235 unclecode/crawl4ai:basic 

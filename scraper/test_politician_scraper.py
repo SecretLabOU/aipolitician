@@ -125,7 +125,22 @@ except ImportError:
 # Try to import the real Crawl4AI crawler if available
 try:
     import requests
+    import platform
     HAS_CRAWL4AI = True
+    
+    # Check system architecture
+    SYSTEM_ARCH = platform.machine().lower()
+    IS_ARM64 = SYSTEM_ARCH in ['arm64', 'aarch64']
+    IS_AMD64 = SYSTEM_ARCH in ['x86_64', 'amd64']
+    
+    if IS_ARM64:
+        DOCKER_CMD = "docker run -p 11235:11235 unclecode/crawl4ai:basic"
+    else:
+        # For non-ARM systems, we'll use the mock crawler since the Docker image is ARM64-only
+        logger.warning("Crawl4AI Docker image is only available for ARM64 architecture.")
+        logger.warning(f"Your system architecture is {SYSTEM_ARCH}, which is not compatible.")
+        logger.warning("Using mock crawler instead of Crawl4AI.")
+        HAS_CRAWL4AI = False
 except ImportError:
     HAS_CRAWL4AI = False
     print("Requests library not installed. Using mock crawler only.")
@@ -210,11 +225,15 @@ class TestPoliticianScraper:
                 logger.info(f"Crawl4AI health check: {health.json()}")
             except requests.exceptions.ConnectionError:
                 logger.error("Could not connect to Crawl4AI. Is it running?")
-                logger.error("Try running: docker run -p 11235:11235 unclecode/crawl4ai:latest")
+                if IS_ARM64:
+                    logger.error(f"Try running: {DOCKER_CMD}")
+                else:
+                    logger.error("Crawl4AI Docker image is only available for ARM64 architecture.")
+                    logger.error(f"Your system architecture is {SYSTEM_ARCH}, which is not compatible.")
                 return []
             except requests.exceptions.JSONDecodeError:
                 logger.error("Crawl4AI returned invalid JSON. There might be a platform compatibility issue.")
-                logger.error("Try running: docker run --platform linux/amd64 -p 11235:11235 unclecode/crawl4ai:latest")
+                logger.error("The Crawl4AI Docker image is only available for ARM64 architecture.")
                 return []
             
             # Define search URLs based on the politician name
@@ -224,7 +243,7 @@ class TestPoliticianScraper:
                 f"https://ballotpedia.org/{name.replace(' ', '_')}"
             ]
             
-            # Use LLM extraction for detailed information
+            # Use cosine similarity extraction for detailed information
             request = {
                 "urls": urls,
                 "extraction_config": {
@@ -498,6 +517,12 @@ def main():
     parser.add_argument("--use-crawl4ai", action="store_true", help="Use the Crawl4AI API instead of the mock crawler")
     
     args = parser.parse_args()
+    
+    # Check if Crawl4AI was requested but not available
+    if args.use_crawl4ai and not HAS_CRAWL4AI:
+        logger.warning("Crawl4AI was requested but is not available on your system architecture.")
+        logger.warning("The Crawl4AI Docker image is only available for ARM64 architecture.")
+        logger.warning("Falling back to mock crawler.")
     
     try:
         # Initialize the test scraper
