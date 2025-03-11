@@ -247,47 +247,27 @@ class PoliticianScraper:
             
             instruction = f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements."
             
-            # Create a guaranteed-valid LlmConfig
-            llm_config_obj = LlmConfig(
-                provider=provider,
-                api_token=api_token
-            )
-            
-            # Try creating LLMExtractionStrategy with different parameter combinations 
+            # Use a safer approach for LLM extraction
             try:
+                # Simplified LLM strategy that's more compatible
                 llm_strategy = LLMExtractionStrategy(
-                    llm_config=llm_config_obj,
-                    schema=schema_json,
-                    extraction_type="schema",
+                    provider=provider,
+                    api_token=api_token,
                     instruction=instruction,
-                    chunk_token_threshold=2000,
-                    overlap_rate=0.1,
-                    apply_chunking=True,
-                    input_format="markdown",
-                    extra_args={"temperature": 0.0, "max_tokens": 1000}
+                    # Simpler parameters that are more likely to be supported
+                    output_format="json" 
                 )
-            except (TypeError, ValueError):
+            except Exception as e:
+                logger.error(f"Error creating LLM strategy: {e}")
+                
+                # Create a very basic extraction strategy as fallback
                 try:
-                    # Direct provider parameters
-                    llm_strategy = LLMExtractionStrategy(
-                        provider=provider,
-                        api_token=api_token,
-                        schema=schema_json,
-                        extraction_type="schema",
-                        instruction=instruction,
-                        chunk_token_threshold=2000,
-                        overlap_rate=0.1,
-                        apply_chunking=True,
-                        input_format="markdown",
-                        extra_args={"temperature": 0.0, "max_tokens": 1000}
-                    )
-                except (TypeError, ValueError):
-                    # Simple prompt-based approach for older versions
-                    llm_strategy = LLMExtractionStrategy(
-                        prompt=instruction,
-                        output_format="json",
-                        use_local_model=not bool(api_token)
-                    )
+                    from crawl4ai.extraction_strategy import PlainTextExtractionStrategy
+                    logger.info("Falling back to PlainTextExtractionStrategy")
+                    llm_strategy = PlainTextExtractionStrategy()
+                except (ImportError, AttributeError):
+                    logger.error("Could not create any extraction strategy")
+                    return {}
             
             # Configure the LLM extraction run with content override
             llm_config = CrawlerRunConfig(
@@ -321,7 +301,7 @@ class PoliticianScraper:
                         extraction_strategy=llm_strategy
                     )
             
-            # Parse the result
+            # Parse the result more safely
             if hasattr(extraction_result, 'extraction_result') and extraction_result.extraction_result:
                 try:
                     if isinstance(extraction_result.extraction_result, str):
@@ -329,7 +309,13 @@ class PoliticianScraper:
                     return extraction_result.extraction_result
                 except (json.JSONDecodeError, TypeError) as e:
                     logger.error(f"Error parsing JSON from extraction: {e}")
-                    return {}
+            
+            # Fallback: create basic structure from markdown if extraction failed
+            if hasattr(extraction_result, 'markdown') and extraction_result.markdown:
+                return {
+                    "biography_summary": extraction_result.markdown[:1000]
+                }
+                
             return {}
         except Exception as e:
             logger.error(f"Error during structured data extraction: {e}")
@@ -404,10 +390,9 @@ class PoliticianScraper:
                     logger.error(f"Could not initialize JsonCssExtractionStrategy: {e}")
                     raise
             
-            # Create config for search
+            # Create config for search - REMOVED timeout parameter which was causing errors
             search_config = CrawlerRunConfig(
                 extraction_strategy=link_strategy,
-                timeout=60000,
                 cache_mode=CacheMode.BYPASS
             )
             

@@ -28,6 +28,7 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+logger = logging.getLogger(__name__)
 
 # Patch the database imports to avoid Milvus dependency
 sys.modules['db.milvus.scripts.search'] = type('', (), {
