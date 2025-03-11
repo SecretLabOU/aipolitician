@@ -151,7 +151,7 @@ class PoliticianScraper:
     
     async def _extract_structured_data(self, crawler: AsyncWebCrawler, url: str) -> Dict[str, Any]:
         """
-        Extract structured data about a politician using LLM strategy
+        Extract structured data about a politician using manual extraction from markdown.
         
         Args:
             crawler: AsyncWebCrawler instance
@@ -160,22 +160,6 @@ class PoliticianScraper:
         Returns:
             Dict containing structured data
         """
-        # Define the extraction prompt for LLM
-        prompt = f"""
-        Extract information about {self.politician_name} from the content.
-        Please provide this information in a structured format:
-        
-        - date_of_birth: YYYY-MM-DD format if available, otherwise leave empty
-        - nationality: Country of origin
-        - political_affiliation: Political party or alignment
-        - biography_summary: A brief summary of their life and career (up to 300 words)
-        - key_positions: Up to 5 political positions held (title and years)
-        - policy_stances: Their stance on at least 3 major policy areas
-        - recent_statements: Up to 3 recent notable public statements
-        
-        Return the information in JSON format.
-        """
-        
         try:
             # First get the page content with standard settings
             content_config = CrawlerRunConfig(
@@ -223,107 +207,140 @@ class PoliticianScraper:
             if not hasattr(result, 'markdown') or not result.markdown:
                 logger.warning(f"No markdown content extracted from {url}")
                 return {}
-                
-            # Set up LLM extraction strategy
-            provider = "openai/gpt-4o-mini" if os.getenv('OPENAI_API_KEY') else "ollama/llama3"
-            api_token = os.getenv('OPENAI_API_KEY')
             
-            # Create schema
-            schema_json = json.dumps({
-                "type": "object",
-                "properties": {
-                    "date_of_birth": {"type": "string", "description": "YYYY-MM-DD format if available, otherwise leave empty"},
-                    "nationality": {"type": "string", "description": "Country of origin"},
-                    "political_affiliation": {"type": "string", "description": "Political party or alignment"},
-                    "biography_summary": {"type": "string", "description": "A brief summary of their life and career (up to 300 words)"},
-                    "key_positions": {"type": "array", "items": {"type": "object", "properties": {
-                        "title": {"type": "string"},
-                        "years": {"type": "string"}
-                    }}},
-                    "policy_stances": {"type": "object", "additionalProperties": {"type": "string"}},
-                    "recent_statements": {"type": "array", "items": {"type": "string"}}
-                }
-            })
+            # Manual extraction from markdown content
+            logger.info(f"Performing manual extraction from {url}")
+            markdown_text = str(result.markdown)
             
-            instruction = f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements."
+            # Extract structured data using regex patterns
+            import re
             
-            # Use LlmConfig instead of direct provider parameter
-            try:
-                # Create LlmConfig object first
-                llm_config_obj = LlmConfig(
-                    provider=provider,
-                    api_token=api_token
-                )
-                
-                # Use LlmConfig in LLMExtractionStrategy
-                llm_strategy = LLMExtractionStrategy(
-                    llm_config=llm_config_obj,
-                    instruction=instruction,
-                    output_format="json"
-                )
-            except Exception as e:
-                logger.error(f"Error creating LLM strategy: {e}")
-                
-                # Try a simpler approach without extraction
-                logger.info("Skipping LLM extraction and returning basic data from markdown")
-                
-                # Create a basic structure from the markdown content
-                if hasattr(result, 'markdown') and result.markdown:
-                    # Extract a simple biography from the markdown
-                    markdown_text = str(result.markdown)
-                    return {
-                        "biography_summary": markdown_text[:1000] if len(markdown_text) > 0 else "Not available"
-                    }
-                return {}
+            # Extract date of birth
+            dob_patterns = [
+                r'born.*?(\w+ \d+,? \d{4})',  # "born June 14, 1946"
+                r'born.*?(\d{1,2} \w+ \d{4})',  # "born 14 June 1946"
+                r'born.*?(\d{4}-\d{2}-\d{2})',  # "born 1946-06-14"
+                r'Birth Date:.*?(\w+ \d+,? \d{4})',  # "Birth Date: June 14, 1946"
+                r'Date of Birth:.*?(\w+ \d+,? \d{4})'  # "Date of Birth: June 14, 1946"
+            ]
             
-            # Configure the LLM extraction run with content override
-            llm_config = CrawlerRunConfig(
-                extraction_strategy=llm_strategy,
-                cache_mode=CacheMode.BYPASS,
-                word_count_threshold=1  # Ensure we process the content
-            )
+            date_of_birth = ""
+            for pattern in dob_patterns:
+                dob_match = re.search(pattern, markdown_text, re.IGNORECASE)
+                if dob_match:
+                    date_of_birth = dob_match.group(1)
+                    break
             
-            # Use the content from the previous request
-            if hasattr(result, 'markdown') and result.markdown:
-                llm_config.content_override = result.markdown[:12000]  # Limit content size
+            # Extract nationality
+            nationality_patterns = [
+                r'Nationality:.*?(\w+)',  # "Nationality: American"
+                r'nationality is (\w+)',  # "nationality is American"
+                r'(\w+) (citizen|national)',  # "American citizen"
+                r'born in .*?(\w+)'  # "born in America"
+            ]
             
-            # Run extraction with flexible parameter handling
-            try:
-                # Try the modern version first
-                extraction_result = await crawler.arun(
-                    url=url,
-                    config=llm_config
-                )
-            except TypeError:
-                try:
-                    # Try older version with different parameter name
-                    extraction_result = await crawler.arun(
-                        url=url,
-                        run_config=llm_config
-                    )
-                except TypeError:
-                    # Fallback to simplest call with the most essential parameters
-                    extraction_result = await crawler.arun(
-                        url=url,
-                        extraction_strategy=llm_strategy
-                    )
+            nationality = ""
+            for pattern in nationality_patterns:
+                nationality_match = re.search(pattern, markdown_text, re.IGNORECASE)
+                if nationality_match:
+                    nationality = nationality_match.group(1)
+                    break
             
-            # Parse the result more safely
-            if hasattr(extraction_result, 'extraction_result') and extraction_result.extraction_result:
-                try:
-                    if isinstance(extraction_result.extraction_result, str):
-                        return json.loads(extraction_result.extraction_result)
-                    return extraction_result.extraction_result
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.error(f"Error parsing JSON from extraction: {e}")
+            # Extract political affiliation
+            party_patterns = [
+                r'(Republican|Democratic) Party',  # "Republican Party"
+                r'member of the (Republican|Democratic) Party',  # "member of the Republican Party"
+                r'affiliated with the (Republican|Democratic) Party',  # "affiliated with the Republican Party"
+                r'(Republican|Democrat)',  # "Republican" or "Democrat"
+                r'Political Party:.*?(Republican|Democratic)'  # "Political Party: Republican"
+            ]
             
-            # Fallback: create basic structure from markdown if extraction failed
-            if hasattr(extraction_result, 'markdown') and extraction_result.markdown:
-                return {
-                    "biography_summary": extraction_result.markdown[:1000]
-                }
-                
-            return {}
+            political_affiliation = ""
+            for pattern in party_patterns:
+                party_match = re.search(pattern, markdown_text, re.IGNORECASE)
+                if party_match:
+                    political_affiliation = party_match.group(1)
+                    break
+            
+            # Extract biography summary (first 1000 characters)
+            biography_summary = markdown_text[:1000] if len(markdown_text) > 0 else ""
+            
+            # Extract key positions
+            position_patterns = [
+                r'(\d+)(st|nd|rd|th) president',  # "45th president"
+                r'President of the United States',
+                r'Vice President',
+                r'Secretary of State',
+                r'Senator',
+                r'Governor',
+                r'Mayor',
+                r'CEO',
+                r'Chairman',
+                r'Director'
+            ]
+            
+            positions = {}
+            for i, pattern in enumerate(position_patterns):
+                position_matches = re.finditer(pattern, markdown_text, re.IGNORECASE)
+                for j, match in enumerate(position_matches):
+                    position_key = f"position_{i+1}_{j+1}"
+                    positions[position_key] = match.group(0)
+                    if len(positions) >= 5:  # Limit to 5 positions
+                        break
+                if len(positions) >= 5:
+                    break
+            
+            # Extract policy stances
+            policy_areas = [
+                "economy", "healthcare", "immigration", "climate", 
+                "education", "foreign policy", "taxes", "gun control",
+                "abortion", "environment", "trade", "defense"
+            ]
+            
+            policies = {}
+            for i, area in enumerate(policy_areas):
+                # Look for sentences containing the policy area
+                area_pattern = r'([^.!?]*' + area + r'[^.!?]*[.!?])'
+                policy_matches = re.finditer(area_pattern, markdown_text, re.IGNORECASE)
+                for j, match in enumerate(policy_matches):
+                    if j == 0:  # Take only the first mention of each policy area
+                        policies[area] = match.group(1).strip()
+                if len(policies) >= 5:  # Limit to 5 policy areas
+                    break
+            
+            # Extract recent statements
+            statement_patterns = [
+                r'"([^"]{20,})"',  # Text in quotes with at least 20 chars
+                r'\'([^\']{20,})\'',  # Text in single quotes with at least 20 chars
+                r'said[^.!?]*[,:]?\s*"([^"]+)"',  # "said" followed by quoted text
+                r'stated[^.!?]*[,:]?\s*"([^"]+)"'  # "stated" followed by quoted text
+            ]
+            
+            statements = {}
+            for i, pattern in enumerate(statement_patterns):
+                statement_matches = re.finditer(pattern, markdown_text, re.IGNORECASE)
+                for j, match in enumerate(statement_matches):
+                    statement_key = f"statement_{i+1}_{j+1}"
+                    statements[statement_key] = match.group(1)
+                    if len(statements) >= 3:  # Limit to 3 statements
+                        break
+                if len(statements) >= 3:
+                    break
+            
+            # Combine all extracted data
+            structured_data = {
+                "date_of_birth": date_of_birth,
+                "nationality": nationality,
+                "political_affiliation": political_affiliation,
+                "biography_summary": biography_summary,
+                "key_positions": positions,
+                "policy_stances": policies,
+                "recent_statements": statements
+            }
+            
+            logger.info(f"Successfully extracted structured data from {url}")
+            return structured_data
+            
         except Exception as e:
             logger.error(f"Error during structured data extraction: {e}")
             return {}

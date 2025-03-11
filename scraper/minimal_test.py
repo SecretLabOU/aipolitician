@@ -100,35 +100,20 @@ async def test_basic_crawl():
             import traceback
             traceback.print_exc()
 
-async def test_llm_extraction():
-    """Test LLM extraction with LlmConfig."""
-    print("\nTesting LLM extraction with LlmConfig...")
-    
-    # Set up API token (use environment variable if available)
-    api_token = os.getenv('OPENAI_API_KEY')
-    provider = "openai/gpt-4o-mini" if api_token else "ollama/llama3"
-    
-    if not api_token and provider.startswith("openai/"):
-        print("No OpenAI API key found. Skipping LLM extraction test.")
-        return
+async def test_simple_extraction():
+    """Test a simpler extraction approach that doesn't rely on LLM."""
+    print("\nTesting simple extraction without LLM...")
     
     try:
-        # Create LlmConfig
-        llm_config_obj = LlmConfig(
-            provider=provider,
-            api_token=api_token
-        )
+        # Import a simpler extraction strategy
+        from crawl4ai.extraction_strategy import PlainTextExtractionStrategy
         
-        # Create LLM extraction strategy
-        llm_strategy = LLMExtractionStrategy(
-            llm_config=llm_config_obj,
-            instruction="Extract the main topics from this content.",
-            output_format="json"
-        )
+        # Create a simple extraction strategy
+        extraction_strategy = PlainTextExtractionStrategy()
         
         # Create crawler config
         config = CrawlerRunConfig(
-            extraction_strategy=llm_strategy,
+            extraction_strategy=extraction_strategy,
             cache_mode=CacheMode.BYPASS
         )
         
@@ -145,21 +130,70 @@ async def test_llm_extraction():
             if hasattr(result, 'extraction_result') and result.extraction_result:
                 print("Extraction successful!")
                 print(f"Extraction result type: {type(result.extraction_result)}")
-                
-                # Try to display the extraction result
-                if isinstance(result.extraction_result, str):
-                    try:
-                        parsed = json.loads(result.extraction_result)
-                        print(f"Parsed JSON: {json.dumps(parsed, indent=2)[:500]}...")
-                    except json.JSONDecodeError:
-                        print(f"Raw extraction result (first 500 chars): {result.extraction_result[:500]}...")
-                else:
-                    print(f"Structured extraction result: {str(result.extraction_result)[:500]}...")
+                print(f"Extraction result preview: {str(result.extraction_result)[:500]}...")
             else:
-                print("No extraction result found.")
+                print("No extraction result found. Using markdown instead.")
+                if hasattr(result, 'markdown') and result.markdown:
+                    print(f"Markdown preview: {str(result.markdown)[:500]}...")
                 
     except Exception as e:
-        print(f"Error during LLM extraction test: {str(e)}")
+        print(f"Error during simple extraction test: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+async def test_manual_extraction():
+    """Test manual extraction from markdown content."""
+    print("\nTesting manual extraction from markdown...")
+    
+    try:
+        # First get the content
+        config = CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS
+        )
+        
+        async with AsyncWebCrawler() as crawler:
+            url = "https://en.wikipedia.org/wiki/Donald_Trump"
+            print(f"Crawling {url}...")
+            
+            result = await crawler.arun(
+                url=url,
+                config=config
+            )
+            
+            if hasattr(result, 'markdown') and result.markdown:
+                print("Crawl successful! Performing manual extraction...")
+                
+                # Extract basic information using string operations
+                markdown_text = str(result.markdown)
+                
+                # Example: Extract the title
+                import re
+                title_match = re.search(r'# (.*?)[\n\r]', markdown_text)
+                title = title_match.group(1) if title_match else "Unknown"
+                
+                # Example: Look for birth date
+                birth_date_match = re.search(r'born.*?(\w+ \d+, \d{4})', markdown_text)
+                birth_date = birth_date_match.group(1) if birth_date_match else "Unknown"
+                
+                # Example: Look for political party
+                party_match = re.search(r'(Republican|Democratic) Party', markdown_text)
+                party = party_match.group(0) if party_match else "Unknown"
+                
+                # Create a structured result
+                extracted_data = {
+                    "name": title,
+                    "birth_date": birth_date,
+                    "political_party": party,
+                    "biography_summary": markdown_text[:1000] + "..."
+                }
+                
+                print("Manual extraction results:")
+                print(json.dumps(extracted_data, indent=2))
+            else:
+                print("No markdown content found.")
+                
+    except Exception as e:
+        print(f"Error during manual extraction test: {str(e)}")
         import traceback
         traceback.print_exc()
 
@@ -167,6 +201,7 @@ if __name__ == "__main__":
     # Run the basic crawl test
     asyncio.run(test_basic_crawl())
     
-    # Run the LLM extraction test if requested
+    # Run the extraction tests if requested
     if "--with-llm" in sys.argv:
-        asyncio.run(test_llm_extraction()) 
+        asyncio.run(test_simple_extraction())
+        asyncio.run(test_manual_extraction()) 
