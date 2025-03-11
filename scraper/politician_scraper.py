@@ -8,7 +8,9 @@ import requests
 import subprocess
 import sys
 import atexit
+import numpy as np
 from bs4 import BeautifulSoup
+from sentence_transformers import SentenceTransformer
 
 # GPU Environment Setup
 def setup_gpu_environment(env_id="nat", gpu_count=1):
@@ -64,21 +66,27 @@ def extract_with_ollama(text, name, max_length=4000):
     text = text[:max_length]
     
     prompt = f"""
-    Extract key information about {name} from this text.
+    Extract comprehensive information about {name} from this text.
     
-    Return a JSON object with ONLY these fields:
+    Return a JSON object with THESE EXACT fields:
     {{
-        "biography": "Brief biography focusing on early life and career",
-        "date_of_birth": "MM/DD/YYYY format",
+        "biography": "Full biography focusing on career and life",
+        "date_of_birth": "YYYY-MM-DD format",
         "nationality": "Country of citizenship",
         "political_affiliation": "Political party or affiliation",
         "positions": ["List of political positions held"],
         "policies": ["List of notable policy positions"],
-        "legislative_actions": ["List of notable legislative actions"]
+        "legislative_actions": ["List of notable legislative actions or bills"],
+        "public_communications": ["Notable speeches, statements, or communications"],
+        "timeline": ["Key events in chronological order"],
+        "campaigns": ["Electoral campaigns participated in"],
+        "media": ["Media appearances or notable coverage"],
+        "philanthropy": ["Charitable activities or foundations"],
+        "personal_details": ["Family information, education, interests"]
     }}
     
-    For any field where information is not available, use an empty string or empty list.
-    Return ONLY the JSON object, no additional text or explanation.
+    For any field where information is not available, use an empty string or empty array [].
+    Return ONLY the JSON object, no additional text, explanations or formatting.
     
     Text to analyze:
     {text}
@@ -112,13 +120,13 @@ def get_article_text(url, selector=None):
             content_div = soup.find(id="mw-content-text")
             if content_div:
                 # Get the first few paragraphs
-                paragraphs = content_div.find_all('p')[:10]
+                paragraphs = content_div.find_all('p')[:15]  # Increased from 10 to get more content
                 return "\n".join([p.get_text() for p in paragraphs])
         
         elif "britannica.com" in url:
             content_div = soup.find(class_="topic-content")
             if content_div:
-                paragraphs = content_div.find_all('p')[:8]
+                paragraphs = content_div.find_all('p')[:10]  # Increased from 8
                 return "\n".join([p.get_text() for p in paragraphs])
         
         elif selector:
@@ -128,17 +136,31 @@ def get_article_text(url, selector=None):
                 return "\n".join([p.get_text() for p in content])
         
         # Fallback: get all paragraphs
-        paragraphs = soup.find_all('p')[:15]
+        paragraphs = soup.find_all('p')[:20]  # Increased from 15
         return "\n".join([p.get_text() for p in paragraphs])
     
     except Exception as e:
         print(f"Error fetching {url}: {e}")
         return None
 
+def generate_embedding(text, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+    """Generate embedding vector for the text using the specified model"""
+    try:
+        print(f"Generating embedding using {model_name}...")
+        model = SentenceTransformer(model_name)
+        # Use biography for embedding or full name if no biography
+        text_to_embed = text if text else "Unknown"
+        embedding = model.encode(text_to_embed)
+        print(f"✅ Generated embedding vector of dimension {len(embedding)}")
+        return embedding.tolist()  # Convert to list for JSON serialization
+    except Exception as e:
+        print(f"❌ Error generating embedding: {e}")
+        return [0.0] * 768  # Return zero vector as fallback
+
 async def crawl_political_figure(name):
     urls = get_sources(name)
     
-    # Initialize result collection
+    # Initialize result collection with all required fields
     combined_data = {
         "id": str(uuid.uuid4()),
         "name": name,
@@ -149,7 +171,13 @@ async def crawl_political_figure(name):
         "positions": [],
         "policies": [],
         "legislative_actions": [],
-        "campaigns": []
+        "public_communications": [],
+        "timeline": [],
+        "campaigns": [],
+        "media": [],
+        "philanthropy": [],
+        "personal_details": [],
+        "embedding": []  # Will be populated later
     }
     
     # Process each source URL
@@ -200,6 +228,21 @@ async def crawl_political_figure(name):
         except Exception as e:
             print(f"Error processing {url}: {e}")
     
+    # Generate embedding from biography
+    combined_data["embedding"] = generate_embedding(combined_data["biography"])
+    
+    # Convert date format if necessary (MM/DD/YYYY to YYYY-MM-DD)
+    if combined_data["date_of_birth"] and "/" in combined_data["date_of_birth"]:
+        try:
+            # Parse the date in MM/DD/YYYY format
+            parts = combined_data["date_of_birth"].split("/")
+            if len(parts) == 3:
+                month, day, year = parts
+                # Format as YYYY-MM-DD
+                combined_data["date_of_birth"] = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+        except Exception as e:
+            print(f"Error reformatting date: {e}")
+    
     return combined_data
 
 def save_to_json(data, name):
@@ -239,13 +282,13 @@ def main(name, env_id="nat", gpu_count=1):
     print(f"Positions found: {len(data['positions'])}")
     print(f"Policies found: {len(data['policies'])}")
     print(f"Legislative actions: {len(data['legislative_actions'])}")
+    print(f"Public communications: {len(data['public_communications'])}")
+    print(f"Media mentions: {len(data['media'])}")
+    print(f"Embedding dimension: {len(data['embedding'])}")
     
     # Save data to JSON file
     filepath = save_to_json(data, name)
     print(f"Data saved to: {filepath}")
-    
-    # No need to explicitly call cleanup_gpu_environment()
-    # It will be called automatically when the script exits due to atexit.register()
     
     return data
 
@@ -258,7 +301,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         political_figure_name = sys.argv[1]
     else:
-        political_figure_name = "Barack Obama"  # Default
+        political_figure_name = "Donald Trump"  # Default
         
     if len(sys.argv) > 2:
         env_id = sys.argv[2]
