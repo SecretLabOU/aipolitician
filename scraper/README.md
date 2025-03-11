@@ -2,6 +2,8 @@
 
 A Python script to scrape data about politicians using the crawl4ai tool, process the data, and store it in a Milvus vector database for AI political debate applications.
 
+> **Note**: This scraper is compatible with crawl4ai version 0.5.x. The code uses the appropriate API and strategies for this version.
+
 ## Features
 
 - Scrapes data about politicians from the web using crawl4ai

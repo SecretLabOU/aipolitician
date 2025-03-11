@@ -20,9 +20,9 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
-# Crawl4AI imports - Correctly matched to current documentation
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
+# Crawl4AI imports for version 0.5.x
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+from crawl4ai.strategies import LLMStrategy, SimpleCSSSelectorStrategy
 from crawl4ai.config import ContentSelectionConfig
 
 # Add the project root to path to import from db module
@@ -126,8 +126,8 @@ class PoliticianScraper:
         Returns:
             Dict containing structured data
         """
-        # Define the extraction prompt
-        instruction = f"""
+        # Define the extraction prompt for LLM
+        prompt = f"""
         Extract information about {self.politician_name} from the content.
         Please provide this information in a structured format:
         
@@ -145,57 +145,62 @@ class PoliticianScraper:
         try:
             # First get the page content with standard settings
             content_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS,
                 content_selection=ContentSelectionConfig(
                     main_content_only=True,
                     exclude_selectors=[
                         "nav", "header", "footer", ".navbar", 
                         ".menu", ".comments", ".ads", "aside"
                     ]
-                )
+                ),
+                bypass_cache=True
             )
             
             # Get the content
             result = await crawler.arun(
                 url=url,
-                config=content_config
+                run_config=content_config
             )
             
             if not result.markdown:
                 logger.warning(f"No markdown content extracted from {url}")
                 return {}
                 
-            # Set up LLM extraction strategy
-            extra_args = {"temperature": 0, "top_p": 0.9, "max_tokens": 2000}
-            
-            llm_strategy = LLMExtractionStrategy(
-                provider="local/gpt4all-j" if os.getenv('OPENAI_API_KEY') is None else "openai/gpt-3.5-turbo",
-                api_token=os.getenv('OPENAI_API_KEY'),
-                instruction=instruction,
-                extraction_type="json",
-                input_content=result.markdown[:12000],  # Limit content size
-                input_format="markdown",
-                extra_args=extra_args
+            # Set up LLM extraction strategy for 0.5.x
+            # Use local model by default with GPT4All
+            llm_strategy = LLMStrategy(
+                prompt=prompt,
+                use_local_model=True,
+                local_model_name="gpt4all-j",
+                output_format="json"
             )
             
-            # Configure the LLM extraction run
+            # If OpenAI API key is available, use it instead
+            if os.getenv('OPENAI_API_KEY'):
+                llm_strategy = LLMStrategy(
+                    prompt=prompt,
+                    use_local_model=False,
+                    output_format="json"
+                )
+            
+            # Configure the LLM extraction run with content override
             llm_config = CrawlerRunConfig(
                 extraction_strategy=llm_strategy,
-                cache_mode=CacheMode.BYPASS
+                content_override=result.markdown[:12000],  # Limit content size
+                bypass_cache=True
             )
             
-            # Run extraction on the content
+            # Run extraction
             extraction_result = await crawler.arun(
-                url="about:blank",  # Dummy URL since we're providing content directly
-                config=llm_config
+                url=url,  # Use the original URL 
+                run_config=llm_config
             )
             
             # Parse the result
-            if extraction_result.extracted_content:
+            if extraction_result.extraction_result:
                 try:
-                    if isinstance(extraction_result.extracted_content, str):
-                        return json.loads(extraction_result.extracted_content)
-                    return extraction_result.extracted_content
+                    if isinstance(extraction_result.extraction_result, str):
+                        return json.loads(extraction_result.extraction_result)
+                    return extraction_result.extraction_result
                 except (json.JSONDecodeError, TypeError) as e:
                     logger.error(f"Error parsing JSON from extraction: {e}")
                     return {}
@@ -203,6 +208,63 @@ class PoliticianScraper:
         except Exception as e:
             logger.error(f"Error during structured data extraction: {e}")
             return {}
+    
+    async def _get_google_search_results(self, crawler: AsyncWebCrawler, query: str, limit: int = 3) -> List[str]:
+        """
+        Get URLs from Google search results using SimpleCSSSelectorStrategy.
+        
+        Args:
+            crawler: AsyncWebCrawler instance
+            query: Search query
+            limit: Maximum number of URLs to return
+            
+        Returns:
+            List of URLs from search results
+        """
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        logger.info(f"Searching Google for: {query}")
+        
+        try:
+            # Define the SimpleCSSSelectorStrategy for 0.5.x
+            # This extracts links from Google search results
+            link_strategy = SimpleCSSSelectorStrategy(
+                selectors={
+                    "links": ".yuRUbf > a"
+                },
+                attribute_map={
+                    "links": {"href": "href"}
+                }
+            )
+            
+            # Create config for search
+            search_config = CrawlerRunConfig(
+                extraction_strategy=link_strategy,
+                timeout=60000,
+                bypass_cache=True
+            )
+            
+            # Execute search
+            search_result = await crawler.arun(
+                url=search_url,
+                run_config=search_config
+            )
+            
+            # Extract URLs from results
+            urls = []
+            if search_result.extraction_result and "links" in search_result.extraction_result:
+                for link_data in search_result.extraction_result["links"]:
+                    if isinstance(link_data, dict) and "href" in link_data:
+                        urls.append(link_data["href"])
+            
+            # Limit to requested number
+            urls = urls[:limit]
+            
+            logger.info(f"Found {len(urls)} URLs from Google search: {urls}")
+            return urls
+            
+        except Exception as e:
+            logger.error(f"Error during Google search: {str(e)}")
+            return []
     
     async def scrape(self) -> Dict[str, Any]:
         """
@@ -214,7 +276,7 @@ class PoliticianScraper:
         logger.info(f"Starting to scrape data for {self.politician_name}")
         
         try:
-            # Set up browser configuration according to docs
+            # Set up browser configuration for 0.5.x
             browser_config = BrowserConfig(
                 headless=True,
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
@@ -222,7 +284,7 @@ class PoliticianScraper:
             )
             
             # Create web crawler
-            async with AsyncWebCrawler(config=browser_config) as crawler:
+            async with AsyncWebCrawler(browser_config=browser_config) as crawler:
                 all_structured_data = []
                 
                 # Try to get sources from Google search first
@@ -386,77 +448,6 @@ class PoliticianScraper:
         except Exception as e:
             logger.error(f"Error saving to Milvus: {str(e)}")
             return False
-
-    async def _get_google_search_results(self, crawler: AsyncWebCrawler, query: str, limit: int = 3) -> List[str]:
-        """
-        Get URLs from Google search results using JsonCssExtractionStrategy.
-        
-        Args:
-            crawler: AsyncWebCrawler instance
-            query: Search query
-            limit: Maximum number of URLs to return
-            
-        Returns:
-            List of URLs from search results
-        """
-        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        logger.info(f"Searching Google for: {query}")
-        
-        try:
-            # Define the JsonCssExtractionStrategy with proper schema
-            schema = {
-                "name": "Google Search Results",
-                "baseSelector": ".yuRUbf",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": "a",
-                        "type": "attribute",
-                        "attribute": "href"
-                    },
-                    {
-                        "name": "title",
-                        "selector": "h3",
-                        "type": "text"
-                    }
-                ]
-            }
-            
-            # Create extraction strategy
-            extraction_strategy = JsonCssExtractionStrategy(schema=schema, verbose=True)
-            
-            # Create config for search
-            search_config = CrawlerRunConfig(
-                extraction_strategy=extraction_strategy,
-                timeout=60000,
-                cache_mode=CacheMode.BYPASS
-            )
-            
-            # Execute search
-            search_result = await crawler.arun(
-                url=search_url,
-                config=search_config
-            )
-            
-            # Extract URLs from results
-            urls = []
-            if search_result.extracted_content:
-                results = search_result.extracted_content
-                if isinstance(results, list):
-                    for item in results[:limit]:
-                        if isinstance(item, dict) and "url" in item:
-                            urls.append(item["url"])
-                elif isinstance(results, dict) and "results" in results:
-                    for item in results["results"][:limit]:
-                        if isinstance(item, dict) and "url" in item:
-                            urls.append(item["url"])
-            
-            logger.info(f"Found {len(urls)} URLs from Google search: {urls}")
-            return urls
-            
-        except Exception as e:
-            logger.error(f"Error during Google search: {str(e)}")
-            return []
 
 
 async def main():
