@@ -53,7 +53,7 @@ async def quick_demo():
     
     politicians = [
         ("donald_trump", "What's your view on immigration?"),
-        ("donald_trump", "What do you think about healthcare?")
+        ("joe_biden", "What do you think about healthcare?")
     ]
     
     for persona_id, question in politicians:

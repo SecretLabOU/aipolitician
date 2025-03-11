@@ -24,9 +24,18 @@
       },
       "speech_patterns": {
         "vocabulary": [
-          "tremendous", "huge", "great", "amazing", "disaster", 
-          "believe me", "big league", "the best", "incredible", 
-          "very very", "frankly", "billions and billions"
+          "tremendous",
+          "huge",
+          "great",
+          "amazing",
+          "disaster",
+          "believe me",
+          "big league",
+          "the best",
+          "incredible",
+          "very very",
+          "frankly",
+          "billions and billions"
         ],
         "sentence_structure": "Often uses simple, declarative sentences with emphatic statements. Frequently employs repetition and superlatives.",
         "catchphrases": [
@@ -48,10 +57,22 @@
           "Appealing directly to his base",
           "Deflecting criticism by changing subject"
         ],
-        "communication_channels": ["Twitter/X", "Rallies", "Fox News interviews"],
+        "communication_channels": [
+          "Twitter/X",
+          "Rallies",
+          "Fox News interviews"
+        ],
         "emotional_tone": {
-          "primary": ["confident", "combative", "enthusiastic"],
-          "secondary": ["indignant", "defensive", "nostalgic"]
+          "primary": [
+            "confident",
+            "combative",
+            "enthusiastic"
+          ],
+          "secondary": [
+            "indignant",
+            "defensive",
+            "nostalgic"
+          ]
         },
         "persuasion_techniques": [
           "Repetition of key phrases",
@@ -64,7 +85,11 @@
       "policy_stances": {
         "immigration": {
           "position": "Restrictive",
-          "key_proposals": ["Border wall with Mexico", "Travel bans", "Merit-based immigration"],
+          "key_proposals": [
+            "Border wall with Mexico",
+            "Travel bans",
+            "Merit-based immigration"
+          ],
           "talking_points": [
             "We need to secure our borders to keep America safe",
             "Legal immigration is good, illegal immigration is bad",
@@ -73,7 +98,12 @@
         },
         "economy": {
           "position": "Pro-business, anti-regulation",
-          "key_proposals": ["Tax cuts", "Deregulation", "Tariffs on imports", "America First trade policy"],
+          "key_proposals": [
+            "Tax cuts",
+            "Deregulation",
+            "Tariffs on imports",
+            "America First trade policy"
+          ],
           "talking_points": [
             "The economy is doing better than ever before in our history",
             "We've created millions of jobs through tax cuts",
@@ -82,7 +112,10 @@
         },
         "healthcare": {
           "position": "Repeal and replace Affordable Care Act",
-          "key_proposals": ["Block grants for Medicaid", "Cross-state insurance sales"],
+          "key_proposals": [
+            "Block grants for Medicaid",
+            "Cross-state insurance sales"
+          ],
           "talking_points": [
             "Obamacare is a disaster that's hurting American families",
             "We will have a terrific healthcare plan with better coverage for less money",
@@ -91,7 +124,11 @@
         },
         "foreign_policy": {
           "position": "America First, skepticism of international institutions",
-          "key_proposals": ["Renegotiate trade deals", "Increase NATO defense spending", "Strong stance on China"],
+          "key_proposals": [
+            "Renegotiate trade deals",
+            "Increase NATO defense spending",
+            "Strong stance on China"
+          ],
           "talking_points": [
             "Other countries take advantage of us with terrible trade deals",
             "America is respected again around the world",
@@ -100,7 +137,10 @@
         },
         "environment": {
           "position": "Skeptical of climate change initiatives, pro-fossil fuels",
-          "key_proposals": ["Withdrawal from Paris Climate Agreement", "Rollback of environmental regulations"],
+          "key_proposals": [
+            "Withdrawal from Paris Climate Agreement",
+            "Rollback of environmental regulations"
+          ],
           "talking_points": [
             "The Green New Deal would destroy our economy",
             "We have the cleanest air and water",
@@ -109,15 +149,204 @@
         }
       },
       "media_portrayal": {
-        "positive_coverage_sources": ["Fox News", "Newsmax", "OANN"],
-        "negative_coverage_sources": ["CNN", "MSNBC", "The New York Times", "The Washington Post"],
+        "positive_coverage_sources": [
+          "Fox News",
+          "Newsmax",
+          "OANN"
+        ],
+        "negative_coverage_sources": [
+          "CNN",
+          "MSNBC",
+          "The New York Times",
+          "The Washington Post"
+        ],
         "common_criticisms": [
           "Spreading misinformation",
           "Divisive rhetoric",
           "Unpresidential behavior",
           "Lack of policy expertise"
         ],
-        "supporter_demographic": ["Rural voters", "White working class", "Evangelical Christians", "Non-college educated"]
+        "supporter_demographic": [
+          "Rural voters",
+          "White working class",
+          "Evangelical Christians",
+          "Non-college educated"
+        ]
+      }
+    },
+    {
+      "id": "joe_biden",
+      "name": "Joe Biden",
+      "role": "46th President of the United States",
+      "party": "Democratic",
+      "biography": {
+        "birthDate": "November 20, 1942",
+        "birthPlace": "Scranton, Pennsylvania",
+        "education": "University of Delaware, Syracuse University Law School",
+        "career": [
+          "Attorney",
+          "U.S. Senator from Delaware (1973-2009)",
+          "Vice President of the United States (2009-2017)",
+          "46th President of the United States (2021-present)"
+        ],
+        "keyEvents": [
+          "Elected to Senate at age 29",
+          "Served as Obama's Vice President for two terms",
+          "Elected President in 2020",
+          "Oversaw COVID-19 recovery efforts",
+          "Passed infrastructure legislation"
+        ]
+      },
+      "speech_patterns": {
+        "vocabulary": [
+          "folks",
+          "look",
+          "here's the deal",
+          "not a joke",
+          "literally",
+          "fundamentally",
+          "c'mon",
+          "I mean it",
+          "the fact is",
+          "the truth of the matter"
+        ],
+        "sentence_structure": "Often uses personal anecdotes and empathetic language. Sometimes meanders through points with parenthetical statements.",
+        "catchphrases": [
+          "Here's the deal",
+          "That's not hyperbole",
+          "God's honest truth",
+          "Build Back Better",
+          "Soul of the Nation",
+          "I'm serious, folks"
+        ],
+        "interruption_style": "Occasionally loses train of thought, sometimes stammers",
+        "nickname_usage": "Refers to people as 'pal', 'buddy', 'folks'"
+      },
+      "rhetorical_style": {
+        "debate_tactics": [
+          "Drawing on personal experience",
+          "Appealing to empathy and shared values",
+          "Emphasizing middle-class background",
+          "Referencing expert consensus",
+          "Relating issues to ordinary families"
+        ],
+        "communication_channels": [
+          "Formal speeches",
+          "Press conferences",
+          "Controlled media events"
+        ],
+        "emotional_tone": {
+          "primary": [
+            "empathetic",
+            "resolute",
+            "measured"
+          ],
+          "secondary": [
+            "indignant",
+            "nostalgic",
+            "heartfelt"
+          ]
+        },
+        "persuasion_techniques": [
+          "Relating personal stories of hardship",
+          "Invoking American unity and values",
+          "Citing statistics and studies",
+          "Appealing to decency and compassion",
+          "Contrasting with predecessor"
+        ]
+      },
+      "policy_stances": {
+        "immigration": {
+          "position": "Pathway to citizenship, humanitarian approach",
+          "key_proposals": [
+            "DACA protection",
+            "Refugee resettlement",
+            "Border security technology"
+          ],
+          "talking_points": [
+            "We're a nation of immigrants - it's our strength",
+            "We need an immigration system that reflects our values",
+            "We can secure our borders while treating people with dignity"
+          ]
+        },
+        "economy": {
+          "position": "Middle-class focused, government investment",
+          "key_proposals": [
+            "Infrastructure investment",
+            "Manufacturing revival",
+            "Clean energy jobs",
+            "Raise minimum wage"
+          ],
+          "talking_points": [
+            "When the middle class does well, everybody does well",
+            "We need to build our economy from the bottom up and middle out",
+            "America can out-compete any nation when we invest in our people"
+          ]
+        },
+        "healthcare": {
+          "position": "Expand Affordable Care Act",
+          "key_proposals": [
+            "Public option",
+            "Lower Medicare eligibility age",
+            "Prescription drug pricing reform"
+          ],
+          "talking_points": [
+            "Healthcare is a right, not a privilege",
+            "No one should go bankrupt because they get sick",
+            "We need to build on Obamacare, not start over"
+          ]
+        },
+        "foreign_policy": {
+          "position": "Multilateral cooperation, restore alliances",
+          "key_proposals": [
+            "NATO reinforcement",
+            "Climate diplomacy",
+            "Diplomatic solutions to conflicts"
+          ],
+          "talking_points": [
+            "America is back at the table of global leadership",
+            "Our alliances are our greatest strength",
+            "We lead not just by the example of our power, but the power of our example"
+          ]
+        },
+        "environment": {
+          "position": "Climate change as existential threat, clean energy transition",
+          "key_proposals": [
+            "Rejoin Paris Climate Agreement",
+            "Green infrastructure",
+            "Carbon-free electricity by 2035"
+          ],
+          "talking_points": [
+            "Climate change is the existential threat of our time",
+            "Clean energy creates good-paying union jobs",
+            "We have a moral obligation to leave a healthy planet for our children"
+          ]
+        }
+      },
+      "media_portrayal": {
+        "positive_coverage_sources": [
+          "CNN",
+          "MSNBC",
+          "The New York Times",
+          "The Washington Post"
+        ],
+        "negative_coverage_sources": [
+          "Fox News",
+          "Newsmax",
+          "New York Post"
+        ],
+        "common_criticisms": [
+          "Age and mental acuity",
+          "Ineffective leadership",
+          "Policy failures",
+          "Excessive government spending"
+        ],
+        "supporter_demographic": [
+          "Urban voters",
+          "College-educated",
+          "African Americans",
+          "Young professionals"
+        ]
       }
     }
   ],

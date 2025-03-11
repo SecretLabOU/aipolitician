@@ -7,6 +7,9 @@ import json
 import os
 from pathlib import Path
 
+# Import config module for persona selection
+from political_agent_graph.config import select_persona as config_select_persona
+
 # Set up the persona manager
 class PersonaManager:
     """Manages loading and accessing politician personas."""
@@ -43,6 +46,8 @@ class PersonaManager:
         """Set the active persona by ID."""
         if persona_id in self.personas:
             self.active_persona = self.personas[persona_id]
+            # Also update the config module's active persona
+            config_select_persona(persona_id)
             return True
         return False
 

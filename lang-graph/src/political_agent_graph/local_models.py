@@ -1,67 +1,140 @@
 """Local model configuration for the political agent.
 
-This module handles setting up and configuring local models.
+This module handles setting up and configuring local models for the political agent graph.
+Uses the existing model loading code from the aipolitician repository.
 """
 
 import os
+import sys
+import torch
 from pathlib import Path
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Any
+
+# Add main project directory to path to import from root
+root_dir = Path(__file__).parent.parent.parent.parent.absolute()
+sys.path.insert(0, str(root_dir))
+
+# Import the model generation functions from the main project
+try:
+    from chat_trump import generate_response as generate_trump_response
+    from chat_biden import generate_response as generate_biden_response
+    # Import other necessary components
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from peft import PeftModel
+    from langchain.llms.base import LLM
+    MAIN_CODE_AVAILABLE = True
+except ImportError:
+    print("Warning: Main aipolitician code not available. Using fallback models.")
+    MAIN_CODE_AVAILABLE = False
 
 # Global model references
 models = {}
+tokenizers = {}
+base_models = {}
+trump_model = None
+biden_model = None
+
+# Wrapper classes to adapt the main code's generate_response functions to LangChain LLM API
+class TrumpLLM(LLM):
+    """Wrapper around the Trump model's generate_response function."""
+    
+    def _llm_type(self) -> str:
+        return "trump_mistral_lora"
+    
+    def _call(self, prompt: str, **kwargs) -> str:
+        """Call the Trump model to generate a response."""
+        global trump_model, tokenizers
+        if not trump_model and MAIN_CODE_AVAILABLE:
+            from chat_trump import model as loaded_trump_model
+            from chat_trump import tokenizer as loaded_trump_tokenizer
+            trump_model = loaded_trump_model
+            tokenizers["trump"] = loaded_trump_tokenizer
+            
+        # Use the direct generation if available
+        if MAIN_CODE_AVAILABLE:
+            max_length = kwargs.get("max_length", 512)
+            response = generate_trump_response(prompt, trump_model, tokenizers["trump"], 
+                                               use_rag=False, max_length=max_length)
+            return response
+        
+        return f"Trump model response placeholder (model not available)"
+
+
+class BidenLLM(LLM):
+    """Wrapper around the Biden model's generate_response function."""
+    
+    def _llm_type(self) -> str:
+        return "biden_mistral_lora"
+    
+    def _call(self, prompt: str, **kwargs) -> str:
+        """Call the Biden model to generate a response."""
+        global biden_model, tokenizers
+        if not biden_model and MAIN_CODE_AVAILABLE:
+            from chat_biden import model as loaded_biden_model
+            from chat_biden import tokenizer as loaded_biden_tokenizer
+            biden_model = loaded_biden_model
+            tokenizers["biden"] = loaded_biden_tokenizer
+            
+        # Use the direct generation if available
+        if MAIN_CODE_AVAILABLE:
+            max_length = kwargs.get("max_length", 512)
+            response = generate_biden_response(prompt, biden_model, tokenizers["biden"], 
+                                               use_rag=False, max_length=max_length)
+            return response
+        
+        return f"Biden model response placeholder (model not available)"
+
+
+# Fallback SimpleModel for testing without real models
+class SimpleModel(LLM):
+    """Simple LLM for testing without real models."""
+    
+    persona: str
+    
+    def __init__(self, persona: str):
+        super().__init__()
+        self.persona = persona
+    
+    def _llm_type(self) -> str:
+        return f"simple_{self.persona.lower()}_model"
+    
+    def _call(self, prompt: str, **kwargs) -> str:
+        """Return a simple response based on the persona."""
+        if self.persona.lower() == "trump":
+            return f"Let me tell you, that's a great question. The best question. Nobody asks better questions than you. Believe me!"
+        elif self.persona.lower() == "biden":
+            return f"Look, here's the deal folks. That's an important issue that impacts hardworking Americans. Let me be clear about this."
+        else:
+            return f"Generic response from {self.persona}"
+
 
 def setup_models():
-    """Set up the local models needed for the political agent.
-    
-    This includes:
-    - Mixtral 8x7B for general AI tasks
-    - Fine-tuned Trump model for Trump-specific responses
-    """
+    """Set up the models using the existing aipolitician code."""
     global models
     
-    try:
-        # Use Ollama for Mixtral base model
-        from langchain_community.llms import Ollama
-        
-        print("Setting up base Mixtral model...")
-        models["mistral"] = Ollama(model="mistral")
-        
-        # Check for Trump model
-        trump_model_path = Path("../../fine_tuned_trump_mistral/model.gguf").resolve()
-        if trump_model_path.exists():
-            try:
-                from langchain_community.llms import LlamaCpp
-                
-                # Load the Trump model with appropriate parameters
-                models["trump"] = LlamaCpp(
-                    model_path=str(trump_model_path),
-                    temperature=0.7,
-                    max_tokens=512,
-                    top_p=0.95,
-                    verbose=False,
-                    n_gpu_layers=1
-                )
-                print(f"Trump model loaded successfully from {trump_model_path}")
-            except ImportError:
-                print("Warning: llama-cpp-python not installed. Trump model will not be available.")
-        else:
-            # Fallback to using Mistral with specific prompt engineering
-            print("Trump model not found, using Mistral with prompt engineering for Trump simulation")
-            models["trump"] = models["mistral"]
-            
-    except ImportError:
-        print("Warning: langchain_community.llms.Ollama not available, falling back to OpenAI")
-        try:
-            from langchain_openai import ChatOpenAI
-            models["mistral"] = ChatOpenAI(model_name="gpt-3.5-turbo")
-            models["trump"] = ChatOpenAI(model_name="gpt-3.5-turbo")
-        except ImportError:
-            print("Error: Neither Ollama nor OpenAI are available. Please install one of them.")
+    if MAIN_CODE_AVAILABLE:
+        # Use the actual model wrappers that utilize the main repo code
+        print("Using models from main aipolitician repository")
+        models["trump"] = TrumpLLM()
+        models["biden"] = BidenLLM()
+        models["mistral"] = models["trump"]  # For general tasks, use Trump model as fallback
+    else:
+        # Use simple placeholder models
+        print("Warning: Using simple placeholder models (main code not available)")
+        models["trump"] = SimpleModel("Trump")
+        models["biden"] = SimpleModel("Biden")
+        models["mistral"] = SimpleModel("Generic")
     
     return models
+
 
 def get_model(model_name: str):
     """Get a model by name."""
     if not models:
         setup_models()
     return models.get(model_name, models.get("mistral"))
+
+
+def get_tokenizer(model_name: str = "mistral"):
+    """Get a tokenizer by model name."""
+    return tokenizers.get(model_name, None)
