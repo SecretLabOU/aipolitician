@@ -4,12 +4,56 @@ import json
 import os
 import datetime
 import re
+import requests
+import subprocess
+import sys
+import atexit
+from bs4 import BeautifulSoup
 from crawl4ai import (
     AsyncWebCrawler, LLMExtractionStrategy, LLMConfig, 
     BFSDeepCrawlStrategy, FilterChain, DomainFilter, 
     URLPatternFilter, RegexChunking, LLMContentFilter,
     CrawlerRunConfig
 )
+
+# GPU Environment Setup
+def setup_gpu_environment(env_id="nat", gpu_count=1):
+    """Setup genv environment and attach GPU"""
+    print(f"Setting up GPU environment (id: {env_id}, GPUs: {gpu_count})...")
+    
+    try:
+        # Activate the environment
+        activate_cmd = f"genv activate --id {env_id}"
+        subprocess.run(activate_cmd, shell=True, check=True)
+        print(f"✅ Activated genv environment: {env_id}")
+        
+        # Attach GPUs
+        attach_cmd = f"genv attach --count {gpu_count}"
+        subprocess.run(attach_cmd, shell=True, check=True)
+        print(f"✅ Attached {gpu_count} GPU(s) to environment")
+        
+        # Show GPU status
+        subprocess.run("nvidia-smi", shell=True)
+        
+        # Register cleanup on exit
+        atexit.register(cleanup_gpu_environment)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to setup GPU environment: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Error setting up GPU: {e}")
+        return False
+
+def cleanup_gpu_environment():
+    """Clean up by detaching GPUs"""
+    try:
+        print("\nCleaning up GPU environment...")
+        # Detach all GPUs
+        subprocess.run("genv detach --all", shell=True, check=True)
+        print("✅ Successfully detached all GPUs")
+    except Exception as e:
+        print(f"⚠️ Error during GPU cleanup: {e}")
 
 # Define target URLs
 def get_sources(name):
@@ -19,76 +63,86 @@ def get_sources(name):
         f"https://www.reuters.com/search/news?blob={name}",
     ]
 
+# Direct extraction function using Ollama API
+def extract_with_ollama(text, name, max_length=4000):
+    """Extract structured information directly using Ollama API"""
+    # Trim text to reasonable length
+    text = text[:max_length]
+    
+    prompt = f"""
+    Extract key information about {name} from this text.
+    
+    Return a JSON object with ONLY these fields:
+    {{
+        "biography": "Brief biography focusing on early life and career",
+        "date_of_birth": "MM/DD/YYYY format",
+        "nationality": "Country of citizenship",
+        "political_affiliation": "Political party or affiliation",
+        "positions": ["List of political positions held"],
+        "policies": ["List of notable policy positions"],
+        "legislative_actions": ["List of notable legislative actions"]
+    }}
+    
+    For any field where information is not available, use an empty string or empty list.
+    Return ONLY the JSON object, no additional text or explanation.
+    
+    Text to analyze:
+    {text}
+    """
+    
+    try:
+        print(f"Sending {len(text)} characters to Ollama for extraction...")
+        response = requests.post(
+            'http://localhost:11434/api/generate',
+            json={
+                'model': 'llama3',
+                'prompt': prompt,
+                'stream': False
+            }
+        )
+        
+        result = response.json()
+        return result['response']
+    except Exception as e:
+        print(f"Error with Ollama extraction: {e}")
+        return None
+
+def get_article_text(url, selector=None):
+    """Fetch and extract the main content from a webpage"""
+    try:
+        response = requests.get(url, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Different extraction based on domain
+        if "wikipedia.org" in url:
+            content_div = soup.find(id="mw-content-text")
+            if content_div:
+                # Get the first few paragraphs
+                paragraphs = content_div.find_all('p')[:10]
+                return "\n".join([p.get_text() for p in paragraphs])
+        
+        elif "britannica.com" in url:
+            content_div = soup.find(class_="topic-content")
+            if content_div:
+                paragraphs = content_div.find_all('p')[:8]
+                return "\n".join([p.get_text() for p in paragraphs])
+        
+        elif selector:
+            # Use custom selector if provided
+            content = soup.select(selector)
+            if content:
+                return "\n".join([p.get_text() for p in content])
+        
+        # Fallback: get all paragraphs
+        paragraphs = soup.find_all('p')[:15]
+        return "\n".join([p.get_text() for p in paragraphs])
+    
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+        return None
+
 async def crawl_political_figure(name):
     urls = get_sources(name)
-    
-    # Configure Ollama (local LLM - no API token needed)
-    llm_config = LLMConfig(
-        provider="ollama/llama3",  # Free, no token needed
-        base_url="http://localhost:11434"  # Default Ollama server address
-    )
-    
-    # Create LLM extraction strategy - this one does support prompt_template and variables
-    extraction_strategy = LLMExtractionStrategy(
-        llm_config=llm_config,
-        prompt_template="""
-        Extract key information about {name} from the provided text.
-        
-        Return a JSON object with these fields:
-        {{
-            "biography": "Brief biography focusing on early life and career",
-            "date_of_birth": "Month Day, Year format if available, otherwise 'unknown'",
-            "nationality": "Country of citizenship",
-            "political_affiliation": "Political party or affiliation",
-            "positions": ["List of political positions held"],
-            "policies": ["List of notable policy positions"],
-            "legislative_actions": ["List of notable legislative actions"],
-            "campaigns": ["List of notable campaigns"]
-        }}
-        
-        Keep your response focused and factual. Use "unknown" for missing information.
-        """,
-        variables={"name": name},
-        chunk_token_threshold=4000,
-        overlap_rate=0.1
-    )
-    
-    # Create deep crawl strategy - limited to control resource usage
-    deep_crawl = BFSDeepCrawlStrategy(
-        max_depth=1,  # Only go one link deep
-        max_pages=3,  # Limit to 3 pages per source
-        filter_chain=FilterChain([
-            DomainFilter(allowed_domains=["en.wikipedia.org", "britannica.com", "reuters.com"]),
-            URLPatternFilter(patterns=[
-                name.lower().replace(" ", "-"), 
-                name.lower().replace(" ", "_"), 
-                "biography", 
-                "political"
-            ])
-        ])
-    )
-    
-    # Create content filter - 'instruction' instead of 'prompt_template' and no 'variables' parameter
-    content_filter = LLMContentFilter(
-        llm_config=llm_config,
-        instruction=f"Evaluate if this content contains relevant information about {name}'s political career, biography, or policies. Answer only 'yes' or 'no'."
-    )
-    
-    # Configure chunking strategy
-    chunking_strategy = RegexChunking(
-        patterns=[r"\n## ", r"\n\n"]  # Correct parameter name
-    )
-    
-    # Create crawler config - FIXED: removed content_filter parameter
-    crawler_config = CrawlerRunConfig(
-        extraction_strategy=extraction_strategy,
-        deep_crawl_strategy=deep_crawl,
-        chunking_strategy=chunking_strategy,
-        # Add additional common parameters
-        word_count_threshold=50,  # Min words per chunk to process
-        cache_mode="bypass",      # Don't use cache
-        verbose=True              # Show detailed logs
-    )
     
     # Initialize result collection
     combined_data = {
@@ -101,25 +155,37 @@ async def crawl_political_figure(name):
         "positions": [],
         "policies": [],
         "legislative_actions": [],
-        "campaigns": [],
-        "achievements": []
+        "campaigns": []
     }
     
-    # Crawl URLs with Ollama-powered AI strategies
-    async with AsyncWebCrawler() as crawler:
-        for url in urls:
+    # Process each source URL
+    for url in urls:
+        try:
+            print(f"Processing: {url}")
+            
+            # Get main content text
+            article_text = get_article_text(url)
+            if not article_text:
+                print(f"Failed to extract content from {url}")
+                continue
+                
+            print(f"Extracted {len(article_text)} characters of content")
+            
+            # Extract structured data using Ollama
+            extracted_json_text = extract_with_ollama(article_text, name)
+            if not extracted_json_text:
+                print(f"Failed to extract structured data from {url}")
+                continue
+                
+            print(f"Got extraction result of length {len(extracted_json_text)}")
+            
+            # Try to parse the extraction result as JSON
             try:
-                print(f"Crawling: {url}")
-                # Use crawler.arun which returns a CrawlResultContainer
-                result = await crawler.arun(url=url, config=crawler_config)
-                
-                # Apply content filtering if needed - this is done manually since we can't pass it in config
-                # Note: In practice the AsyncWebCrawler should handle this internally
-                
-                # Check if the result has extracted_data
-                if hasattr(result, 'extracted_data') and result.extracted_data:
-                    print(f"Extracted data from {url}")
-                    data = result.extracted_data
+                # Remove any text before or after the JSON object
+                json_match = re.search(r'({.*})', extracted_json_text, re.DOTALL)
+                if json_match:
+                    clean_json_text = json_match.group(1)
+                    data = json.loads(clean_json_text)
                     
                     # Update combined data
                     for key, value in data.items():
@@ -129,31 +195,16 @@ async def crawl_political_figure(name):
                                 combined_data[key].extend([item for item in value if item not in combined_data[key]])
                             elif isinstance(combined_data[key], str) and isinstance(value, str) and not combined_data[key]:
                                 combined_data[key] = value
-                            
-                # If no structured data extracted, try using the markdown content
-                elif hasattr(result, 'markdown') and result.markdown:
-                    print(f"Processing markdown from {url}")
+                                
+                    print(f"Successfully extracted structured data from {url}")
+                else:
+                    print(f"Could not identify JSON object in the extraction result")
                     
-                    # Extract basic info using regex
-                    content = result.markdown
-                    
-                    # Extract date of birth if available
-                    dob_match = re.search(r'born\s+(?:on\s+)?([A-Z][a-z]+\s+\d{1,2},\s+\d{4})', content)
-                    if dob_match and not combined_data["date_of_birth"]:
-                        combined_data["date_of_birth"] = dob_match.group(1)
-                    
-                    # Extract nationality if available
-                    if "American" in content[:1000] and not combined_data["nationality"]:
-                        combined_data["nationality"] = "American"
-                    
-                    # Extract political affiliation if available
-                    if ("Democratic Party" in content or "Democrat" in content) and not combined_data["political_affiliation"]:
-                        combined_data["political_affiliation"] = "Democratic Party"
-                    elif ("Republican Party" in content or "Republican" in content) and not combined_data["political_affiliation"]:
-                        combined_data["political_affiliation"] = "Republican Party"
+            except json.JSONDecodeError as e:
+                print(f"Failed to parse extraction result as JSON: {e}")
                 
-            except Exception as e:
-                print(f"Error processing {url}: {str(e)}")
+        except Exception as e:
+            print(f"Error processing {url}: {e}")
     
     return combined_data
 
@@ -171,9 +222,19 @@ def save_to_json(data, name):
     
     return filepath
 
-def main(name):
-    print(f"Starting AI-powered crawl for {name} using Ollama/Llama3...")
+def main(name, env_id="nat", gpu_count=1):
+    # Set up GPU environment
+    if not setup_gpu_environment(env_id, gpu_count):
+        print("⚠️ GPU environment setup failed, continuing without GPU acceleration")
+    
+    print(f"Starting AI-powered extraction for {name} using Ollama/Llama3...")
+    start_time = datetime.datetime.now()
+    
     data = asyncio.run(crawl_political_figure(name))
+    
+    end_time = datetime.datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    print(f"Extraction completed in {duration:.2f} seconds")
     
     # Print summary of collected data
     if data["biography"]:
@@ -189,9 +250,26 @@ def main(name):
     filepath = save_to_json(data, name)
     print(f"Data saved to: {filepath}")
     
+    # No need to explicitly call cleanup_gpu_environment()
+    # It will be called automatically when the script exits due to atexit.register()
+    
     return data
 
 if __name__ == "__main__":
-    # Example usage
-    political_figure_name = "Barack Obama"
-    main(political_figure_name)
+    # Parse command line arguments
+    env_id = "nat"  # Default environment ID
+    gpu_count = 1   # Default GPU count
+    
+    # Allow overriding from command line
+    if len(sys.argv) > 1:
+        political_figure_name = sys.argv[1]
+    else:
+        political_figure_name = "Barack Obama"  # Default
+        
+    if len(sys.argv) > 2:
+        env_id = sys.argv[2]
+    
+    if len(sys.argv) > 3:
+        gpu_count = int(sys.argv[3])
+    
+    main(political_figure_name, env_id, gpu_count)
