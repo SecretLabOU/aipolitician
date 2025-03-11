@@ -1,48 +1,87 @@
 import asyncio
 import json
+import requests
 from crawl4ai import (
     AsyncWebCrawler, LLMExtractionStrategy, LLMConfig, 
     CrawlerRunConfig, RegexChunking
 )
-import requests
 import time
 
+# Direct extraction function using Ollama API
+def direct_extraction(text, name="Barack Obama"):
+    """Extract information directly using Ollama API"""
+    # Take just first 4000 characters to keep it fast
+    text = text[:4000] 
+    
+    prompt = f"""
+    Extract the following about {name} from this text:
+    
+    1. Brief biography (2 sentences max)
+    2. Birth date
+    3. Political party
+    
+    Return valid JSON only in this format:
+    {{
+      "biography": "...",
+      "birth_date": "...", 
+      "party": "..."
+    }}
+    
+    Text to analyze:
+    {text}
+    """
+    
+    try:
+        response = requests.post(
+            'http://localhost:11434/api/generate',
+            json={
+                'model': 'llama3',
+                'prompt': prompt,
+                'stream': False
+            }
+        )
+        
+        result = response.json()
+        return result['response']
+    except Exception as e:
+        print(f"Error with direct extraction: {e}")
+        return None
+
 async def test_extraction(name="Barack Obama"):
+    """
+    Small test function that only scrapes Wikipedia for quick testing.
+    """
     # Just test with one URL to make it faster
     url = f"https://en.wikipedia.org/wiki/{name.replace(' ', '_')}"
     print(f"Testing extraction on: {url}")
     
-    # Configure Ollama with explicit model parameters
+    # Check Ollama connection first
+    try:
+        response = requests.get('http://localhost:11434/api/tags')
+        print("Ollama is running and available models:", response.json())
+    except:
+        print("⚠️ Cannot connect to Ollama service")
+    
+    # Configure Ollama - same as main script
     llm_config = LLMConfig(
         provider="ollama/llama3",
         base_url="http://localhost:11434"
     )
     
-    # More explicit extraction prompt that forces JSON output
+    # Simplified extraction strategy - smaller prompt
     extraction_strategy = LLMExtractionStrategy(
         llm_config=llm_config,
         prompt_template="""
-        You are a data extraction assistant. Extract the following from the text:
+        Extract the following from the text about {name}:
+        1. A one-sentence biography
+        2. Birth date
+        3. Political party
         
-        1. A short biography (1-2 sentences max)
-        2. Birth date in MM/DD/YYYY format if available
-        3. Political party/affiliation
-        
-        Format as valid JSON only. Use this exact format:
-        
-        ```json
-        {
-          "biography": "...",
-          "birth_date": "...",
-          "party": "..."
-        }
-        ```
-        
-        Focus only on {name}. Do not include explanations or notes.
+        Format as JSON: {{"biography": "...", "birth_date": "...", "party": "..."}}
         """,
         variables={"name": name},
         # Smaller chunks for faster processing
-        chunk_token_threshold=1000,
+        chunk_token_threshold=2000,
         overlap_rate=0.1
     )
     
@@ -50,7 +89,7 @@ async def test_extraction(name="Barack Obama"):
     crawler_config = CrawlerRunConfig(
         extraction_strategy=extraction_strategy,
         chunking_strategy=RegexChunking(patterns=[r"\n\n"]),
-        word_count_threshold=25,
+        word_count_threshold=30,  # Lower threshold
         cache_mode="bypass",
         verbose=True
     )
@@ -67,44 +106,34 @@ async def test_extraction(name="Barack Obama"):
             duration = end_time - start_time
             print(f"Crawl completed in {duration:.2f} seconds")
             
-            # Debug the result
-            print("\nResult attributes:", dir(result))
-            
             # Check for extracted data
             if hasattr(result, 'extracted_data') and result.extracted_data:
                 print("\n✅ SUCCESS! Extracted structured data:")
                 print(json.dumps(result.extracted_data, indent=2))
                 return True
             elif hasattr(result, 'markdown') and result.markdown:
-                # Try to extract something from markdown
                 print("\n⚠️ Got markdown but no structured data extraction")
                 print(f"Markdown length: {len(result.markdown)} characters")
-                # Show first 200 chars
-                print(f"Preview: {result.markdown[:200]}...")
                 
-                # Try to find if there's any JSON in the response
-                import re
-                json_match = re.search(r'```json\s*(.*?)\s*```', result.markdown, re.DOTALL)
-                if json_match:
-                    print("\nFound JSON in markdown response:")
-                    json_str = json_match.group(1)
-                    print(json_str)
+                # Try direct extraction as a fallback
+                print("\nTrying direct extraction from first part of markdown...")
+                extracted_text = direct_extraction(result.markdown, name)
+                if extracted_text:
+                    print("Result:", extracted_text)
+                    
+                    # Try to parse as JSON
                     try:
-                        json_data = json.loads(json_str)
-                        print("Parsed JSON successfully")
+                        json_data = json.loads(extracted_text)
+                        print("\nSuccessfully parsed as JSON:")
+                        print(json.dumps(json_data, indent=2))
                         return True
-                    except:
-                        print("Failed to parse JSON")
-                
-                # Add this to your test script to try direct extraction from markdown
-                print("\nTrying direct extraction...")
-                extracted_text = direct_extraction(result.markdown)
-                print("Result:", extracted_text)
-                
+                    except json.JSONDecodeError:
+                        print("\nCouldn't parse direct extraction as JSON")
+                        # Just extract what we got
+                        print("Using text response instead")
                 return False
             else:
                 print("\n❌ No data extracted")
-                print("Result attributes:", dir(result))
                 return False
                 
         except Exception as e:
