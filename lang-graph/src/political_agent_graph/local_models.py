@@ -44,18 +44,13 @@ class TrumpLLM(LLM):
     
     def _call(self, prompt: str, **kwargs) -> str:
         """Call the Trump model to generate a response."""
-        global trump_model, tokenizers
-        if not trump_model and MAIN_CODE_AVAILABLE:
-            from chat_trump import model as loaded_trump_model
-            from chat_trump import tokenizer as loaded_trump_tokenizer
-            trump_model = loaded_trump_model
-            tokenizers["trump"] = loaded_trump_tokenizer
-            
         # Use the direct generation if available
         if MAIN_CODE_AVAILABLE:
             max_length = kwargs.get("max_length", 512)
-            response = generate_trump_response(prompt, trump_model, tokenizers["trump"], 
-                                               use_rag=False, max_length=max_length)
+            # Import the function directly and call it
+            from chat_trump import generate_response
+            response = generate_response(prompt=prompt, model=None, tokenizer=None, 
+                                         max_length=max_length, use_rag=False)
             return response
         
         return f"Trump model response placeholder (model not available)"
@@ -69,18 +64,13 @@ class BidenLLM(LLM):
     
     def _call(self, prompt: str, **kwargs) -> str:
         """Call the Biden model to generate a response."""
-        global biden_model, tokenizers
-        if not biden_model and MAIN_CODE_AVAILABLE:
-            from chat_biden import model as loaded_biden_model
-            from chat_biden import tokenizer as loaded_biden_tokenizer
-            biden_model = loaded_biden_model
-            tokenizers["biden"] = loaded_biden_tokenizer
-            
         # Use the direct generation if available
         if MAIN_CODE_AVAILABLE:
             max_length = kwargs.get("max_length", 512)
-            response = generate_biden_response(prompt, biden_model, tokenizers["biden"], 
-                                               use_rag=False, max_length=max_length)
+            # Import the function directly and call it
+            from chat_biden import generate_response
+            response = generate_response(prompt=prompt, model=None, tokenizer=None, 
+                                         max_length=max_length, use_rag=False)
             return response
         
         return f"Biden model response placeholder (model not available)"
