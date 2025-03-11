@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 
 # Add main project directory to path to import from root
-root_dir = Path(__file__).parent.parent.parent.parent.absolute()
+# Go up 3 levels: src/political_agent_graph -> src -> lang-graph -> aipolitician
+root_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(root_dir))
 
 # Import the model generation functions from the main project
