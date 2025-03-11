@@ -247,27 +247,34 @@ class PoliticianScraper:
             
             instruction = f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements."
             
-            # Use a safer approach for LLM extraction
+            # Use LlmConfig instead of direct provider parameter
             try:
-                # Simplified LLM strategy that's more compatible
-                llm_strategy = LLMExtractionStrategy(
+                # Create LlmConfig object first
+                llm_config_obj = LlmConfig(
                     provider=provider,
-                    api_token=api_token,
+                    api_token=api_token
+                )
+                
+                # Use LlmConfig in LLMExtractionStrategy
+                llm_strategy = LLMExtractionStrategy(
+                    llm_config=llm_config_obj,
                     instruction=instruction,
-                    # Simpler parameters that are more likely to be supported
-                    output_format="json" 
+                    output_format="json"
                 )
             except Exception as e:
                 logger.error(f"Error creating LLM strategy: {e}")
                 
-                # Create a very basic extraction strategy as fallback
-                try:
-                    from crawl4ai.extraction_strategy import PlainTextExtractionStrategy
-                    logger.info("Falling back to PlainTextExtractionStrategy")
-                    llm_strategy = PlainTextExtractionStrategy()
-                except (ImportError, AttributeError):
-                    logger.error("Could not create any extraction strategy")
-                    return {}
+                # Try a simpler approach without extraction
+                logger.info("Skipping LLM extraction and returning basic data from markdown")
+                
+                # Create a basic structure from the markdown content
+                if hasattr(result, 'markdown') and result.markdown:
+                    # Extract a simple biography from the markdown
+                    markdown_text = str(result.markdown)
+                    return {
+                        "biography_summary": markdown_text[:1000] if len(markdown_text) > 0 else "Not available"
+                    }
+                return {}
             
             # Configure the LLM extraction run with content override
             llm_config = CrawlerRunConfig(
@@ -337,27 +344,11 @@ class PoliticianScraper:
         logger.info(f"Searching Google for: {query}")
         
         try:
-            # Define the schema for Google search results
-            google_schema = {
-                "type": "object",
-                "properties": {
-                    "links": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "href": {"type": "string"}
-                            }
-                        }
-                    }
-                }
-            }
-            
-            # Define the JsonCssExtractionStrategy for extracting links from Google search results
+            # Define a simpler schema for Google search results that doesn't use baseSelector
+            # This avoids the 'baseSelector' error
             try:
-                # Try with schema parameter
+                # Try a simpler approach with direct selectors
                 link_strategy = JsonCssExtractionStrategy(
-                    schema=google_schema,
                     selectors={
                         "links": ".yuRUbf > a"
                     },
@@ -365,32 +356,18 @@ class PoliticianScraper:
                         "links": {"href": "href"}
                     }
                 )
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                logger.error(f"Error creating JsonCssExtractionStrategy: {e}")
+                # Try an even simpler approach as fallback
                 try:
-                    # Try alternative API versions using from_schema method if available
-                    if hasattr(JsonCssExtractionStrategy, 'from_schema'):
-                        link_strategy = JsonCssExtractionStrategy.from_schema({
-                            "name": "GoogleLinks",
-                            "baseSelector": ".yuRUbf",
-                            "fields": [
-                                {"name": "href", "selector": "a", "type": "attribute", "attribute": "href"}
-                            ]
-                        })
-                    else:
-                        # Fallback to older API
-                        link_strategy = JsonCssExtractionStrategy(
-                            selectors={
-                                "links": ".yuRUbf > a"
-                            },
-                            attribute_map={
-                                "links": {"href": "href"}
-                            }
-                        )
-                except Exception as e:
-                    logger.error(f"Could not initialize JsonCssExtractionStrategy: {e}")
-                    raise
+                    from crawl4ai.extraction_strategy import PlainTextExtractionStrategy
+                    logger.info("Falling back to PlainTextExtractionStrategy for Google search")
+                    link_strategy = PlainTextExtractionStrategy()
+                except (ImportError, AttributeError):
+                    logger.error("Could not create any extraction strategy for Google search")
+                    return []
             
-            # Create config for search - REMOVED timeout parameter which was causing errors
+            # Create config for search
             search_config = CrawlerRunConfig(
                 extraction_strategy=link_strategy,
                 cache_mode=CacheMode.BYPASS
@@ -417,10 +394,21 @@ class PoliticianScraper:
                         extraction_strategy=link_strategy
                     )
             
-            # Extract URLs from results
+            # Extract URLs from results - use a more manual approach
             urls = []
             
-            # Check if extraction_result exists and handle different result structures
+            # If we have plain text, try to extract URLs using regex
+            if hasattr(search_result, 'markdown') and search_result.markdown:
+                import re
+                # Look for URLs in the markdown
+                url_pattern = re.compile(r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*(?:\?\S+)?')
+                found_urls = url_pattern.findall(str(search_result.markdown))
+                
+                # Filter URLs to exclude Google's own URLs
+                urls = [url for url in found_urls if 'google.com' not in url]
+                logger.info(f"Extracted {len(urls)} URLs from markdown using regex")
+            
+            # Also try extraction_result if available
             if hasattr(search_result, 'extraction_result') and search_result.extraction_result:
                 result_data = search_result.extraction_result
                 
@@ -437,8 +425,8 @@ class PoliticianScraper:
                         elif isinstance(item, str) and item.startswith("http"):
                             urls.append(item)
             
-            # Limit to requested number
-            urls = urls[:limit]
+            # Limit to requested number and remove duplicates
+            urls = list(dict.fromkeys(urls))[:limit]
             
             logger.info(f"Found {len(urls)} URLs from Google search: {urls}")
             return urls
