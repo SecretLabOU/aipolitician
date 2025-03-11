@@ -26,6 +26,20 @@ from typing import Dict, List, Any, Optional
 root_dir = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
+# Create logs directory if it doesn't exist
+logs_dir = os.path.join(root_dir, "scraper", "logs")
+os.makedirs(logs_dir, exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Import the MockWebCrawler from the politician_scraper module
 try:
     from scraper.politician_scraper import MockWebCrawler
@@ -116,16 +130,6 @@ except ImportError:
     HAS_CRAWL4AI = False
     print("Requests library not installed. Using mock crawler only.")
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
 class TestPoliticianScraper:
     """
     Test scraper for politician data that uses either a mock crawler or the Crawl4AI API
@@ -206,7 +210,11 @@ class TestPoliticianScraper:
                 logger.info(f"Crawl4AI health check: {health.json()}")
             except requests.exceptions.ConnectionError:
                 logger.error("Could not connect to Crawl4AI. Is it running?")
-                logger.error("Try running: docker run -p 11235:11235 unclecode/crawl4ai:basic")
+                logger.error("Try running: docker run -p 11235:11235 unclecode/crawl4ai:latest")
+                return []
+            except requests.exceptions.JSONDecodeError:
+                logger.error("Crawl4AI returned invalid JSON. There might be a platform compatibility issue.")
+                logger.error("Try running: docker run --platform linux/amd64 -p 11235:11235 unclecode/crawl4ai:latest")
                 return []
             
             # Define search URLs based on the politician name
@@ -220,10 +228,12 @@ class TestPoliticianScraper:
             request = {
                 "urls": urls,
                 "extraction_config": {
-                    "type": "llm",
+                    "type": "cosine",  # Use cosine similarity instead of LLM which requires API keys
                     "params": {
-                        "provider": "default",
-                        "instruction": f"Extract detailed information about {name}, including biography, political positions, policies, and career timeline."
+                        "semantic_filter": f"{name} politician biography policies positions",
+                        "word_count_threshold": 10,
+                        "max_dist": 0.3,
+                        "top_k": 10
                     }
                 }
             }

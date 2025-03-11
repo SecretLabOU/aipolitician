@@ -27,35 +27,38 @@ from typing import Dict, List, Any, Optional
 root_dir = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
-# Import Milvus database utilities
-from db.milvus.scripts.search import insert_political_figure, connect_to_milvus
-from db.milvus.scripts.schema import initialize_database
-from sentence_transformers import SentenceTransformer
+# Create logs directory if it doesn't exist
+logs_dir = os.path.join(root_dir, "scraper", "logs")
+os.makedirs(logs_dir, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(root_dir, "scraper", "logs", f"scraper_{datetime.now().strftime('%Y%m%d')}.log")),
+        logging.FileHandler(os.path.join(logs_dir, f"scraper_{datetime.now().strftime('%Y%m%d')}.log")),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Try to create logs directory if it doesn't exist
+# Import Milvus database utilities
 try:
-    os.makedirs(os.path.join(root_dir, "scraper", "logs"), exist_ok=True)
-except Exception as e:
-    logger.warning(f"Could not create logs directory: {str(e)}")
+    from db.milvus.scripts.search import insert_political_figure, connect_to_milvus
+    from db.milvus.scripts.schema import initialize_database
+    from sentence_transformers import SentenceTransformer
+    HAS_MILVUS = True
+except ImportError:
+    HAS_MILVUS = False
+    logger.warning("Milvus database utilities not found. Data will not be stored in the database.")
 
-# Initialize the LLM Web Crawler
+# Initialize the Web Crawler
 try:
-    from llm_web_crawler import WebCrawler
+    import requests
     HAS_CRAWLER = True
 except ImportError:
     HAS_CRAWLER = False
-    logger.error("LLM Web Crawler not installed. Please install it with: pip install llm-web-crawler")
+    logger.error("Requests library not installed. Please install it with: pip install requests")
     logger.error("For this example, we'll use a mock implementation.")
 
 class MockWebCrawler:
@@ -64,7 +67,7 @@ class MockWebCrawler:
     def __init__(self, depth=3, max_pages=20):
         self.depth = depth
         self.max_pages = max_pages
-        logger.warning("Using mock web crawler. Install llm-web-crawler for actual scraping.")
+        logger.warning("Using mock web crawler. Install requests for actual scraping.")
     
     def crawl(self, query: str) -> List[Dict[str, Any]]:
         """Mock crawl method that returns sample data"""
@@ -135,7 +138,7 @@ class MockWebCrawler:
 
 class PoliticianScraper:
     """
-    Scraper for politician data that uses an LLM Web Crawler to gather information,
+    Scraper for politician data that uses a Web Crawler to gather information,
     cleans the data, and stores it in the Milvus database.
     """
     
@@ -152,26 +155,29 @@ class PoliticianScraper:
         
         # Initialize web crawler
         if HAS_CRAWLER:
-            self.crawler = WebCrawler(depth=depth, max_pages=max_pages)
+            self.crawler = MockWebCrawler(depth=depth, max_pages=max_pages)
         else:
             self.crawler = MockWebCrawler(depth=depth, max_pages=max_pages)
         
         # Initialize embedding model
-        try:
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            logger.info("Embedding model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load embedding model: {str(e)}")
-            self.embedding_model = None
-        
-        # Connect to Milvus database
-        try:
-            connect_to_milvus()
-            initialize_database()
-            logger.info("Connected to Milvus database")
-        except Exception as e:
-            logger.error(f"Failed to connect to Milvus database: {str(e)}")
-            raise
+        if HAS_MILVUS:
+            try:
+                self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                logger.info("Embedding model loaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to load embedding model: {str(e)}")
+                self.embedding_model = None
+            
+            # Connect to Milvus database
+            try:
+                connect_to_milvus()
+                initialize_database()
+                logger.info("Connected to Milvus database")
+            except Exception as e:
+                logger.error(f"Failed to connect to Milvus database: {str(e)}")
+                raise
+        else:
+            logger.warning("Milvus support not available. Data will not be stored in the database.")
     
     def scrape_politician(self, name: str) -> Dict[str, Any]:
         """
@@ -199,8 +205,11 @@ class PoliticianScraper:
             # Process and clean the data
             politician_data = self._process_crawl_results(name, results)
             
-            # Store the data in Milvus
-            self._store_in_milvus(politician_data)
+            # Store the data in Milvus if available
+            if HAS_MILVUS:
+                self._store_in_milvus(politician_data)
+            else:
+                logger.info("Milvus database not available. Data was not stored.")
             
             return politician_data
             
@@ -294,6 +303,10 @@ class PoliticianScraper:
         Args:
             politician_data (dict): Structured data about the politician
         """
+        if not HAS_MILVUS:
+            logger.warning("Milvus database not available. Data will not be stored.")
+            return
+            
         logger.info(f"Storing data for {politician_data['name']} in Milvus")
         
         try:

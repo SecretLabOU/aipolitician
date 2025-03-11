@@ -7,11 +7,12 @@ pymilvus>=2.2.0
 # For UUID generation (standard library uuid is used in the code)
 # No external package needed for uuid
 
-# Crawl4AI dependencies (optional, uncomment if using Crawl4AI directly)
-crawl4ai>=0.1.0
-
 # Data processing
 json5>=0.9.6
 
 # Type hints
-typing-extensions>=4.3.0 
+typing-extensions>=4.3.0
+
+# Note: We're using the Crawl4AI API via Docker, not as a Python package
+# Run the Docker container with:
+# docker run --platform linux/amd64 -p 11235:11235 unclecode/crawl4ai:latest 
