@@ -12,15 +12,17 @@
       "temperature": 0.7,
       "description": "Mixtral 8x7B instruct model via Ollama"
     },
-    "trump_mistral": {
+    "trump": {
       "type": "llamacpp",
       "path": "../../fine_tuned_trump_mistral/model.gguf",
       "n_gpu_layers": 1,
       "n_ctx": 4096,
-      "temperature": 0.8,
+      "temperature": 0.7,
+      "max_tokens": 512,
+      "top_p": 0.95,
       "description": "Fine-tuned Mistral Trump model"
     }
   },
-  "default_model": "trump_mistral",
+  "default_model": "trump",
   "model_folder": "models"
 }
