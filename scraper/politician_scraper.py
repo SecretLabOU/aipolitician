@@ -24,33 +24,40 @@ from pathlib import Path
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
 
+# Define custom fallback versions right away - will be used if imports fail
+class ContentSelectionConfig:
+    def __init__(self, main_content_only=True, exclude_selectors=None):
+        self.main_content_only = main_content_only
+        self.exclude_selectors = exclude_selectors or []
+
+class LlmConfig:
+    def __init__(self, provider=None, api_token=None):
+        self.provider = provider
+        self.api_token = api_token
+
 # Try different possible imports based on crawl4ai version
 try:
     # Version where everything is in the main module
     from crawl4ai import ContentSelectionConfig, LlmConfig
+    logger = logging.getLogger(__name__)
+    logger.info("Using ContentSelectionConfig and LlmConfig from crawl4ai package")
 except ImportError:
     try:
         # Version where these might be in config
         from crawl4ai.config import ContentSelectionConfig, LlmConfig
+        logger = logging.getLogger(__name__)
+        logger.info("Using ContentSelectionConfig and LlmConfig from crawl4ai.config")
     except ImportError:
         try:
             # Version where they might be in separate modules
             from crawl4ai.content import ContentSelectionConfig
             from crawl4ai.llm import LlmConfig
+            logger = logging.getLogger(__name__)
+            logger.info("Using ContentSelectionConfig from crawl4ai.content and LlmConfig from crawl4ai.llm")
         except ImportError:
-            # If all else fails, create simplified versions for basic functionality
+            # If all else fails, use our simplified versions for basic functionality
             logger = logging.getLogger(__name__)
             logger.warning("Could not import ContentSelectionConfig and LlmConfig. Using simplified fallback versions.")
-            
-            class ContentSelectionConfig:
-                def __init__(self, main_content_only=True, exclude_selectors=None):
-                    self.main_content_only = main_content_only
-                    self.exclude_selectors = exclude_selectors or []
-            
-            class LlmConfig:
-                def __init__(self, provider=None, api_token=None):
-                    self.provider = provider
-                    self.api_token = api_token
 
 # Add the project root to path to import from db module
 # Get the project root directory (parent of the scraper directory)
@@ -175,24 +182,25 @@ class PoliticianScraper:
                 cache_mode=CacheMode.BYPASS
             )
             
-            # If ContentSelectionConfig is available, use it
-            if ContentSelectionConfig.__module__ != '__main__':  # Not our fallback implementation
-                content_config.content_selection = ContentSelectionConfig(
-                    main_content_only=True,
-                    exclude_selectors=[
-                        "nav", "header", "footer", ".navbar", 
-                        ".menu", ".comments", ".ads", "aside"
-                    ]
-                )
-            else:
-                # Fallback for when ContentSelectionConfig is unavailable
-                # Just set some common parameters directly if supported by the version
-                content_config.main_content_only = True
-                if hasattr(content_config, 'exclude_selectors'):
-                    content_config.exclude_selectors = [
-                        "nav", "header", "footer", ".navbar", 
-                        "menu", ".comments", ".ads", "aside"
-                    ]
+            # Create a custom content selection config
+            content_selection = ContentSelectionConfig(
+                main_content_only=True,
+                exclude_selectors=[
+                    "nav", "header", "footer", ".navbar", 
+                    ".menu", ".comments", ".ads", "aside"
+                ]
+            )
+            
+            # Try to set content selection based on the available API
+            try:
+                content_config.content_selection = content_selection
+            except AttributeError:
+                # Fallback for when content_selection attribute doesn't exist
+                try:
+                    content_config.main_content_only = True
+                    content_config.exclude_selectors = content_selection.exclude_selectors
+                except AttributeError:
+                    pass  # Ignore if we can't set these attributes
             
             # Get the content with flexible parameter handling
             try:
@@ -212,7 +220,7 @@ class PoliticianScraper:
                     # Fallback to simplest call
                     result = await crawler.arun(url=url)
             
-            if not result.markdown:
+            if not hasattr(result, 'markdown') or not result.markdown:
                 logger.warning(f"No markdown content extracted from {url}")
                 return {}
                 
@@ -239,14 +247,14 @@ class PoliticianScraper:
             
             instruction = f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements."
             
-            # Try creating LLMExtractionStrategy with different parameter combinations based on the version
+            # Create a guaranteed-valid LlmConfig
+            llm_config_obj = LlmConfig(
+                provider=provider,
+                api_token=api_token
+            )
+            
+            # Try creating LLMExtractionStrategy with different parameter combinations 
             try:
-                # Version with LlmConfig
-                llm_config_obj = LlmConfig(
-                    provider=provider,
-                    api_token=api_token
-                )
-                
                 llm_strategy = LLMExtractionStrategy(
                     llm_config=llm_config_obj,
                     schema=schema_json,
@@ -260,7 +268,7 @@ class PoliticianScraper:
                 )
             except (TypeError, ValueError):
                 try:
-                    # Version with direct provider parameters
+                    # Direct provider parameters
                     llm_strategy = LLMExtractionStrategy(
                         provider=provider,
                         api_token=api_token,
@@ -274,30 +282,29 @@ class PoliticianScraper:
                         extra_args={"temperature": 0.0, "max_tokens": 1000}
                     )
                 except (TypeError, ValueError):
-                    # Older version with simpler parameters
+                    # Simple prompt-based approach for older versions
                     llm_strategy = LLMExtractionStrategy(
                         prompt=instruction,
                         output_format="json",
-                        use_local_model=not bool(api_token),
-                        local_model_name="gpt4all-j" if not bool(api_token) else None
+                        use_local_model=not bool(api_token)
                     )
             
             # Configure the LLM extraction run with content override
             llm_config = CrawlerRunConfig(
                 extraction_strategy=llm_strategy,
-                cache_mode=CacheMode.BYPASS,  # Using enum instead of string
+                cache_mode=CacheMode.BYPASS,
                 word_count_threshold=1  # Ensure we process the content
             )
             
-            # If we have content from the previous request, use it
-            if result and result.markdown:
+            # Use the content from the previous request
+            if hasattr(result, 'markdown') and result.markdown:
                 llm_config.content_override = result.markdown[:12000]  # Limit content size
             
             # Run extraction with flexible parameter handling
             try:
                 # Try the modern version first
                 extraction_result = await crawler.arun(
-                    url=url,  # Use the original URL 
+                    url=url,
                     config=llm_config
                 )
             except TypeError:
@@ -315,7 +322,7 @@ class PoliticianScraper:
                     )
             
             # Parse the result
-            if extraction_result.extraction_result:
+            if hasattr(extraction_result, 'extraction_result') and extraction_result.extraction_result:
                 try:
                     if isinstance(extraction_result.extraction_result, str):
                         return json.loads(extraction_result.extraction_result)
@@ -344,10 +351,27 @@ class PoliticianScraper:
         logger.info(f"Searching Google for: {query}")
         
         try:
+            # Define the schema for Google search results
+            google_schema = {
+                "type": "object",
+                "properties": {
+                    "links": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "href": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            }
+            
             # Define the JsonCssExtractionStrategy for extracting links from Google search results
             try:
-                # Try the modern version first
+                # Try with schema parameter
                 link_strategy = JsonCssExtractionStrategy(
+                    schema=google_schema,
                     selectors={
                         "links": ".yuRUbf > a"
                     },
@@ -357,9 +381,8 @@ class PoliticianScraper:
                 )
             except (TypeError, ValueError):
                 try:
-                    # Try alternative API versions if available
+                    # Try alternative API versions using from_schema method if available
                     if hasattr(JsonCssExtractionStrategy, 'from_schema'):
-                        # Some versions use a schema-based approach
                         link_strategy = JsonCssExtractionStrategy.from_schema({
                             "name": "GoogleLinks",
                             "baseSelector": ".yuRUbf",
@@ -368,13 +391,16 @@ class PoliticianScraper:
                             ]
                         })
                     else:
-                        # Fallback to simple approach
+                        # Fallback to older API
                         link_strategy = JsonCssExtractionStrategy(
-                            selector=".yuRUbf > a",
-                            attribute="href"
+                            selectors={
+                                "links": ".yuRUbf > a"
+                            },
+                            attribute_map={
+                                "links": {"href": "href"}
+                            }
                         )
                 except Exception as e:
-                    # Log error and raise to notify user
                     logger.error(f"Could not initialize JsonCssExtractionStrategy: {e}")
                     raise
             
@@ -408,10 +434,23 @@ class PoliticianScraper:
             
             # Extract URLs from results
             urls = []
-            if search_result.extraction_result and "links" in search_result.extraction_result:
-                for link_data in search_result.extraction_result["links"]:
-                    if isinstance(link_data, dict) and "href" in link_data:
-                        urls.append(link_data["href"])
+            
+            # Check if extraction_result exists and handle different result structures
+            if hasattr(search_result, 'extraction_result') and search_result.extraction_result:
+                result_data = search_result.extraction_result
+                
+                # Handle different formats of extraction results
+                if isinstance(result_data, dict) and "links" in result_data:
+                    for link_data in result_data["links"]:
+                        if isinstance(link_data, dict) and "href" in link_data:
+                            urls.append(link_data["href"])
+                elif isinstance(result_data, list):
+                    # Some versions might return a list directly
+                    for item in result_data:
+                        if isinstance(item, dict) and "href" in item:
+                            urls.append(item["href"])
+                        elif isinstance(item, str) and item.startswith("http"):
+                            urls.append(item)
             
             # Limit to requested number
             urls = urls[:limit]
@@ -528,53 +567,57 @@ class PoliticianScraper:
         
         # Process structured data
         for structured_data in all_structured_data:
-            # Update date_of_birth if available and not already set
-            if not self.data["date_of_birth"] and structured_data.get("date_of_birth"):
-                self.data["date_of_birth"] = structured_data["date_of_birth"]
-            
-            # Update nationality if available and not already set
-            if not self.data["nationality"] and structured_data.get("nationality"):
-                self.data["nationality"] = structured_data["nationality"]
-            
-            # Update political_affiliation if available and not already set
-            if not self.data["political_affiliation"] and structured_data.get("political_affiliation"):
-                self.data["political_affiliation"] = structured_data["political_affiliation"]
-            
-            # Append biography summaries
-            if structured_data.get("biography_summary"):
-                if self.data["biography"]:
-                    self.data["biography"] += "\n\n---\n\n" + structured_data["biography_summary"]
-                else:
-                    self.data["biography"] = structured_data["biography_summary"]
-            
-            # Collect policy stances
-            if structured_data.get("policy_stances"):
-                if isinstance(structured_data["policy_stances"], dict):
-                    self.data["policies"].update(structured_data["policy_stances"])
-                elif isinstance(structured_data["policy_stances"], list):
-                    # Convert list to dict if it's a list
-                    for i, policy in enumerate(structured_data["policy_stances"]):
-                        policy_key = f"policy_{i+1}"
-                        self.data["policies"][policy_key] = policy
-            
-            # Collect key positions
-            if structured_data.get("key_positions"):
-                if isinstance(structured_data["key_positions"], dict):
-                    self.data["positions"].update(structured_data["key_positions"])
-                elif isinstance(structured_data["key_positions"], list):
-                    for i, position in enumerate(structured_data["key_positions"]):
-                        position_key = f"position_{i+1}"
-                        self.data["positions"][position_key] = position
-            
-            # Collect recent statements
-            if structured_data.get("recent_statements"):
-                statements = structured_data["recent_statements"]
-                if isinstance(statements, dict):
-                    self.data["public_communications"].update(statements)
-                elif isinstance(statements, list):
-                    for i, statement in enumerate(statements):
-                        statement_key = f"statement_{i+1}"
-                        self.data["public_communications"][statement_key] = statement
+            try:
+                # Update date_of_birth if available and not already set
+                if not self.data["date_of_birth"] and structured_data.get("date_of_birth"):
+                    self.data["date_of_birth"] = structured_data["date_of_birth"]
+                
+                # Update nationality if available and not already set
+                if not self.data["nationality"] and structured_data.get("nationality"):
+                    self.data["nationality"] = structured_data["nationality"]
+                
+                # Update political_affiliation if available and not already set
+                if not self.data["political_affiliation"] and structured_data.get("political_affiliation"):
+                    self.data["political_affiliation"] = structured_data["political_affiliation"]
+                
+                # Append biography summaries
+                if structured_data.get("biography_summary"):
+                    if self.data["biography"]:
+                        self.data["biography"] += "\n\n---\n\n" + structured_data["biography_summary"]
+                    else:
+                        self.data["biography"] = structured_data["biography_summary"]
+                
+                # Collect policy stances
+                if structured_data.get("policy_stances"):
+                    if isinstance(structured_data["policy_stances"], dict):
+                        self.data["policies"].update(structured_data["policy_stances"])
+                    elif isinstance(structured_data["policy_stances"], list):
+                        # Convert list to dict if it's a list
+                        for i, policy in enumerate(structured_data["policy_stances"]):
+                            policy_key = f"policy_{i+1}"
+                            self.data["policies"][policy_key] = policy
+                
+                # Collect key positions
+                if structured_data.get("key_positions"):
+                    if isinstance(structured_data["key_positions"], dict):
+                        self.data["positions"].update(structured_data["key_positions"])
+                    elif isinstance(structured_data["key_positions"], list):
+                        for i, position in enumerate(structured_data["key_positions"]):
+                            position_key = f"position_{i+1}"
+                            self.data["positions"][position_key] = position
+                
+                # Collect recent statements
+                if structured_data.get("recent_statements"):
+                    statements = structured_data["recent_statements"]
+                    if isinstance(statements, dict):
+                        self.data["public_communications"].update(statements)
+                    elif isinstance(statements, list):
+                        for i, statement in enumerate(statements):
+                            statement_key = f"statement_{i+1}"
+                            self.data["public_communications"][statement_key] = statement
+            except Exception as e:
+                logger.error(f"Error processing structured data item: {e}")
+                continue
         
         # Limit biography length
         if self.data["biography"]:
@@ -584,9 +627,13 @@ class PoliticianScraper:
         for field in ["positions", "policies", "legislative_actions", 
                      "public_communications", "timeline", "campaigns", 
                      "media", "philanthropy", "personal_details"]:
-            if isinstance(self.data[field], dict) and self.data[field]:
-                self.data[field] = json.dumps(self.data[field])
-            elif not self.data[field]:
+            try:
+                if isinstance(self.data[field], dict) and self.data[field]:
+                    self.data[field] = json.dumps(self.data[field])
+                elif not self.data[field]:
+                    self.data[field] = json.dumps({})
+            except Exception as e:
+                logger.error(f"Error converting {field} to JSON: {e}")
                 self.data[field] = json.dumps({})
     
     async def save_to_milvus(self) -> bool:
