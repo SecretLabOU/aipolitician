@@ -20,10 +20,10 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
-# Crawl4AI imports for version 0.5.x
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
-from crawl4ai.strategies import LLMStrategy, SimpleCSSSelectorStrategy
-from crawl4ai.config import ContentSelectionConfig
+# Crawl4AI imports
+from crawl4ai import AsyncWebCrawler
+from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
+from crawl4ai.config import BrowserConfig, CrawlerRunConfig, ContentSelectionConfig, CacheMode
 
 # Add the project root to path to import from db module
 # Get the project root directory (parent of the scraper directory)
@@ -152,47 +152,62 @@ class PoliticianScraper:
                         ".menu", ".comments", ".ads", "aside"
                     ]
                 ),
-                bypass_cache=True
+                cache_mode=CacheMode.BYPASS
             )
             
             # Get the content
             result = await crawler.arun(
                 url=url,
-                run_config=content_config
+                config=content_config
             )
             
             if not result.markdown:
                 logger.warning(f"No markdown content extracted from {url}")
                 return {}
                 
-            # Set up LLM extraction strategy for 0.5.x
-            # Use local model by default with GPT4All
-            llm_strategy = LLMStrategy(
-                prompt=prompt,
-                use_local_model=True,
-                local_model_name="gpt4all-j",
-                output_format="json"
+            # Set up LLM extraction strategy
+            llm_strategy = LLMExtractionStrategy(
+                provider="openai/gpt-4o-mini" if os.getenv('OPENAI_API_KEY') else "ollama/llama3",
+                api_token=os.getenv('OPENAI_API_KEY'),
+                schema=json.dumps({
+                    "type": "object",
+                    "properties": {
+                        "date_of_birth": {"type": "string", "description": "YYYY-MM-DD format if available, otherwise leave empty"},
+                        "nationality": {"type": "string", "description": "Country of origin"},
+                        "political_affiliation": {"type": "string", "description": "Political party or alignment"},
+                        "biography_summary": {"type": "string", "description": "A brief summary of their life and career (up to 300 words)"},
+                        "key_positions": {"type": "array", "items": {"type": "object", "properties": {
+                            "title": {"type": "string"},
+                            "years": {"type": "string"}
+                        }}},
+                        "policy_stances": {"type": "object", "additionalProperties": {"type": "string"}},
+                        "recent_statements": {"type": "array", "items": {"type": "string"}}
+                    }
+                }),
+                extraction_type="schema",
+                instruction=f"Extract information about {self.politician_name} from the content. Include date of birth, nationality, political affiliation, biography summary, key positions, policy stances, and recent statements.",
+                chunk_token_threshold=2000,
+                overlap_rate=0.1,
+                apply_chunking=True,
+                input_format="markdown",
+                extra_args={"temperature": 0.0, "max_tokens": 1000}
             )
-            
-            # If OpenAI API key is available, use it instead
-            if os.getenv('OPENAI_API_KEY'):
-                llm_strategy = LLMStrategy(
-                    prompt=prompt,
-                    use_local_model=False,
-                    output_format="json"
-                )
             
             # Configure the LLM extraction run with content override
             llm_config = CrawlerRunConfig(
                 extraction_strategy=llm_strategy,
-                content_override=result.markdown[:12000],  # Limit content size
-                bypass_cache=True
+                cache_mode=CacheMode.BYPASS,  # Using enum instead of string
+                word_count_threshold=1  # Ensure we process the content
             )
+            
+            # If we have content from the previous request, use it
+            if result and result.markdown:
+                llm_config.content_override = result.markdown[:12000]  # Limit content size
             
             # Run extraction
             extraction_result = await crawler.arun(
                 url=url,  # Use the original URL 
-                run_config=llm_config
+                config=llm_config
             )
             
             # Parse the result
@@ -227,7 +242,7 @@ class PoliticianScraper:
         try:
             # Define the SimpleCSSSelectorStrategy for 0.5.x
             # This extracts links from Google search results
-            link_strategy = SimpleCSSSelectorStrategy(
+            link_strategy = JsonCssExtractionStrategy(
                 selectors={
                     "links": ".yuRUbf > a"
                 },
@@ -240,13 +255,13 @@ class PoliticianScraper:
             search_config = CrawlerRunConfig(
                 extraction_strategy=link_strategy,
                 timeout=60000,
-                bypass_cache=True
+                cache_mode=CacheMode.BYPASS
             )
             
             # Execute search
             search_result = await crawler.arun(
                 url=search_url,
-                run_config=search_config
+                config=search_config
             )
             
             # Extract URLs from results
@@ -284,7 +299,7 @@ class PoliticianScraper:
             )
             
             # Create web crawler
-            async with AsyncWebCrawler(browser_config=browser_config) as crawler:
+            async with AsyncWebCrawler(config=browser_config) as crawler:
                 all_structured_data = []
                 
                 # Try to get sources from Google search first
