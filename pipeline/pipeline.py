@@ -61,7 +61,7 @@ def map_scraper_to_milvus(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
             "nationality": scraper_data["basic_info"].get("nationality", ""),
             "political_affiliation": scraper_data["basic_info"].get("political_affiliation", ""),
             "biography": "", # We'll construct the biography from various fields
-            "positions": json.dumps(scraper_data["career"].get("positions", [])),
+            "positions": "", # We'll construct the positions from various fields
             "policies": json.dumps({
                 "economy": scraper_data["policy_positions"].get("economy", []),
                 "foreign_policy": scraper_data["policy_positions"].get("foreign_policy", []),
@@ -105,9 +105,12 @@ def map_scraper_to_milvus(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
             biography_parts.append(f"Education: {education_str}.")
         
         # Add career highlights
-        if scraper_data["career"].get("positions"):
+        if "career" in scraper_data and isinstance(scraper_data["career"], dict):
             positions_str = ", ".join(str(pos) for pos in scraper_data["career"]["positions"][:3])  # Take up to 3 positions
             biography_parts.append(f"Notable positions: {positions_str}.")
+            milvus_data["positions"] = json.dumps(scraper_data["career"].get("positions", []))
+        else:
+            milvus_data["positions"] = "[]"  # Default empty JSON array
             
         # Create the final biography
         milvus_data["biography"] = " ".join(biography_parts)
@@ -117,6 +120,20 @@ def map_scraper_to_milvus(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error mapping scraper data to Milvus format: {e}")
         raise
+
+async def scrape_politician_data(name: str) -> Dict[str, Any]:
+    """
+    Scrape data for a political figure directly using the crawl_political_figure function.
+    """
+    try:
+        logger.info(f"Scraping data for {name}...")
+        # Call the scraper's crawl_political_figure function directly
+        data = await crawl_political_figure(name)
+        logger.info(f"Successfully scraped data for {name}")
+        return data
+    except Exception as e:
+        logger.error(f"Error scraping data for {name}: {e}")
+        return None
 
 async def process_politician(politician_name: str, collection: Collection) -> bool:
     """
@@ -134,7 +151,7 @@ async def process_politician(politician_name: str, collection: Collection) -> bo
         
         # Step 1: Scrape data
         logger.info(f"Scraping data for {politician_name}...")
-        scraper_data = scraper.main(politician_name)
+        scraper_data = await scrape_politician_data(politician_name)
         
         if not scraper_data:
             logger.error(f"Failed to scrape data for {politician_name}")
@@ -171,27 +188,25 @@ async def process_politician(politician_name: str, collection: Collection) -> bo
         logger.info(f"Inserting {politician_name} into Milvus database...")
         try:
             # Prepare data for insertion
-            insert_data = [
-                [milvus_data["id"]],  # id
-                [milvus_data["name"]],  # name
-                [milvus_data["date_of_birth"]],  # date_of_birth
-                [milvus_data["nationality"]],  # nationality
-                [milvus_data["political_affiliation"]],  # political_affiliation
-                [milvus_data["biography"]],  # biography
-                [milvus_data["positions"]],  # positions (JSON)
-                [milvus_data["policies"]],  # policies (JSON)
-                [milvus_data["legislative_actions"]],  # legislative_actions (JSON)
-                [milvus_data["public_communications"]],  # public_communications (JSON)
-                [milvus_data["timeline"]],  # timeline (JSON)
-                [milvus_data["campaigns"]],  # campaigns (JSON)
-                [milvus_data["media"]],  # media (JSON)
-                [milvus_data["philanthropy"]],  # philanthropy (JSON)
-                [milvus_data["personal_details"]],  # personal_details (JSON)
-                [milvus_data["embedding"]]  # embedding vector
-            ]
+            insert_result = collection.insert([
+                [milvus_data["id"]],
+                [milvus_data["name"]],
+                [milvus_data["date_of_birth"]],
+                [milvus_data["nationality"]],
+                [milvus_data["political_affiliation"]],
+                [milvus_data["biography"]],
+                [milvus_data["positions"]],
+                [milvus_data["policies"]],
+                [milvus_data["legislative_actions"]],
+                [milvus_data["public_communications"]],
+                [milvus_data["timeline"]],
+                [milvus_data["campaigns"]],
+                [milvus_data["media"]],
+                [milvus_data["philanthropy"]],
+                [milvus_data["personal_details"]],
+                [milvus_data["embedding"]]
+            ])
             
-            # Insert into collection
-            collection.insert(insert_data)
             logger.info(f"Successfully inserted {politician_name} into Milvus database")
             
             # Flush to ensure data is persisted
@@ -241,9 +256,9 @@ async def run_pipeline(politicians: List[str]) -> Dict[str, Any]:
         
         # Ensure index is created
         try:
-            if not utility.has_index(collection.name, "embedding"):
-                logger.info("Creating HNSW index on embedding field...")
-                create_hnsw_index(collection.name)
+            # Skip index check and just create it if needed
+            logger.info("Creating HNSW index on embedding field if needed...")
+            create_hnsw_index(collection.name)
         except Exception as e:
             logger.error(f"Error checking or creating index: {e}")
             logger.info("Continuing without index verification...")
