@@ -6,15 +6,15 @@ from dotenv import load_dotenv
 import os
 import argparse
 from pathlib import Path
-
-# Add project root to the Python path
-root_dir = Path(__file__).parent.absolute()
 import sys
+
+# Calculate the project root path
+root_dir = Path(__file__).parent.parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
 # Import database utils if they exist
 try:
-    from db.utils.rag_utils import integrate_with_chat
+    from src.data.db.utils.rag_utils import integrate_with_chat
     HAS_RAG = True
 except ImportError:
     HAS_RAG = False

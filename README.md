@@ -15,6 +15,30 @@ Fine-tuned Mistral-7B language models that emulate Donald Trump's and Joe Biden'
 - **Interactive Chat Interface**: Simple command-line interface for conversing with either political figure
 - **Milvus Vector Database**: Semantic search capabilities for efficient information retrieval
 
+## 📁 Project Structure
+
+The project has been organized into a clean, modular structure:
+
+```
+aipolitician/
+├── src/                           # Main source code directory
+│   ├── data/                      # Data handling components
+│   │   ├── scraper/               # Web scraping functionality
+│   │   ├── pipeline/              # Data processing pipeline
+│   │   └── db/                    # Database functionality
+│   ├── models/                    # Model training and inference
+│   │   ├── training/              # Training scripts
+│   │   └── chat/                  # Chat interface scripts
+│   └── utils/                     # Shared utilities
+├── tests/                         # All tests in one place
+├── docs/                          # Documentation
+├── requirements/                  # All requirements files
+├── logs/                          # Centralized logs directory
+└── setup.py                       # For making the package installable
+```
+
+See [docs/README.md](docs/README.md) for detailed information about the project structure.
+
 ## 🔗 Pretrained Models
 
 The models are hosted on Hugging Face and can be accessed here:
@@ -24,64 +48,48 @@ The models are hosted on Hugging Face and can be accessed here:
 
 These are LoRA adapters designed to be applied to the [Mistral-7B-Instruct-v0.2](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2) base model.
 
-## 📋 Prerequisites
+## 🚀 Installation
 
-### Hardware Requirements
-- CUDA-compatible GPU (8GB+ VRAM recommended)
-- 16GB+ system RAM
-- 20GB+ free disk space
+### Prerequisites
+- Python 3.8+ (recommended: Python 3.10)
+- CUDA 12.0+ (for GPU acceleration)
+- Docker and Docker Compose (for Milvus database)
 
-### Software Requirements
-- CUDA Toolkit and drivers (tested with CUDA 12.4)
-- Python 3.10
-- Conda package manager
-- Docker (for database functionality)
-
-## 🛠️ Installation
-
-### 1. Clone the Repository
+### Option 1: Install from Source
 ```bash
+# Clone the repository
 git clone https://github.com/yourusername/aipolitician.git
 cd aipolitician
+
+# Create and activate a virtual environment (optional but recommended)
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install the package and all dependencies
+pip install -e ".[scraper,training,chat]"
 ```
 
-### 2. Environment Setup
-This project requires two separate conda environments due to specific version requirements:
-
-#### Training Environment
+### Option 2: Install Specific Components
 ```bash
-conda create -n training-env python=3.10
-conda activate training-env
-pip install -r requirements-training.txt
+# Install only the chat interface dependencies
+pip install -e ".[chat]"
+
+# Install only the scraper dependencies
+pip install -e ".[scraper]"
+
+# Install only the training dependencies
+pip install -e ".[training]"
 ```
 
-#### Chat Environment
-```bash
-conda create -n chat-env python=3.10
-conda activate chat-env
-pip install -r requirements-chat.txt
-```
-
-### 3. Hugging Face API Setup
-1. Create a [Hugging Face account](https://huggingface.co/join)
-2. Generate an API key from your [settings page](https://huggingface.co/settings/tokens)
-3. Configure environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your Hugging Face API key
-```
-
-### 4. RAG Database Setup (Optional)
-For enhanced factual responses, set up the Milvus vector database:
-
+### Setting up the Database (for RAG features)
 ```bash
 # Create database directories
-mkdir -p /home/natalie/Databases/ai_politician_milvus/data
-mkdir -p /home/natalie/Databases/ai_politician_milvus/etcd
-mkdir -p /home/natalie/Databases/ai_politician_milvus/minio
+mkdir -p /home/username/Databases/ai_politician_milvus/data
+mkdir -p /home/username/Databases/ai_politician_milvus/etcd
+mkdir -p /home/username/Databases/ai_politician_milvus/minio
 
 # Set up Milvus using Docker
-cd db/milvus
+cd src/data/db/milvus
 ./setup.sh
 
 # Initialize the database schema
@@ -92,16 +100,22 @@ python scripts/initialize_db.py --recreate
 
 ### Chatting with Trump AI
 ```bash
-conda activate chat-env
-python3 chat_trump.py  # Basic mode
-python3 chat_trump.py --rag  # With RAG for factual responses
+# Using the launcher script
+./trump_chat.py  # Basic mode
+./trump_chat.py --rag  # With RAG for factual responses
+
+# Alternatively
+python -m src.models.chat.chat_trump
 ```
 
 ### Chatting with Biden AI
 ```bash
-conda activate chat-env
-python3 chat_biden.py  # Basic mode
-python3 chat_biden.py --rag  # With RAG for factual responses
+# Using the launcher script
+./biden_chat.py  # Basic mode
+./biden_chat.py --rag  # With RAG for factual responses
+
+# Alternatively
+python -m src.models.chat.chat_biden
 ```
 
 ### Command-Line Options
@@ -135,7 +149,7 @@ The political figures collection contains comprehensive information including:
 - Campaign history
 - Personal information
 
-For detailed database documentation, see [db/milvus/README.md](db/milvus/README.md).
+For detailed database documentation, see [src/data/db/milvus/README.md](src/data/db/milvus/README.md).
 
 ## 🔄 Fine-tuning Process
 
@@ -161,34 +175,12 @@ The training process:
 
 To run your own fine-tuning:
 ```bash
-conda activate training-env
-python training/train_mistral_trump.py
-python training/train_mistral_biden.py
-```
+# Activate your virtual environment
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-## 📂 Project Structure
-
-```
-.
-├── .env                      # Environment variables
-├── .env.example              # Example environment file
-├── requirements-training.txt # Training environment dependencies
-├── requirements-chat.txt     # Chat environment dependencies
-├── chat_biden.py             # Biden chat interface
-├── chat_trump.py             # Trump chat interface
-├── db/                       # Database RAG system
-│   ├── milvus/               # Milvus vector database
-│   │   ├── scripts/          # Database initialization and search scripts
-│   │   ├── docker-compose.yml # Docker configuration
-│   │   ├── setup.sh          # Database setup script
-│   │   └── cleanup.sh        # Database cleanup script
-├── test/                     # Test scripts
-│   ├── test_biden_model.py   # Test Biden model loading
-│   ├── test_db.py            # Test database functionality
-│   └── test_trump_model.py   # Test Trump model loading
-└── training/                 # Training code
-    ├── train_mistral_biden.py
-    └── train_mistral_trump.py
+# Run the training scripts
+python -m src.models.training.train_mistral_trump
+python -m src.models.training.train_mistral_biden
 ```
 
 ## 🚧 Troubleshooting
@@ -207,15 +199,14 @@ python training/train_mistral_biden.py
 - **Solutions**:
   - Ensure Docker is running
   - Check if Milvus container is active: `docker ps | grep milvus`
-  - Restart the database: `./db/milvus/setup.sh`
+  - Restart the database: `./src/data/db/milvus/setup.sh`
 
 #### 3. Environment Conflicts
 - **Symptom**: Import errors or version conflicts
 - **Solutions**:
-  - Make sure you're in the correct conda environment
-  - Ensure you used the right requirements file
-  - For training issues, use `python` command
-  - For chat issues, use `python3` command
+  - Make sure you're in the correct virtual environment
+  - Ensure you installed the package with the right extras
+  - Try reinstalling with `pip install -e ".[scraper,training,chat]"`
 
 #### 4. Out-of-Memory Errors During Training
 - **Symptom**: CUDA out-of-memory errors during training
