@@ -43,6 +43,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger("political_pipeline")
 
+def ensure_correct_embedding_dimension(embedding, target_dim=768):
+    """
+    Ensure the embedding vector has the correct dimension for Milvus.
+    
+    Args:
+        embedding: The embedding vector
+        target_dim: The target dimension (default: 768 for Milvus schema)
+        
+    Returns:
+        A vector with the correct dimension
+    """
+    if not embedding:
+        # Return zero vector if embedding is None or empty
+        return [0.0] * target_dim
+        
+    current_dim = len(embedding)
+    
+    if current_dim == target_dim:
+        # Already correct dimension
+        return embedding
+    elif current_dim < target_dim:
+        # Pad with zeros
+        logger.info(f"Padding embedding from {current_dim} to {target_dim} dimensions")
+        return embedding + [0.0] * (target_dim - current_dim)
+    else:
+        # Truncate
+        logger.info(f"Truncating embedding from {current_dim} to {target_dim} dimensions")
+        return embedding[:target_dim]
+
 def map_scraper_to_milvus(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Maps data from the scraper format to the Milvus schema format.
@@ -91,7 +120,7 @@ def map_scraper_to_milvus(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
             "media": json.dumps([]), # Initialize as empty array
             "philanthropy": json.dumps([]), # Initialize as empty array
             "personal_details": json.dumps(scraper_data["basic_info"].get("family", [])),
-            "embedding": scraper_data.get("embedding", [0.0] * 768)  # Use existing embedding or fallback
+            "embedding": ensure_correct_embedding_dimension(scraper_data.get("embedding", [0.0] * 768))
         }
         
         # Construct a comprehensive biography from available fields
