@@ -3,8 +3,14 @@
 Test script for the political RAG database system.
 """
 import sys
-from db.database import get_database
-from db.utils.rag_utils import retrieve_context_for_query
+from pathlib import Path
+
+# Add the project root to the Python path
+root_dir = Path(__file__).parent.parent.absolute()
+sys.path.insert(0, str(root_dir))
+
+from src.data.db.database import get_database
+from src.data.db.utils.rag_utils import retrieve_context_for_query
 
 def display_politician_bio(name, politician_id):
     """Display basic biographical information about a politician."""
