@@ -27,6 +27,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Import the scraper and Milvus modules
 import scraper.politician_scraper as scraper
+from scraper.politician_scraper import crawl_political_figure
 from db.milvus.scripts.schema import connect_to_milvus, create_political_figures_collection, create_hnsw_index
 from pymilvus import Collection, utility
 
