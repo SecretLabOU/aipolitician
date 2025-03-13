@@ -6,7 +6,6 @@ This module exposes the AI Politician graph to the LangGraph Studio Web UI.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph_api.base import LangGraphAPI
 
 from src.political_agent_graph.graph import graph
 from src.political_agent_graph.state import ConversationState
@@ -27,15 +26,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create a LangGraphAPI instance
-api = LangGraphAPI(app)
-
-# Register the graph
-api.add_graph(
-    name="ai_politician",
-    graph=graph,
-    input_type=ConversationState,
-)
+# Create a simple endpoint to run the graph
+@app.post("/run")
+async def run_graph(input_data: dict):
+    # Create initial state
+    state = ConversationState(user_input=input_data.get("user_input", ""))
+    
+    # Run the graph
+    result = await graph.ainvoke(state)
+    
+    # Return the result
+    return {"response": result.final_response}
 
 if __name__ == "__main__":
     import uvicorn
