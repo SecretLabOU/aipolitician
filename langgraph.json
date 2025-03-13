@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "ai_politician": "./src/political_agent_graph/graph.py:graph"
+  },
+  "env": ".env",
+  "python_version": "3.13"
+}
