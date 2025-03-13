@@ -12,7 +12,7 @@ from langchain.schema import HumanMessage, AIMessage
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.tracers.langchain import wait_for_all_tracers
 
-from political_agent_graph.state import ConversationState, get_initial_state
+from .state import ConversationState, get_initial_state
 from political_agent_graph.config import get_model_for_task, get_temperature_for_task
 from political_agent_graph.prompts import (
     analyze_sentiment_template,
