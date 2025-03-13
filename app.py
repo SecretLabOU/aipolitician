@@ -6,8 +6,8 @@ This module exposes the AI Politician graph to the LangGraph Studio Web UI.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph.api import RouteWebhook
-from langgraph.api.base import LangGraphAPI
+from langgraph_api import RouteWebhook
+from langgraph_api.base import LangGraphAPI
 
 from src.political_agent_graph.graph import graph
 from src.political_agent_graph.state import ConversationState
