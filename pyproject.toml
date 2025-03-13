@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "aipolitician"
+version = "0.1.0"
+description = "AI politician simulation using LangGraph"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+langchain = "^0.1.0"
+langgraph = "^0.0.20"
+langchain-cli = "^0.0.15"
+
+[tool.langserve]
+export = "aipolitician.server:app"
