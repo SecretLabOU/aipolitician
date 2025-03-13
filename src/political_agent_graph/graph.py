@@ -9,6 +9,8 @@ from typing import Dict, List, Tuple, Any, Annotated, TypedDict
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain.schema import HumanMessage, AIMessage
+from langchain.callbacks.tracers import LangChainTracer
+from langchain.callbacks.tracers.langchain import wait_for_all_tracers
 
 from political_agent_graph.state import ConversationState, get_initial_state
 from political_agent_graph.config import get_model_for_task, get_temperature_for_task
@@ -221,4 +223,13 @@ async def run_conversation(user_input: str) -> str:
     result = await graph.ainvoke(state)
     
     # Return the final response
+    return result.final_response
+
+
+async def run_conversation_with_tracing(user_input: str) -> str:
+    """Run conversation with tracing enabled."""
+    state = get_initial_state(user_input)
+    tracer = LangChainTracer(project_name="ai-politician")
+    result = await graph.ainvoke(state, {"callbacks": [tracer]})
+    await wait_for_all_tracers()
     return result.final_response
