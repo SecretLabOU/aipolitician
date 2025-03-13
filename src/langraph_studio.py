@@ -5,12 +5,10 @@ This module sets up the LangGraph Studio server for visualizing and debugging th
 
 from fastapi import FastAPI
 from langserve import add_routes
-from langgraph.langchain.graph import END
-from langgraph.langchain.prebuilt import ToolNode
 
 # Import the graph and state from the political agent graph
 from src.political_agent_graph.graph import graph
-from src.political_agent_graph.state import ConversationState, get_initial_state
+from src.political_agent_graph.state import ConversationState
 
 # Create a FastAPI app
 app = FastAPI(
