@@ -3,7 +3,6 @@
 This module implements the LangGraph for simulating politicians.
 """
 
-import json
 import asyncio
 from typing import Dict, List, Tuple, Any, Annotated, TypedDict
 
@@ -20,7 +19,14 @@ from political_agent_graph.prompts import (
     generate_policy_stance_template,
     format_response_template,
 )
-from political_agent_graph import persona_manager
+from political_agent_graph import get_active_persona_id, get_persona_name, get_persona_party
+
+try:
+    from src.data.db.utils.rag_utils import integrate_with_chat, query_vector_db
+    HAS_RAG = True
+except ImportError:
+    HAS_RAG = False
+    print("RAG database system not available. Running without RAG.")
 
 
 def analyze_sentiment(state: ConversationState) -> ConversationState:
@@ -64,16 +70,17 @@ def decide_deflection(state: ConversationState) -> ConversationState:
     """Decide whether to deflect the question."""
     model = get_model_for_task("decide_deflection")
     
-    # Get active persona
-    persona = persona_manager.get_active_persona()
+    # Get active persona info
+    persona_id = get_active_persona_id()
+    persona_name = get_persona_name(persona_id)
+    persona_party = get_persona_party(persona_id)
     
     prompt = decide_deflection_template.format(
-        politician_name=persona["name"],
-        politician_party=persona["party"],
+        politician_name=persona_name,
+        politician_party=persona_party,
         user_input=state.user_input,
         current_topic=state.current_topic,
-        topic_sentiment=state.topic_sentiment,
-        rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2)
+        topic_sentiment=state.topic_sentiment
     )
     
     # Get deflection decision from model
@@ -97,23 +104,32 @@ def generate_policy_stance(state: ConversationState) -> ConversationState:
     """Generate the politician's policy stance."""
     model = get_model_for_task("generate_policy_stance")
     
-    # Get active persona
-    persona = persona_manager.get_active_persona()
+    # Get active persona info
+    persona_id = get_active_persona_id()
+    persona_name = get_persona_name(persona_id)
+    persona_party = get_persona_party(persona_id)
     
     # Determine which topic to use
     topic = state.deflection_topic if state.should_deflect else state.current_topic
     
-    # Get the relevant policy stance from the persona data
-    policy_data = persona.get("policy_stances", {})
-    relevant_policy = policy_data.get(topic, {})
+    # Add RAG integration here
+    rag_context = ""
+    if HAS_RAG:
+        try:
+            # Get factual information from the RAG system
+            rag_context = integrate_with_chat(
+                state.user_input, 
+                persona_name
+            )
+        except Exception as e:
+            print(f"Error using RAG: {e}")
     
     prompt = generate_policy_stance_template.format(
-        politician_name=persona["name"],
-        politician_party=persona["party"],
+        politician_name=persona_name,
+        politician_party=persona_party,
         current_topic=topic,
         user_input=state.user_input,
-        policy_stances=json.dumps(relevant_policy, indent=2) if relevant_policy else "No specific stance on this topic.",
-        speech_patterns=json.dumps(persona["speech_patterns"], indent=2)
+        factual_context=rag_context
     )
     
     # Get policy stance from model
@@ -128,8 +144,10 @@ def format_response(state: ConversationState) -> ConversationState:
     """Format the politician's response."""
     model = get_model_for_task("format_response")
     
-    # Get active persona
-    persona = persona_manager.get_active_persona()
+    # Get active persona info
+    persona_id = get_active_persona_id()
+    persona_name = get_persona_name(persona_id)
+    persona_party = get_persona_party(persona_id)
     
     # Format conversation history for prompt
     history_text = ""
@@ -137,15 +155,13 @@ def format_response(state: ConversationState) -> ConversationState:
         history_text += f"{message['speaker']}: {message['text']}\n"
     
     prompt = format_response_template.format(
-        politician_name=persona["name"],
-        politician_party=persona["party"],
+        politician_name=persona_name,
+        politician_party=persona_party,
         user_input=state.user_input,
         current_topic=state.current_topic,
         should_deflect=state.should_deflect,
         deflection_topic=state.deflection_topic or "",
         policy_stance=state.policy_stance or "",
-        speech_patterns=json.dumps(persona["speech_patterns"], indent=2),
-        rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2),
         conversation_history=history_text
     )
     
@@ -154,7 +170,7 @@ def format_response(state: ConversationState) -> ConversationState:
     
     # Update state
     state.final_response = response
-    state.add_to_history(persona["name"], response)
+    state.add_to_history(persona_name, response)
     return state
 
 

@@ -8,7 +8,7 @@ import os
 import sys
 import torch
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 
 # Add main project directory to path to import from root
 # Go up 3 levels: src/political_agent_graph -> src -> lang-graph -> aipolitician
@@ -119,13 +119,72 @@ def setup_models():
     return models
 
 
-def get_model(model_name: str):
+def get_model(model_name: str) -> Tuple[Any, Any]:
     """Get a model by name."""
     if not models:
         setup_models()
-    return models.get(model_name, models.get("mistral"))
+    
+    # Return cached model if available
+    if model_name in models:
+        return models[model_name], tokenizers.get(model_name)
+    
+    # Handle special cases
+    if model_name == "mock":
+        return _make_mock_model(), None
+    
+    # Map model_name to Hugging Face paths
+    model_mapping = {
+        "trump": "nnat03/trump-mistral-adapter",
+        "biden": "nnat03/biden-mistral-adapter",  # Assuming similar naming convention
+        # Add more mappings as needed
+    }
+    
+    # Get the Hugging Face path
+    hf_path = model_mapping.get(model_name)
+    if not hf_path:
+        raise ValueError(f"Unknown model: {model_name}")
+    
+    # Load base model
+    base_model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+    
+    # Create BitsAndBytesConfig for 4-bit quantization
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+    
+    # Load model with proper configuration
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_id,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.float16,
+        attn_implementation="eager"
+    )
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=False)
+    
+    # Set padding token if needed
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load the fine-tuned LoRA weights
+    model = PeftModel.from_pretrained(model, hf_path)
+    model.eval()  # Set to evaluation mode
+    
+    # Cache the model and tokenizer
+    models[model_name] = model
+    tokenizers[model_name] = tokenizer
+    
+    return model, tokenizer
 
 
 def get_tokenizer(model_name: str = "mistral"):
     """Get a tokenizer by model name."""
     return tokenizers.get(model_name, None)
+
+
+def _make_mock_model() -> LLM:
+    """Create a mock model function for testing"""
+    return SimpleModel("Generic")

@@ -31,14 +31,11 @@ DECIDE_DEFLECTION_PROMPT = """
 You are roleplaying as {politician_name}, a {politician_party} politician.
 
 Given the user's message and its topic, decide if you should deflect to another topic.
-Consider your character's typical debate tactics and the sentiment towards you.
+Consider your typical debate tactics and the sentiment towards you.
 
 User message: {user_input}
 Topic: {current_topic}
 Sentiment: {topic_sentiment}
-
-Think about your character's strategy:
-{rhetoric_style}
 
 Should you deflect this question? Respond with "true" if you should deflect, or "false" if you should address it directly.
 If you choose to deflect, also suggest a topic to deflect to in a new line.
@@ -54,11 +51,8 @@ Make sure your response aligns with your historical views and speaking style.
 Topic: {current_topic}
 User message: {user_input}
 
-Your policy positions:
-{policy_stances}
-
-Your speech patterns:
-{speech_patterns}
+Factual information to incorporate:
+{factual_context}
 
 Generate a detailed policy stance on this topic that you would use as the basis for your response.
 """
@@ -74,12 +68,6 @@ Topic: {current_topic}
 Should deflect: {should_deflect}
 Deflection topic: {deflection_topic}
 Policy stance: {policy_stance}
-
-Your speech patterns:
-{speech_patterns}
-
-Your rhetorical style:
-{rhetoric_style}
 
 History of conversation:
 {conversation_history}
