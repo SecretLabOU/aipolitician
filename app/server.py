@@ -1,7 +1,13 @@
 from fastapi import FastAPI
 from langserve import add_routes
+
+# Import directly from the src directory
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
 from src.political_agent_graph.graph import graph
-from src.political_agent_graph.state import get_initial_state, ConversationState
+from src.political_agent_graph.state import ConversationState, get_initial_state
 from src.political_agent_graph import run_conversation_with_tracing
 
 app = FastAPI(

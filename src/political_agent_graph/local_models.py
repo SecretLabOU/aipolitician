@@ -9,6 +9,7 @@ import sys
 import torch
 from pathlib import Path
 from typing import Dict, Optional, Any, Tuple
+from langchain.llms.base import LLM
 
 # Add main project directory to path to import from root
 # Go up 3 levels: src/political_agent_graph -> src -> lang-graph -> aipolitician

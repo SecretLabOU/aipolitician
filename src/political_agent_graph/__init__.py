@@ -4,70 +4,68 @@ This package provides a multi-component architecture for simulating political
 figures using multiple specialized language models that work together.
 """
 
-# Active persona tracking (simplified)
-_active_persona_id = None
+# Define personae
+personas = {
+    "donald_trump": {
+        "name": "Donald Trump",
+        "party": "Republican",
+        "bio": "45th President of the United States."
+    },
+    "joe_biden": {
+        "name": "Joe Biden",
+        "party": "Democratic",
+        "bio": "46th President of the United States."
+    },
+    # Add more personae as needed
+}
 
-def set_active_persona(persona_id: str) -> None:
-    """Set the active persona ID.
+# Persona management
+class PersonaManager:
+    """Manages political personae."""
     
-    Args:
-        persona_id: The ID of the persona to activate
-    """
-    global _active_persona_id
+    def __init__(self):
+        self.personas = personas
+        self.active_persona_id = "donald_trump"  # Default
     
-    # Normalize the persona ID
-    persona_id = persona_id.lower().replace(" ", "_")
-    _active_persona_id = persona_id
+    def set_active_persona(self, persona_id):
+        """Set the active persona."""
+        if persona_id not in self.personas:
+            raise ValueError(f"Unknown persona: {persona_id}")
+        self.active_persona_id = persona_id
+    
+    def get_active_persona(self):
+        """Get the active persona."""
+        return self.personas[self.active_persona_id]
 
-def get_active_persona_id() -> str:
-    """Get the active persona ID.
-    
-    Returns:
-        The active persona ID
-    
-    Raises:
-        RuntimeError: If no persona is active
-    """
-    global _active_persona_id
-    
-    if _active_persona_id is None:
-        raise RuntimeError("No active persona set")
-    
-    return _active_persona_id
+# Instantiate the persona manager
+persona_manager = PersonaManager()
 
-def get_persona_name(persona_id: str) -> str:
-    """Get a display name for a persona ID.
-    
-    Args:
-        persona_id: The persona ID
-        
-    Returns:
-        A display name for the persona
-    """
-    if persona_id.lower() == "donald_trump":
-        return "Donald Trump"
-    elif persona_id.lower() == "joe_biden":
-        return "Joe Biden"
-    else:
-        # Fallback: convert snake_case to Title Case
-        return persona_id.replace("_", " ").title()
+# Convenience functions
+def get_active_persona_id():
+    """Get the active persona ID."""
+    return persona_manager.active_persona_id
 
-def get_persona_party(persona_id: str) -> str:
-    """Get the party affiliation for a persona ID.
-    
-    Args:
-        persona_id: The persona ID
-        
-    Returns:
-        The party affiliation
-    """
-    if persona_id.lower() == "donald_trump":
-        return "Republican"
-    elif persona_id.lower() == "joe_biden":
-        return "Democratic"
-    else:
-        return "Independent"
+def get_persona_name(persona_id):
+    """Get the name of a persona."""
+    return persona_manager.personas[persona_id]["name"]
+
+def get_persona_party(persona_id):
+    """Get the party of a persona."""
+    return persona_manager.personas[persona_id]["party"]
+
+def select_persona(persona_id):
+    """Select a persona as active."""
+    persona_manager.set_active_persona(persona_id)
+
+# Don't import graph at init level to avoid circular imports
+# Instead, provide this function that can be imported where needed
+def get_graph():
+    """Import and return the graph to avoid circular imports."""
+    from .graph import graph
+    return graph
+
+# Import run_conversation at the end to avoid circular imports
+from .graph import run_conversation
 
 # Import other components for convenience
-from .graph import run_conversation
 from .config import get_config, get_model_for_task

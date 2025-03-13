@@ -13,15 +13,15 @@ from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.tracers.langchain import wait_for_all_tracers
 
 from .state import ConversationState, get_initial_state
-from political_agent_graph.config import get_model_for_task, get_temperature_for_task
-from political_agent_graph.prompts import (
+from .config import get_model_for_task, get_temperature_for_task
+from .prompts import (
     analyze_sentiment_template,
     determine_topic_template,
     decide_deflection_template,
     generate_policy_stance_template,
     format_response_template,
 )
-from political_agent_graph import get_active_persona_id, get_persona_name, get_persona_party
+from . import get_active_persona_id, get_persona_name, get_persona_party
 
 try:
     from src.data.db.utils.rag_utils import integrate_with_chat, query_vector_db
