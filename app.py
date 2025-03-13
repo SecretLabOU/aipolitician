@@ -6,7 +6,6 @@ This module exposes the AI Politician graph to the LangGraph Studio Web UI.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph_api import RouteWebhook
 from langgraph_api.base import LangGraphAPI
 
 from src.political_agent_graph.graph import graph
@@ -37,10 +36,6 @@ api.add_graph(
     graph=graph,
     input_type=ConversationState,
 )
-
-# Add a webhook route for the graph
-webhook = RouteWebhook(graph=graph)
-app.post("/webhook/ai_politician")(webhook)
 
 if __name__ == "__main__":
     import uvicorn
