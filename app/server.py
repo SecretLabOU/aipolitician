@@ -6,9 +6,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
-from src.political_agent_graph.graph import graph
+from src.political_agent_graph.graph import graph, run_conversation
 from src.political_agent_graph.state import ConversationState, get_initial_state
-from src.political_agent_graph import run_conversation_with_tracing
 
 app = FastAPI(
     title="AI Politician",
@@ -28,14 +27,13 @@ add_routes(
 @app.post("/chat")
 async def chat_endpoint(user_input: str):
     """Simple endpoint for chat."""
-    state = get_initial_state(user_input)
-    result = await graph.ainvoke(state)
-    return {"response": result.final_response}
+    response = await run_conversation(user_input)
+    return {"response": response}
 
 @app.post("/chat-with-trace")
 async def chat_with_trace(user_input: str):
     """Chat with tracing enabled."""
-    response = await run_conversation_with_tracing(user_input)
+    response = await run_conversation(user_input)
     return {"response": response, "trace_url": "https://smith.langchain.com/o/user/projects/ai-politician/traces"}
 
 if __name__ == "__main__":

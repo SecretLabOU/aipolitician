@@ -227,9 +227,33 @@ async def run_conversation(user_input: str) -> str:
 
 
 async def run_conversation_with_tracing(user_input: str) -> str:
-    """Run conversation with tracing enabled."""
+    """Run a conversation turn through the graph with tracing enabled.
+    
+    Args:
+        user_input: The user's input message
+        
+    Returns:
+        The politician's response
+    """
+    # Create initial state
     state = get_initial_state(user_input)
-    tracer = LangChainTracer(project_name="ai-politician")
-    result = await graph.ainvoke(state, {"callbacks": [tracer]})
-    await wait_for_all_tracers()
-    return result.final_response
+    
+    # Run the graph
+    try:
+        # Import tracing if available
+        from langchain.callbacks.tracers import LangChainTracer
+        tracer = LangChainTracer(project_name="ai-politician")
+        result = await graph.ainvoke(state, {"callbacks": [tracer]})
+        
+        # Wait for traces if available
+        try:
+            from langchain.callbacks.tracers.langchain import wait_for_all_tracers
+            await wait_for_all_tracers()
+        except ImportError:
+            pass
+            
+        return result.final_response
+    except ImportError:
+        # Fall back to regular invocation if tracing is not available
+        result = await graph.ainvoke(state)
+        return result.final_response

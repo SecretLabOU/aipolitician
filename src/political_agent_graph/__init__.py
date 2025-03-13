@@ -69,3 +69,6 @@ from .graph import run_conversation
 
 # Import other components for convenience
 from .config import get_config, get_model_for_task
+
+# At the end of the file, add:
+from .graph import run_conversation, run_conversation_with_tracing  # Add the tracing function
