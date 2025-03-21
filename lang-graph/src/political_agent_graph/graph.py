@@ -5,7 +5,8 @@ This module implements the LangGraph for simulating politicians.
 
 import json
 import asyncio
-from typing import Dict, List, Tuple, Any, Annotated, TypedDict
+from typing import Dict, List, Tuple, Any, Annotated, TypedDict, Union
+from dataclasses import asdict
 
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -23,12 +24,12 @@ from political_agent_graph.prompts import (
 from political_agent_graph import persona_manager
 
 
-def analyze_sentiment(state: ConversationState) -> ConversationState:
+def analyze_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze the sentiment of the user's input."""
     model = get_model_for_task("analyze_sentiment")
     
     prompt = analyze_sentiment_template.format(
-        user_input=state.user_input
+        user_input=state["user_input"]
     )
     
     # Get sentiment from model
@@ -40,27 +41,27 @@ def analyze_sentiment(state: ConversationState) -> ConversationState:
         sentiment = "neutral"
     
     # Update state
-    state.topic_sentiment = sentiment
+    state["topic_sentiment"] = sentiment
     return state
 
 
-def determine_topic(state: ConversationState) -> ConversationState:
+def determine_topic(state: Dict[str, Any]) -> Dict[str, Any]:
     """Determine the topic of the user's input."""
     model = get_model_for_task("determine_topic")
     
     prompt = determine_topic_template.format(
-        user_input=state.user_input
+        user_input=state["user_input"]
     )
     
     # Get topic from model
     topic = model.invoke(prompt).strip().lower()
     
     # Update state
-    state.current_topic = topic
+    state["current_topic"] = topic
     return state
 
 
-def decide_deflection(state: ConversationState) -> ConversationState:
+def decide_deflection(state: Dict[str, Any]) -> Dict[str, Any]:
     """Decide whether to deflect the question."""
     model = get_model_for_task("decide_deflection")
     
@@ -70,9 +71,9 @@ def decide_deflection(state: ConversationState) -> ConversationState:
     prompt = decide_deflection_template.format(
         politician_name=persona["name"],
         politician_party=persona["party"],
-        user_input=state.user_input,
-        current_topic=state.current_topic,
-        topic_sentiment=state.topic_sentiment,
+        user_input=state["user_input"],
+        current_topic=state["current_topic"],
+        topic_sentiment=state["topic_sentiment"],
         rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2)
     )
     
@@ -84,16 +85,16 @@ def decide_deflection(state: ConversationState) -> ConversationState:
     should_deflect = lines[0].lower() == "true"
     
     # Update state
-    state.should_deflect = should_deflect
+    state["should_deflect"] = should_deflect
     
     # If there's a deflection topic suggestion, use it
     if should_deflect and len(lines) > 1:
-        state.deflection_topic = lines[1].strip()
+        state["deflection_topic"] = lines[1].strip()
     
     return state
 
 
-def generate_policy_stance(state: ConversationState) -> ConversationState:
+def generate_policy_stance(state: Dict[str, Any]) -> Dict[str, Any]:
     """Generate the politician's policy stance."""
     model = get_model_for_task("generate_policy_stance")
     
@@ -101,7 +102,7 @@ def generate_policy_stance(state: ConversationState) -> ConversationState:
     persona = persona_manager.get_active_persona()
     
     # Determine which topic to use
-    topic = state.deflection_topic if state.should_deflect else state.current_topic
+    topic = state["deflection_topic"] if state["should_deflect"] else state["current_topic"]
     
     # Get the relevant policy stance from the persona data
     policy_data = persona.get("policy_stances", {})
@@ -111,7 +112,7 @@ def generate_policy_stance(state: ConversationState) -> ConversationState:
         politician_name=persona["name"],
         politician_party=persona["party"],
         current_topic=topic,
-        user_input=state.user_input,
+        user_input=state["user_input"],
         policy_stances=json.dumps(relevant_policy, indent=2) if relevant_policy else "No specific stance on this topic.",
         speech_patterns=json.dumps(persona["speech_patterns"], indent=2)
     )
@@ -120,11 +121,11 @@ def generate_policy_stance(state: ConversationState) -> ConversationState:
     policy_stance = model.invoke(prompt).strip()
     
     # Update state
-    state.policy_stance = policy_stance
+    state["policy_stance"] = policy_stance
     return state
 
 
-def format_response(state: ConversationState) -> ConversationState:
+def format_response(state: Dict[str, Any]) -> Dict[str, Any]:
     """Format the politician's response."""
     model = get_model_for_task("format_response")
     
@@ -133,17 +134,17 @@ def format_response(state: ConversationState) -> ConversationState:
     
     # Format conversation history for prompt
     history_text = ""
-    for message in state.conversation_history[-5:]:  # Only use last 5 messages
+    for message in state["conversation_history"][-5:]:  # Only use last 5 messages
         history_text += f"{message['speaker']}: {message['text']}\n"
     
     prompt = format_response_template.format(
         politician_name=persona["name"],
         politician_party=persona["party"],
-        user_input=state.user_input,
-        current_topic=state.current_topic,
-        should_deflect=state.should_deflect,
-        deflection_topic=state.deflection_topic or "",
-        policy_stance=state.policy_stance or "",
+        user_input=state["user_input"],
+        current_topic=state["current_topic"],
+        should_deflect=state["should_deflect"],
+        deflection_topic=state.get("deflection_topic", ""),
+        policy_stance=state.get("policy_stance", ""),
         speech_patterns=json.dumps(persona["speech_patterns"], indent=2),
         rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2),
         conversation_history=history_text
@@ -153,8 +154,11 @@ def format_response(state: ConversationState) -> ConversationState:
     response = model.invoke(prompt).strip()
     
     # Update state
-    state.final_response = response
-    state.add_to_history(persona["name"], response)
+    state["final_response"] = response
+    state["conversation_history"].append({
+        "speaker": persona["name"],
+        "text": response
+    })
     return state
 
 
@@ -162,7 +166,7 @@ def format_response(state: ConversationState) -> ConversationState:
 def build_graph() -> StateGraph:
     """Build the LangGraph for the political agent."""
     # Define a new graph
-    builder = StateGraph(ConversationState)
+    builder = StateGraph(Dict)
     
     # Add nodes
     builder.add_node("analyze_sentiment", analyze_sentiment)
@@ -199,10 +203,13 @@ async def run_conversation(user_input: str) -> str:
         The politician's response
     """
     # Create initial state
-    state = get_initial_state(user_input)
+    initial_state = get_initial_state(user_input)
+    
+    # Convert state to dict for graph processing
+    state_dict = asdict(initial_state)
     
     # Run the graph
-    result = await graph.ainvoke(state)
+    result = await graph.ainvoke(state_dict)
     
     # Return the final response
-    return result.final_response
+    return result["final_response"]
