@@ -16,12 +16,18 @@ class PoliticalAgent:
         """Generate a response to the given query."""
         
         # Initialize state
-        state = PoliticalAgentState(
+        initial_state = PoliticalAgentState(
             query=query,
             persona=self.persona
         )
         
-        # Run the graph
-        final_state = await self.graph.ainvoke(state)
+        # Convert state to dict for graph processing
+        state_dict = initial_state.dict()
         
-        return final_state.final_response
+        # Run the graph
+        final_state = await self.graph.ainvoke(state_dict)
+        
+        # Convert back to state object
+        final_state_obj = PoliticalAgentState.from_dict(final_state)
+        
+        return final_state_obj.final_response or "No response generated"

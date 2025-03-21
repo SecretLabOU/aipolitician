@@ -13,23 +13,27 @@ async def retrieve_context(state: PoliticalAgentState, config: RunnableConfig):
     except ImportError:
         # Fallback behavior when RAG is not available
         state.retrieved_context = f"Context not available - RAG system not configured"
-    return state
+    return {"retrieved_context": state.retrieved_context}
 
-async def generate_response(state: PoliticalAgentState, config: RunnableConfig):
+async def generate_response(state: dict, config: RunnableConfig):
     """Generate response using the appropriate model."""
-    prompt = f"{state.retrieved_context}\n\nUser Question: {state.query}"
+    query = state.get("query", "")
+    persona = state.get("persona", "")
+    retrieved_context = state.get("retrieved_context", "")
     
-    if state.persona == "trump":
-        state.final_response = trump_generate(
+    prompt = f"{retrieved_context}\n\nUser Question: {query}"
+    
+    if persona == "trump":
+        response = trump_generate(
             prompt=prompt,
             use_rag=False  # We've already retrieved context
         )
     else:
-        state.final_response = biden_generate(
+        response = biden_generate(
             prompt=prompt,
             use_rag=False  # We've already retrieved context
         )
-    return state
+    return {"final_response": response}
 
 def create_political_graph() -> StateGraph:
     """Create the political agent workflow graph."""
@@ -44,5 +48,8 @@ def create_political_graph() -> StateGraph:
     workflow.set_entry_point("retrieve_context")
     workflow.add_edge("retrieve_context", "generate_response")
     workflow.add_edge("generate_response", END)
+    
+    # Define the output structure
+    workflow.set_finish_point("generate_response")
     
     return workflow.compile()
