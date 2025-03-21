@@ -4,10 +4,10 @@ Integration tests for Political Agents with LangGraph and RAG.
 """
 
 import pytest
-import asyncio
 from src.agents.political import PoliticalAgent
 
-@pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio  # Mark all tests in this module as async
+
 async def test_agent_responses():
     """Test that both Trump and Biden agents can generate responses with RAG."""
     # Create agents
@@ -35,7 +35,6 @@ async def test_agent_responses():
         # Ensure responses are different
         assert trump_response != biden_response, "Agents should generate different responses"
 
-@pytest.mark.asyncio
 async def test_rag_integration():
     """Test that RAG is properly integrated with the agents."""
     trump_agent = PoliticalAgent(persona="trump")
