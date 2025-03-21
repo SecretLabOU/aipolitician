@@ -3,7 +3,7 @@
 This module handles configuring the system for different AI tasks.
 """
 
-from political_agent_graph.local_models import get_model
+from political_agent_graph.persona_models import get_persona_model
 
 # Active persona tracking
 _active_persona = "donald_trump"  # Default to Trump
@@ -63,15 +63,15 @@ def get_model_for_task(task_name):
     persona = _active_persona
     
     # Map persona to model
-    model_name = PERSONA_MODEL_MAP.get(persona, "mistral")
+    model_name = PERSONA_MODEL_MAP.get(persona, "default")
     
     # For certain analytical tasks, we might want to use the base model
-    if task_name in ["analyze_sentiment", "determine_topic"] and model_name != "mistral":
+    if task_name in ["analyze_sentiment", "determine_topic"] and model_name != "default":
         # Optional: Uncomment this if you want analytical tasks to use the base model
-        # return get_model("mistral")
+        # return get_persona_model("default")
         pass
     
-    return get_model(model_name)
+    return get_persona_model(model_name)
 
 def get_temperature_for_task(task_name):
     """Get the appropriate temperature for a specific task."""

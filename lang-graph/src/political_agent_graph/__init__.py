@@ -54,9 +54,9 @@ class PersonaManager:
 # Initialize persona manager
 persona_manager = PersonaManager()
 
-# Initialize the LLM models
-from political_agent_graph.local_models import setup_models
-setup_models()
+# Initialize the persona models
+from political_agent_graph.persona_models import initialize_persona_models
+initialize_persona_models()
 
 # Import the graph functions
 from political_agent_graph.graph import run_conversation
