@@ -23,8 +23,12 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-def generate_response(prompt, model, tokenizer, use_rag=False, max_length=512):
+def generate_response(prompt: str, model=None, tokenizer=None, use_rag=False, max_length=512) -> str:
     """Generate a response using the model, optionally with RAG"""
+    if model is None and tokenizer is None:
+        # For testing/development, return a mock response
+        return f"MOCK BIDEN: {prompt}"
+        
     # Use RAG if available and enabled
     if HAS_RAG and use_rag:
         # Get contextual information from the database

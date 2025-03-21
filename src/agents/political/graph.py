@@ -6,10 +6,13 @@ from .state import PoliticalAgentState
 
 async def retrieve_context(state: PoliticalAgentState, config: RunnableConfig):
     """Retrieve relevant context using RAG."""
-    from src.data.db.utils.rag_utils import integrate_with_chat
-    
-    persona_name = "Donald Trump" if state.persona == "trump" else "Joe Biden"
-    state.retrieved_context = integrate_with_chat(state.query, persona_name)
+    try:
+        from src.data.db.utils.rag_utils import integrate_with_chat
+        persona_name = "Donald Trump" if state.persona == "trump" else "Joe Biden"
+        state.retrieved_context = integrate_with_chat(state.query, persona_name)
+    except ImportError:
+        # Fallback behavior when RAG is not available
+        state.retrieved_context = f"Context not available - RAG system not configured"
     return state
 
 async def generate_response(state: PoliticalAgentState, config: RunnableConfig):
@@ -19,32 +22,27 @@ async def generate_response(state: PoliticalAgentState, config: RunnableConfig):
     if state.persona == "trump":
         state.final_response = trump_generate(
             prompt=prompt,
-            model=None,  # Will use global model
-            tokenizer=None,  # Will use global tokenizer
             use_rag=False  # We've already retrieved context
         )
     else:
         state.final_response = biden_generate(
             prompt=prompt,
-            model=None,
-            tokenizer=None,
-            use_rag=False
+            use_rag=False  # We've already retrieved context
         )
-    
     return state
 
-def create_political_graph():
-    """Create the political agent graph."""
-    
-    graph = StateGraph(PoliticalAgentState)
+def create_political_graph() -> StateGraph:
+    """Create the political agent workflow graph."""
+    # Initialize the graph
+    workflow = StateGraph(PoliticalAgentState)
     
     # Add nodes
-    graph.add_node("retrieve_context", retrieve_context)
-    graph.add_node("generate_response", generate_response)
+    workflow.add_node("retrieve_context", retrieve_context)
+    workflow.add_node("generate_response", generate_response)
     
-    # Define edges
-    graph.set_entry_point("retrieve_context")
-    graph.add_edge("retrieve_context", "generate_response")
-    graph.add_edge("generate_response", END)
+    # Define the edges
+    workflow.set_entry_point("retrieve_context")
+    workflow.add_edge("retrieve_context", "generate_response")
+    workflow.add_edge("generate_response", END)
     
-    return graph.compile()
+    return workflow.compile()

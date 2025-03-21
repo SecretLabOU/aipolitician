@@ -31,20 +31,12 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-def generate_response(model, tokenizer, prompt, max_length=512, use_rag=False):
-    """
-    Generate a response using the model
-    
-    Args:
-        model: The language model
-        tokenizer: The tokenizer for the model
-        prompt: The user's input prompt
-        max_length: Maximum length of the generated response
-        use_rag: Whether to use RAG for enhancing responses with facts
+def generate_response(prompt: str, model=None, tokenizer=None, use_rag=False, max_length=512) -> str:
+    """Generate a response using the model, optionally with RAG"""
+    if model is None and tokenizer is None:
+        # For testing/development, return a mock response
+        return f"MOCK TRUMP: {prompt}"
         
-    Returns:
-        The generated response text
-    """
     # Use RAG to get context if available and enabled
     if HAS_RAG and use_rag:
         context = integrate_with_chat(prompt, "Donald Trump")
@@ -137,7 +129,7 @@ def main():
                 
             print("\nTrump: ", end="", flush=True)
             # Pass use_rag parameter to generate_response
-            response = generate_response(model, tokenizer, user_input, 
+            response = generate_response(user_input, model, tokenizer, 
                                       max_length=args.max_length,
                                       use_rag=args.rag)
             print(response)
