@@ -5,8 +5,9 @@ This module implements the LangGraph for simulating politicians.
 
 import json
 import asyncio
-from typing import Dict, List, Tuple, Any, Annotated, TypedDict, Union
+from typing import Dict, List, Tuple, Any, Annotated, TypedDict, Union, TypeVar
 from dataclasses import asdict
+from typing_extensions import TypedDict
 
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -24,7 +25,19 @@ from political_agent_graph.prompts import (
 from political_agent_graph import persona_manager
 
 
-def analyze_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
+# Define the state schema
+class ConversationStateDict(TypedDict):
+    user_input: str
+    conversation_history: List[Dict[str, str]]
+    current_topic: str | None
+    topic_sentiment: str | None
+    should_deflect: bool
+    deflection_topic: str | None
+    policy_stance: str | None
+    final_response: str | None
+
+
+def analyze_sentiment(state: ConversationStateDict) -> ConversationStateDict:
     """Analyze the sentiment of the user's input."""
     model = get_model_for_task("analyze_sentiment")
     
@@ -45,7 +58,7 @@ def analyze_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def determine_topic(state: Dict[str, Any]) -> Dict[str, Any]:
+def determine_topic(state: ConversationStateDict) -> ConversationStateDict:
     """Determine the topic of the user's input."""
     model = get_model_for_task("determine_topic")
     
@@ -61,7 +74,7 @@ def determine_topic(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def decide_deflection(state: Dict[str, Any]) -> Dict[str, Any]:
+def decide_deflection(state: ConversationStateDict) -> ConversationStateDict:
     """Decide whether to deflect the question."""
     model = get_model_for_task("decide_deflection")
     
@@ -94,7 +107,7 @@ def decide_deflection(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def generate_policy_stance(state: Dict[str, Any]) -> Dict[str, Any]:
+def generate_policy_stance(state: ConversationStateDict) -> ConversationStateDict:
     """Generate the politician's policy stance."""
     model = get_model_for_task("generate_policy_stance")
     
@@ -125,7 +138,7 @@ def generate_policy_stance(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def format_response(state: Dict[str, Any]) -> Dict[str, Any]:
+def format_response(state: ConversationStateDict) -> ConversationStateDict:
     """Format the politician's response."""
     model = get_model_for_task("format_response")
     
@@ -165,8 +178,8 @@ def format_response(state: Dict[str, Any]) -> Dict[str, Any]:
 # Build the graph
 def build_graph() -> StateGraph:
     """Build the LangGraph for the political agent."""
-    # Define a new graph
-    builder = StateGraph(Dict)
+    # Define a new graph with proper state schema
+    builder = StateGraph(ConversationStateDict)
     
     # Add nodes
     builder.add_node("analyze_sentiment", analyze_sentiment)
