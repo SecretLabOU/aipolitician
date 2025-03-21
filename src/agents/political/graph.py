@@ -2,6 +2,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
 from src.models.chat.chat_trump import generate_response as trump_generate
 from src.models.chat.chat_biden import generate_response as biden_generate
+from .state import PoliticalAgentState
 
 async def retrieve_context(state: PoliticalAgentState, config: RunnableConfig):
     """Retrieve relevant context using RAG."""

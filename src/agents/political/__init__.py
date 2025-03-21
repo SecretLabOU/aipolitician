@@ -1,6 +1,6 @@
 from typing import Optional
-from .graph import create_political_graph
 from .state import PoliticalAgentState
+from .graph import create_political_graph
 
 class PoliticalAgent:
     def __init__(self, persona: str):

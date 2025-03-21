@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 @dataclass
 class PoliticalAgentState:
@@ -9,16 +9,11 @@ class PoliticalAgentState:
     query: str
     persona: str  # "trump" or "biden"
     
-    # Analysis state
-    sentiment: str = ""
-    context: str = ""
-    
     # RAG state
     retrieved_context: str = ""
     
     # Response state
-    draft_response: str = ""
     final_response: str = ""
     
-    # Chat history
+    # Optional: Chat history for context
     chat_memory: List[str] = field(default_factory=list)
