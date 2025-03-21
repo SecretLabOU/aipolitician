@@ -37,14 +37,19 @@ def initialize_base_model_and_tokenizer():
         bnb_4bit_use_double_quant=True,
     )
     
-    # Load base model and tokenizer
+    # Load base model and tokenizer with flash attention disabled
     base_model = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL_ID,
         quantization_config=quantization_config,
         device_map="auto",
         trust_remote_code=True,
+        use_flash_attention_2=False,  # Disable flash attention
+        torch_dtype=torch.float16,
     )
+    
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     
     return base_model, tokenizer
 
@@ -94,10 +99,12 @@ class PersonaAdapterModel(LLM):
             outputs = self._adapter_model.generate(
                 **inputs,
                 max_new_tokens=max_length,
+                do_sample=True,  # Enable sampling
                 temperature=kwargs.get("temperature", 0.7),
                 top_p=kwargs.get("top_p", 0.9),
                 repetition_penalty=1.2,
                 pad_token_id=self._tokenizer.pad_token_id,
+                eos_token_id=self._tokenizer.eos_token_id,
             )
         
         # Process and clean the response
