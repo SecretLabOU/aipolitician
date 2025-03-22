@@ -17,9 +17,9 @@ Your analysis should be a single word: "positive", "negative", or "neutral".
 
 # Topic identification prompt
 DETERMINE_TOPIC_PROMPT = """
-Identify the main policy topic or issue in the following user message.
-Choose from these categories: immigration, economy, healthcare, foreign_policy, environment, 
-or specify another relevant political topic.
+Identify the main topic in the following user message.
+For political discussions, choose from: immigration, economy, healthcare, foreign_policy, environment.
+For casual conversation, use: greeting, introduction, personal, farewell, or other appropriate category.
 
 User message: {user_input}
 

@@ -145,46 +145,68 @@ def format_response(state: ConversationStateDict) -> ConversationStateDict:
     # Get active persona
     persona = persona_manager.get_active_persona()
     
-    # Format conversation history for prompt
-    history_text = ""
-    for message in state["conversation_history"][-5:]:  # Only use last 5 messages
-        history_text += f"{message['speaker']}: {message['text']}\n"
-    
-    prompt = format_response_template.format(
-        politician_name=persona["name"],
-        politician_party=persona["party"],
-        user_input=state["user_input"],
-        current_topic=state["current_topic"],
-        should_deflect=state["should_deflect"],
-        deflection_topic=state.get("deflection_topic", ""),
-        policy_stance=state.get("policy_stance", ""),
-        speech_patterns=json.dumps(persona["speech_patterns"], indent=2),
-        rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2),
-        conversation_history=history_text
-    )
+    # For casual topics, use a simpler prompt
+    if state["current_topic"] in ["greeting", "introduction", "personal", "farewell"]:
+        prompt = f"""
+You are roleplaying as {persona['name']}, speaking in a casual conversation.
+Respond to: {state['user_input']}
+
+Use your typical speaking style:
+{json.dumps(persona['speech_patterns'], indent=2)}
+
+Keep the response natural and in-character, without mentioning policy positions.
+"""
+    else:
+        # Format conversation history for prompt
+        history_text = ""
+        for message in state["conversation_history"][-5:]:  # Only use last 5 messages
+            history_text += f"{message['speaker']}: {message['text']}\n"
+        
+        prompt = format_response_template.format(
+            politician_name=persona["name"],
+            politician_party=persona["party"],
+            user_input=state["user_input"],
+            current_topic=state["current_topic"],
+            should_deflect=state["should_deflect"],
+            deflection_topic=state.get("deflection_topic", ""),
+            policy_stance=state.get("policy_stance", ""),
+            speech_patterns=json.dumps(persona["speech_patterns"], indent=2),
+            rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2),
+            conversation_history=history_text
+        )
     
     # Get formatted response from model
     response = model.invoke(prompt).strip()
     
-    # Clean the response by removing any debug information or prompt templates
-    response_lines = response.split('\n')
+    # Clean the response
     cleaned_response = ""
+    capture_response = False
     
-    # Find the actual response content
-    for line in response_lines:
-        # Skip empty lines and debug information
-        if not line.strip() or 'Your speech patterns:' in line or 'Your rhetorical style:' in line:
+    for line in response.split('\n'):
+        line = line.strip()
+        
+        # Skip empty lines and known instruction patterns
+        if not line or any(skip in line.lower() for skip in [
+            'you are roleplaying',
+            'your response:',
+            'craft a response',
+            '[inst]',
+            '[/inst]',
+            'history of conversation:',
+            'your speech patterns:',
+            'your rhetorical style:',
+            'keep the response'
+        ]):
             continue
-        if '[INST]' in line or '[/INST]' in line:
-            continue
-        if 'History of conversation:' in line:
-            continue
-        if line.startswith('Craft a response that:'):
-            continue
-        if line.startswith('Your response:'):
-            continue
-        cleaned_response = line.strip()
-        break
+            
+        # If we find a clean response line, use it
+        if line and not line.startswith('#') and not line.startswith('*'):
+            cleaned_response = line
+            break
+    
+    # If no clean response found, use the last non-empty line
+    if not cleaned_response and response:
+        cleaned_response = [line for line in response.split('\n') if line.strip()][-1]
     
     # Update state with cleaned response
     state["final_response"] = cleaned_response
