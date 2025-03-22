@@ -40,6 +40,7 @@ if args.hf_token:
 os.makedirs(args.output_dir, exist_ok=True)
 
 # Configure compute settings
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # Use Quadro RTX 8000 (GPU 2)
 compute_dtype = torch.bfloat16
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -58,6 +59,7 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     trust_remote_code=True,
     torch_dtype=compute_dtype,
+    attn_implementation="eager"  # Disable flash attention to avoid CUDA errors
 )
 
 # Set padding token if needed
@@ -213,9 +215,9 @@ training_args = TrainingArguments(
     evaluation_strategy="steps",
     eval_steps=5,
     save_strategy="steps",
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
-    gradient_accumulation_steps=4,
+    per_device_train_batch_size=1,  # Reduced batch size
+    per_device_eval_batch_size=1,   # Reduced batch size
+    gradient_accumulation_steps=8,  # Increased gradient accumulation
     save_steps=10,
     logging_steps=5,
     learning_rate=args.learning_rate,

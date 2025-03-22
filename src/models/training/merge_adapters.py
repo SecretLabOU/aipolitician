@@ -38,6 +38,9 @@ if args.hf_token:
 # Create output directory
 os.makedirs(args.output_dir, exist_ok=True)
 
+# Configure GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # Use Quadro RTX 8000 (GPU 2)
+
 # Configure compute settings
 compute_dtype = torch.bfloat16
 bnb_config = BitsAndBytesConfig(
@@ -55,6 +58,7 @@ base_model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     trust_remote_code=True,
     torch_dtype=compute_dtype,
+    attn_implementation="eager"  # Disable flash attention to avoid CUDA errors
 )
 
 # Load the base adapter

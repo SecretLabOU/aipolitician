@@ -84,10 +84,19 @@ def main():
                     help="Maximum response length")
     parser.add_argument("--temperature", type=float, default=0.7,
                     help="Temperature for response generation (0.1-1.0)")
+    parser.add_argument("--lora-path", type=str,
+                    help="Path to LoRA adapter")
     args = parser.parse_args()
     
-    # Get model path from environment
-    LORA_PATH = "nnat03/trump-mistral-adapter"
+    # Get model path from environment or command line
+    if args.lora_path:
+        LORA_PATH = args.lora_path
+    elif os.environ.get("TRUMP_ADAPTER_PATH"):
+        LORA_PATH = os.environ.get("TRUMP_ADAPTER_PATH")
+    else:
+        LORA_PATH = "nnat03/trump-mistral-adapter"
+    
+    print(f"Using adapter from: {LORA_PATH}")
     
     # Load base model and tokenizer
     print("Loading model...")
