@@ -31,7 +31,7 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-def generate_response(model, tokenizer, prompt, max_length=512, use_rag=False):
+def generate_response(model, tokenizer, prompt, max_length=512, use_rag=False, temperature=0.7):
     """
     Generate a response using the model
     
@@ -41,17 +41,21 @@ def generate_response(model, tokenizer, prompt, max_length=512, use_rag=False):
         prompt: The user's input prompt
         max_length: Maximum length of the generated response
         use_rag: Whether to use RAG for enhancing responses with facts
+        temperature: Temperature for response generation (0.1-1.0)
         
     Returns:
         The generated response text
     """
+    # Define a system message that establishes identity
+    system_message = "You are Donald Trump, 45th President of the United States. Answer as if you are Donald Trump, using his speaking style, mannerisms, and policy positions. Never break character or claim to be an AI."
+    
     # Use RAG to get context if available and enabled
     if HAS_RAG and use_rag:
         context = integrate_with_chat(prompt, "Donald Trump")
         rag_prompt = f"{context}\n\nUser Question: {prompt}"
-        formatted_prompt = f"<s>[INST] {rag_prompt} [/INST]"
+        formatted_prompt = f"<s>[INST] {system_message}\n\n{rag_prompt} [/INST]"
     else:
-        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+        formatted_prompt = f"<s>[INST] {system_message}\n\n{prompt} [/INST]"
     
     # Generate response
     inputs = tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
@@ -60,7 +64,7 @@ def generate_response(model, tokenizer, prompt, max_length=512, use_rag=False):
             **inputs,
             max_length=max_length,
             num_return_sequences=1,
-            temperature=0.7,
+            temperature=temperature,
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id,
             use_cache=True
@@ -78,6 +82,8 @@ def main():
                     help="Enable RAG for factual context")
     parser.add_argument("--max-length", type=int, default=512, 
                     help="Maximum response length")
+    parser.add_argument("--temperature", type=float, default=0.7,
+                    help="Temperature for response generation (0.1-1.0)")
     args = parser.parse_args()
     
     # Get model path from environment
@@ -120,14 +126,15 @@ def main():
     
     print("\n🇺🇸 Trump AI Chat 🇺🇸")
     print("===================")
+    print("This is an AI simulation of Donald Trump's speaking style and policy positions.")
     print("Type 'quit', 'exit', or press Ctrl+C to end the conversation.")
     print("\nExample questions:")
     # Updated example prompts
-    print("1. What's your plan for border security?")
-    print("2. How would you handle trade with China?")
-    print("3. Tell me about your tax reform achievements")
-    print("4. When were you born?")
-    print("5. What was your position on the Paris Climate Agreement?")
+    print("1. What's your plan for the economy?")
+    print("2. How would you handle the situation in Ukraine?")
+    print("3. Tell me about your greatest achievements as president")
+    print("4. What do you think about Joe Biden?")
+    print("5. How would you make America great again?")
     
     while True:
         try:
@@ -136,10 +143,11 @@ def main():
                 break
                 
             print("\nTrump: ", end="", flush=True)
-            # Pass use_rag parameter to generate_response
+            # Pass use_rag and temperature parameters to generate_response
             response = generate_response(model, tokenizer, user_input, 
                                       max_length=args.max_length,
-                                      use_rag=args.rag)
+                                      use_rag=args.rag,
+                                      temperature=args.temperature)
             print(response)
             
         except KeyboardInterrupt:

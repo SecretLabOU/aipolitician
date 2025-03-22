@@ -23,8 +23,11 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-def generate_response(prompt, model, tokenizer, use_rag=False, max_length=512):
+def generate_response(prompt, model, tokenizer, use_rag=False, max_length=512, temperature=0.7):
     """Generate a response using the model, optionally with RAG"""
+    # Define a system message that establishes identity
+    system_message = "You are Joe Biden, 46th President of the United States. Answer as if you are Joe Biden, using his speaking style, mannerisms, and policy positions. Never break character or claim to be an AI."
+    
     # Use RAG if available and enabled
     if HAS_RAG and use_rag:
         # Get contextual information from the database
@@ -32,10 +35,10 @@ def generate_response(prompt, model, tokenizer, use_rag=False, max_length=512):
         
         # Combine context with prompt
         rag_prompt = f"{context}\n\nUser Question: {prompt}"
-        formatted_prompt = f"<s>[INST] {rag_prompt} [/INST]"
+        formatted_prompt = f"<s>[INST] {system_message}\n\n{rag_prompt} [/INST]"
     else:
         # Standard prompt without RAG
-        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+        formatted_prompt = f"<s>[INST] {system_message}\n\n{prompt} [/INST]"
     
     # Generate response
     inputs = tokenizer(formatted_prompt, return_tensors="pt").to("cuda")
@@ -44,7 +47,7 @@ def generate_response(prompt, model, tokenizer, use_rag=False, max_length=512):
             **inputs,
             max_length=max_length,
             num_return_sequences=1,
-            temperature=0.7,
+            temperature=temperature,
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id,
             use_cache=True
@@ -60,6 +63,8 @@ def main():
     parser = argparse.ArgumentParser(description="Chat with Biden AI model")
     parser.add_argument("--rag", action="store_true", help="Enable RAG for factual context")
     parser.add_argument("--max-length", type=int, default=512, help="Maximum response length")
+    parser.add_argument("--temperature", type=float, default=0.7, 
+                     help="Temperature for response generation (0.1-1.0)")
     args = parser.parse_args()
     
     # Get model path from environment
@@ -100,13 +105,17 @@ def main():
     if HAS_RAG and args.rag:
         print("\nRAG system enabled. Using database for factual answers.")
     
-    print("\nModel loaded! Enter your prompts (type 'quit' to exit)")
+    print("\n🇺🇸 Biden AI Chat 🇺🇸")
+    print("===================")
+    print("This is an AI simulation of Joe Biden's speaking style and policy positions.")
+    print("Type 'quit' or press Ctrl+C to end the conversation.")
+    
     print("\nExample prompts:")
     print("1. What's your vision for America's future?")
-    print("2. How would you help the middle class?")
-    print("3. Tell me about your infrastructure plan.")
-    print("4. When were you born?")
-    print("5. What was your position on the American Recovery and Reinvestment Act?")
+    print("2. How would you handle the situation at the southern border?")
+    print("3. Tell me about your infrastructure plan")
+    print("4. What do you think about Donald Trump?")
+    print("5. How are you addressing climate change?")
     
     while True:
         try:
@@ -114,13 +123,14 @@ def main():
             if prompt.lower() == 'quit':
                 break
             
-            # Generate response with or without RAG
+            # Generate response with or without RAG and custom temperature
             response = generate_response(
                 prompt, 
                 model, 
                 tokenizer, 
                 use_rag=(HAS_RAG and args.rag),
-                max_length=args.max_length
+                max_length=args.max_length,
+                temperature=args.temperature
             )
             print(f"\nBiden: {response}")
             
