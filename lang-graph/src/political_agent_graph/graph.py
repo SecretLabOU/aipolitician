@@ -166,11 +166,31 @@ def format_response(state: ConversationStateDict) -> ConversationStateDict:
     # Get formatted response from model
     response = model.invoke(prompt).strip()
     
-    # Update state
-    state["final_response"] = response
+    # Clean the response by removing any debug information or prompt templates
+    response_lines = response.split('\n')
+    cleaned_response = ""
+    
+    # Find the actual response content
+    for line in response_lines:
+        # Skip empty lines and debug information
+        if not line.strip() or 'Your speech patterns:' in line or 'Your rhetorical style:' in line:
+            continue
+        if '[INST]' in line or '[/INST]' in line:
+            continue
+        if 'History of conversation:' in line:
+            continue
+        if line.startswith('Craft a response that:'):
+            continue
+        if line.startswith('Your response:'):
+            continue
+        cleaned_response = line.strip()
+        break
+    
+    # Update state with cleaned response
+    state["final_response"] = cleaned_response
     state["conversation_history"].append({
         "speaker": persona["name"],
-        "text": response
+        "text": cleaned_response
     })
     return state
 
