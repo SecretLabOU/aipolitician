@@ -1,1 +1,0 @@
-"""Shared utilities and helpers for the Political Agent system."""
