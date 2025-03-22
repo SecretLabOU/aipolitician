@@ -147,66 +147,71 @@ def format_response(state: ConversationStateDict) -> ConversationStateDict:
     
     # For casual topics, use a simpler prompt
     if state["current_topic"] in ["greeting", "introduction", "personal", "farewell"]:
-        prompt = f"""
-You are roleplaying as {persona['name']}, speaking in a casual conversation.
-Respond to: {state['user_input']}
+        prompt = f"""You are roleplaying as {persona['name']}.
+Respond naturally to this casual conversation: "{state['user_input']}"
 
-Use your typical speaking style:
+Use these speech patterns to match your character:
 {json.dumps(persona['speech_patterns'], indent=2)}
 
-Keep the response natural and in-character, without mentioning policy positions.
-"""
+Important: Respond ONLY with what you would say, in character. Do not include any meta text or instructions."""
     else:
         # Format conversation history for prompt
         history_text = ""
-        for message in state["conversation_history"][-5:]:  # Only use last 5 messages
+        for message in state["conversation_history"][-5:]:
             history_text += f"{message['speaker']}: {message['text']}\n"
         
-        prompt = format_response_template.format(
-            politician_name=persona["name"],
-            politician_party=persona["party"],
-            user_input=state["user_input"],
-            current_topic=state["current_topic"],
-            should_deflect=state["should_deflect"],
-            deflection_topic=state.get("deflection_topic", ""),
-            policy_stance=state.get("policy_stance", ""),
-            speech_patterns=json.dumps(persona["speech_patterns"], indent=2),
-            rhetoric_style=json.dumps(persona["rhetorical_style"], indent=2),
-            conversation_history=history_text
-        )
+        prompt = f"""You are roleplaying as {persona['name']}, a {persona['party']} politician.
+
+User message: {state['user_input']}
+Topic: {state['current_topic']}
+
+Your policy stance on this topic:
+{state['policy_stance']}
+
+Your speech patterns:
+{json.dumps(persona['speech_patterns'], indent=2)}
+
+Important: Respond ONLY with what you would say, in character. Do not include any meta text, instructions, or status information."""
     
     # Get formatted response from model
     response = model.invoke(prompt).strip()
     
-    # Clean the response
-    cleaned_response = ""
-    capture_response = False
-    
+    # Clean the response by removing any meta text or instructions
+    cleaned_lines = []
     for line in response.split('\n'):
         line = line.strip()
-        
-        # Skip empty lines and known instruction patterns
-        if not line or any(skip in line.lower() for skip in [
+        # Skip lines that look like instructions or meta text
+        if any(skip in line.lower() for skip in [
             'you are roleplaying',
             'your response:',
             'craft a response',
             '[inst]',
             '[/inst]',
+            'should deflect:',
             'history of conversation:',
             'your speech patterns:',
             'your rhetorical style:',
-            'keep the response'
+            'keep the response',
+            'important:',
+            'respond only',
+            'user message:',
+            'topic:',
+            'policy stance:',
+            'speech patterns:'
         ]):
             continue
-            
-        # If we find a clean response line, use it
-        if line and not line.startswith('#') and not line.startswith('*'):
-            cleaned_response = line
-            break
+        if line and not line.startswith(('>', '#', '*', '-', '•')):
+            cleaned_lines.append(line)
     
-    # If no clean response found, use the last non-empty line
-    if not cleaned_response and response:
-        cleaned_response = [line for line in response.split('\n') if line.strip()][-1]
+    # Join all valid response lines
+    cleaned_response = ' '.join(cleaned_lines).strip()
+    
+    # If we somehow got an empty response, use a simple fallback
+    if not cleaned_response:
+        if state["current_topic"] in ["greeting", "introduction", "personal", "farewell"]:
+            cleaned_response = "Look, folks, it's great to be here talking with you."
+        else:
+            cleaned_response = "Let me tell you something important about that."
     
     # Update state with cleaned response
     state["final_response"] = cleaned_response

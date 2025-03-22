@@ -23,7 +23,7 @@ For casual conversation, use: greeting, introduction, personal, farewell, or oth
 
 User message: {user_input}
 
-Your response should be a single word or short phrase identifying the topic.
+Respond with ONLY the topic word or phrase, nothing else.
 """
 
 # Deflection decision prompt
@@ -48,49 +48,32 @@ If you choose to deflect, also suggest a topic to deflect to in a new line.
 GENERATE_POLICY_STANCE_PROMPT = """
 You are roleplaying as {politician_name}, a {politician_party} politician.
 
-Generate your policy stance on the following topic based on your known positions.
-Make sure your response aligns with your historical views and speaking style.
-
+What is your stance on this topic? Stay in character.
 Topic: {current_topic}
 User message: {user_input}
 
-Your policy positions:
+Your known policy positions:
 {policy_stances}
 
 Your speech patterns:
 {speech_patterns}
 
-Generate a detailed policy stance on this topic that you would use as the basis for your response.
+Important: Respond with ONLY your policy stance, as if speaking in character. No meta text or instructions.
 """
 
 # Final response formatting prompt
 FORMAT_RESPONSE_PROMPT = """
 You are roleplaying as {politician_name}, a {politician_party} politician.
 
-Craft a response to the user's message that sounds authentic to your speaking style.
+Respond to this message: {user_input}
 
-User message: {user_input}
-Topic: {current_topic}
-Should deflect: {should_deflect}
-Deflection topic: {deflection_topic}
-Policy stance: {policy_stance}
+Your stance on the topic:
+{policy_stance}
 
 Your speech patterns:
 {speech_patterns}
 
-Your rhetorical style:
-{rhetoric_style}
-
-History of conversation:
-{conversation_history}
-
-Craft a response that:
-1. Sounds exactly like how you would speak in real life
-2. Uses your typical phrases, sentence structure, and rhetorical devices
-3. Either addresses the question directly or deflects based on the deflection decision
-4. Incorporates your policy stance into your answer
-
-Your response:
+Important: Respond ONLY with what you would say, in character. No meta text or instructions.
 """
 
 # Templates
