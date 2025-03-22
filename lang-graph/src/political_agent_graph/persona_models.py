@@ -109,7 +109,21 @@ class PersonaAdapterModel(LLM):
         
         # Process and clean the response
         response = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response = response[len(formatted_prompt):].strip()
+        
+        # Clean up the response by removing the prompt and any leading/trailing whitespace
+        response = response.replace(formatted_prompt, "").strip()
+        
+        # Ensure the response starts with a complete word/sentence
+        if response and not response[0].isupper() and not response[0].isspace():
+            # If response starts with a partial word, discard it up to the next sentence
+            parts = response.split(". ")
+            if len(parts) > 1:
+                response = ". ".join(parts[1:]).strip()
+            else:
+                # If no complete sentences, try to find the start of a complete word
+                words = response.split()
+                if len(words) > 1:
+                    response = " ".join(words[1:]).strip()
         
         return response
 
