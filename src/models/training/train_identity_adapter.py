@@ -14,7 +14,7 @@ import torch
 from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, Trainer, TrainingArguments
 from transformers import DataCollatorForSeq2Seq
-from peft import LoraConfig, get_peft_model, PeftModel, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model, PeftModel, prepare_model_for_kbit_training, PeftConfig
 from datasets import Dataset
 from huggingface_hub import login
 
@@ -72,10 +72,25 @@ model.config.use_cache = False
 model.config.pretraining_tp = 1
 model = prepare_model_for_kbit_training(model)
 
-# Apply LoRA parameters for fine-tuning - using small rank for efficiency
+# Load the existing adapter to get its configuration
+try:
+    print(f"Loading existing adapter: {args.adapter_path}")
+    base_config = PeftConfig.from_pretrained(args.adapter_path)
+    base_r = base_config.r if hasattr(base_config, 'r') else 16
+    base_lora_alpha = base_config.lora_alpha if hasattr(base_config, 'lora_alpha') else 64
+    print(f"Base adapter rank (r): {base_r}")
+    print(f"Base adapter lora_alpha: {base_lora_alpha}")
+    # Note: not merging adapters yet, as we'll use a new one for identity fine-tuning
+except Exception as e:
+    print(f"Error loading adapter config: {str(e)}")
+    print("Using default values r=16, lora_alpha=64")
+    base_r = 16
+    base_lora_alpha = 64
+
+# Apply LoRA parameters for fine-tuning - using same rank as base adapter for compatibility
 peft_config = LoraConfig(
-    r=8,
-    lora_alpha=32,
+    r=base_r,  # Using the same rank as the base adapter
+    lora_alpha=base_lora_alpha,  # Using the same lora_alpha as the base adapter
     target_modules=[
         "q_proj",
         "k_proj",
@@ -93,14 +108,6 @@ peft_config = LoraConfig(
 
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
-
-# Load the existing adapter
-try:
-    print(f"Loading existing adapter: {args.adapter_path}")
-    # Note: not merging adapters yet, as we'll use a new one for identity fine-tuning
-except Exception as e:
-    print(f"Error loading adapter: {str(e)}")
-    print("Continuing with fresh adapter...")
 
 # Create identity training data based on the selected politician
 if args.data_file and os.path.exists(args.data_file):

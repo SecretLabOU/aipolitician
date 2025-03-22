@@ -87,17 +87,91 @@ for n, p in identity_adapter.named_parameters():
 print("Merging adapters...")
 merged_adapter = PeftModel.from_pretrained(base_model, args.base_adapter)
 
+# Print adapter ranks for debugging
+base_r = None
+identity_r = None
+for key, value in base_config.to_dict().items():
+    if key == "r":
+        base_r = value
+        print(f"Base adapter rank (r): {base_r}")
+for key, value in identity_config.to_dict().items():
+    if key == "r":
+        identity_r = value
+        print(f"Identity adapter rank (r): {identity_r}")
+
+print(f"Found {len(base_adapters)} parameters in base adapter and {len(identity_adapters)} in identity adapter")
+
 # Logic for merging: merge all matching parameters
 for name, param in merged_adapter.named_parameters():
     if "lora_" in name and name in identity_adapters:
-        # Use 70% base adapter + 30% identity adapter for a blend that preserves style
-        # but emphasizes identity for core questions
+        base_tensor = base_adapters[name]
+        identity_tensor = identity_adapters[name]
+        
+        # Check if dimensions match
+        if base_tensor.size() != identity_tensor.size():
+            print(f"Size mismatch for {name}: base={base_tensor.size()}, identity={identity_tensor.size()}")
+            
+            # Handle different rank sizes (lora_A and lora_B matrices)
+            if "lora_A" in name or "lora_B" in name:
+                try:
+                    # For lora_A: [r, in_dim] where r differs
+                    # For lora_B: [out_dim, r] where r differs
+                    if "lora_A" in name:
+                        # For lora_A, we need to interpolate along the first dimension (rank dimension)
+                        target_size = base_tensor.size(0)  # The target rank (r from base adapter)
+                        if identity_tensor.dim() >= 2:  # Ensure tensor has at least 2 dimensions
+                            # Resize identity tensor to match base tensor's rank
+                            identity_tensor = torch.nn.functional.interpolate(
+                                identity_tensor.unsqueeze(0),  # Add batch dimension
+                                size=target_size,
+                                mode='linear',
+                                align_corners=False
+                            ).squeeze(0)  # Remove batch dimension
+                            print(f"  -> Resized identity tensor for lora_A to {identity_tensor.size()}")
+                        else:
+                            print(f"  -> Identity tensor for {name} has insufficient dimensions. Using base adapter only.")
+                            identity_tensor = base_tensor  # Fall back to base tensor
+                    
+                    elif "lora_B" in name:
+                        # For lora_B, we need to interpolate along the second dimension (rank dimension)
+                        target_size = base_tensor.size(1)  # The target rank (r from base adapter)
+                        if identity_tensor.dim() >= 2:  # Ensure tensor has at least 2 dimensions
+                            # Transpose, resize, then transpose back
+                            identity_tensor = torch.nn.functional.interpolate(
+                                identity_tensor.t().unsqueeze(0),  # Transpose and add batch dimension
+                                size=target_size,
+                                mode='linear',
+                                align_corners=False
+                            ).squeeze(0).t()  # Remove batch dimension and transpose back
+                            print(f"  -> Resized identity tensor for lora_B to {identity_tensor.size()}")
+                        else:
+                            print(f"  -> Identity tensor for {name} has insufficient dimensions. Using base adapter only.")
+                            identity_tensor = base_tensor  # Fall back to base tensor
+                except Exception as e:
+                    print(f"  -> Error resizing tensor for {name}: {str(e)}. Using base adapter only.")
+                    identity_tensor = base_tensor  # Fall back to base tensor
+            else:
+                print(f"  -> Cannot merge tensors with different sizes for {name}. Using base adapter only.")
+                identity_tensor = base_tensor  # Fall back to base tensor only
+        
+        # Verify sizes match after resizing
+        if base_tensor.size() != identity_tensor.size():
+            print(f"  -> Size still mismatched after resizing. Using base adapter only for {name}.")
+            identity_tensor = base_tensor
+            
+        # Use 70% base adapter + 30% identity adapter for a blend
         weight_base = 0.7
         weight_identity = 0.3
         
-        # Merge the weights using weighted average
-        param.data = weight_base * base_adapters[name] + weight_identity * identity_adapters[name]
-        print(f"Merged parameter: {name}")
+        try:
+            # Merge the weights using weighted average
+            param.data = weight_base * base_tensor + weight_identity * identity_tensor
+            print(f"Merged parameter: {name}")
+        except Exception as e:
+            print(f"  -> Error merging parameter {name}: {str(e)}. Using base adapter only.")
+            param.data = base_tensor  # Fall back to base tensor
+    elif "lora_" in name and name not in identity_adapters:
+        print(f"Parameter {name} not found in identity adapter. Using base adapter only.")
 
 # Save the merged adapter
 merged_path = os.path.join(args.output_dir, "merged_adapter")
