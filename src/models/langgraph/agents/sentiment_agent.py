@@ -47,6 +47,42 @@ def _get_sentiment_model_and_tokenizer():
         print("Using simple sentiment analysis as fallback")
         return None, None
 
+def _simple_sentiment_analysis(prompt: str) -> Dict[str, Any]:
+    """Simple rule-based sentiment analysis as fallback."""
+    negative_words = [
+        'hate', 'awful', 'terrible', 'bad', 'worse', 'worst', 'stupid', 'idiot', 
+        'incompetent', 'failure', 'fail', 'liar', 'lies', 'corrupt', 'fraud', 'cheat',
+        'criminal', 'disaster', 'pathetic'
+    ]
+    
+    prompt_lower = prompt.lower()
+    negative_count = sum(1 for word in negative_words if word in prompt_lower)
+    is_question = "?" in prompt
+    
+    if negative_count >= 2:
+        sentiment_score = -0.7
+        sentiment_category = "negative"
+        is_biased = True
+        contains_personal_attack = negative_count >= 3
+    elif negative_count == 1:
+        sentiment_score = -0.3
+        sentiment_category = "slightly negative" 
+        is_biased = negative_count > 0
+        contains_personal_attack = False
+    else:
+        sentiment_score = 0.1
+        sentiment_category = "neutral"
+        is_biased = False
+        contains_personal_attack = False
+    
+    return {
+        "sentiment_score": sentiment_score,
+        "sentiment_category": sentiment_category,
+        "is_biased": is_biased,
+        "contains_personal_attack": contains_personal_attack,
+        "is_gotcha_question": is_question and negative_count > 0
+    }
+
 def analyze_sentiment(prompt: str, politician_name: str) -> Dict[str, Any]:
     """
     Analyze the sentiment of the user input towards the politician.
@@ -57,102 +93,67 @@ def analyze_sentiment(prompt: str, politician_name: str) -> Dict[str, Any]:
     model, tokenizer = _get_sentiment_model_and_tokenizer()
     
     if model is None or tokenizer is None:
-        # Fallback for simple sentiment analysis
-        negative_words = [
-            'hate', 'awful', 'terrible', 'bad', 'worse', 'worst', 'stupid', 'idiot', 
-            'incompetent', 'failure', 'fail', 'liar', 'lies', 'corrupt', 'fraud', 'cheat',
-            'criminal', 'disaster', 'pathetic'
-        ]
+        # Fallback to simple sentiment analysis
+        return _simple_sentiment_analysis(prompt)
         
-        prompt_lower = prompt.lower()
-        negative_count = sum(1 for word in negative_words if word in prompt_lower)
-        is_question = "?" in prompt
+    try:
+        # Use the RoBERTa model for emotions
+        inputs = tokenizer(prompt, truncation=True, padding=True, return_tensors="pt").to(model.device)
         
-        if negative_count >= 2:
-            sentiment_score = -0.7
-            sentiment_category = "negative"
-            is_biased = True
-            contains_personal_attack = negative_count >= 3
-        elif negative_count == 1:
-            sentiment_score = -0.3
-            sentiment_category = "slightly negative" 
-            is_biased = negative_count > 0
-            contains_personal_attack = False
+        with torch.no_grad():
+            outputs = model(**inputs)
+            predictions = outputs.logits.softmax(dim=-1)
+        
+        # For RoBERTa go_emotions, we have multiple emotion categories
+        # Extract the relevant ones for our analysis
+        emotion_scores = predictions[0].cpu().numpy()
+        
+        # Get the top emotions and their scores
+        emotions = tokenizer.config.id2label
+        emotion_data = {emotion: float(score) for emotion, score in zip(emotions.values(), emotion_scores)}
+        
+        # Group emotions into categories
+        negative_emotions = ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust', 'grief', 'sadness']
+        positive_emotions = ['admiration', 'approval', 'caring', 'excitement', 'gratitude', 'joy', 'love', 'optimism', 'pride']
+        
+        # Calculate the aggregate sentiment
+        negative_score = sum(emotion_data.get(e, 0) for e in negative_emotions)
+        positive_score = sum(emotion_data.get(e, 0) for e in positive_emotions)
+        
+        # Map to a -1 to 1 score (same range as used in the system)
+        sentiment_score = float(positive_score - negative_score)
+        
+        # Determine category based on score
+        if sentiment_score < -0.3:
+            category = "negative"
+        elif sentiment_score < 0.1:
+            category = "slightly negative"
+        elif sentiment_score < 0.3:
+            category = "neutral"
         else:
-            sentiment_score = 0.1
-            sentiment_category = "neutral"
-            is_biased = False
-            contains_personal_attack = False
+            category = "positive"
+        
+        # Determine if question contains personal attacks
+        contains_personal_attack = emotion_data.get('anger', 0) > 0.3 or emotion_data.get('disgust', 0) > 0.3
+        
+        # Determine if question is biased
+        is_biased = negative_score > 0.4
+        
+        # Determine if it's a "gotcha" question
+        is_gotcha = "?" in prompt and (negative_score > 0.3 or contains_personal_attack)
         
         return {
             "sentiment_score": sentiment_score,
-            "sentiment_category": sentiment_category,
+            "sentiment_category": category,
             "is_biased": is_biased,
             "contains_personal_attack": contains_personal_attack,
-            "is_gotcha_question": is_question and negative_count > 0
+            "is_gotcha_question": is_gotcha,
+            "emotion_details": emotion_data  # Include detailed emotion analysis
         }
-        
-    # Use the RoBERTa model for emotions
-    inputs = tokenizer(prompt, truncation=True, padding=True, return_tensors="pt").to(model.device)
     
-    with torch.no_grad():
-        outputs = model(**inputs)
-        predictions = outputs.logits.softmax(dim=-1)
-    
-    # For RoBERTa go_emotions, we have multiple emotion categories
-    # Extract the relevant ones for our analysis
-    emotion_scores = predictions[0].cpu().numpy()
-    
-    # The model has these emotion categories: 
-    # ['admiration', 'amusement', 'anger', 'annoyance', 'approval', 'caring', 
-    # 'confusion', 'curiosity', 'desire', 'disappointment', 'disapproval', 
-    # 'disgust', 'embarrassment', 'excitement', 'fear', 'gratitude', 'grief', 
-    # 'joy', 'love', 'nervousness', 'optimism', 'pride', 'realization', 
-    # 'relief', 'remorse', 'sadness', 'surprise', 'neutral']
-    
-    # Get the top emotions and their scores
-    emotions = tokenizer.config.id2label
-    emotion_data = {emotion: float(score) for emotion, score in zip(emotions.values(), emotion_scores)}
-    
-    # Group emotions into categories
-    negative_emotions = ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust', 'grief', 'sadness']
-    positive_emotions = ['admiration', 'approval', 'caring', 'excitement', 'gratitude', 'joy', 'love', 'optimism', 'pride']
-    neutral_emotions = ['amusement', 'confusion', 'curiosity', 'realization', 'surprise', 'neutral']
-    
-    # Calculate the aggregate sentiment
-    negative_score = sum(emotion_data[e] for e in negative_emotions)
-    positive_score = sum(emotion_data[e] for e in positive_emotions)
-    
-    # Map to a -1 to 1 score (same range as used in the system)
-    sentiment_score = float(positive_score - negative_score)
-    
-    # Determine category based on score
-    if sentiment_score < -0.3:
-        category = "negative"
-    elif sentiment_score < 0.1:
-        category = "slightly negative"
-    elif sentiment_score < 0.3:
-        category = "neutral"
-    else:
-        category = "positive"
-    
-    # Determine if question contains personal attacks
-    contains_personal_attack = emotion_data['anger'] > 0.3 or emotion_data['disgust'] > 0.3
-    
-    # Determine if question is biased
-    is_biased = negative_score > 0.4
-    
-    # Determine if it's a "gotcha" question
-    is_gotcha = "?" in prompt and (negative_score > 0.3 or contains_personal_attack)
-    
-    return {
-        "sentiment_score": sentiment_score,
-        "sentiment_category": category,
-        "is_biased": is_biased,
-        "contains_personal_attack": contains_personal_attack,
-        "is_gotcha_question": is_gotcha,
-        "emotion_details": emotion_data  # Include detailed emotion analysis
-    }
+    except Exception as e:
+        print(f"Error during sentiment analysis: {str(e)}")
+        return _simple_sentiment_analysis(prompt)
 
 def process_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
     """Process the user input to analyze sentiment and determine if deflection is needed."""
