@@ -18,12 +18,25 @@ class PoliticianIdentity(str, Enum):
     BIDEN = "biden"
     TRUMP = "trump"
 
-# LLM Configurations
-DEFAULT_MODEL = "gpt-3.5-turbo"
-if os.environ.get("OPENAI_API_KEY"):
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-else:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
+# LLM Configurations - Using Open Source Models
+
+# Sentiment Analysis Model
+SENTIMENT_MODEL_ID = "SamLowe/roberta-base-go_emotions"  # Good for multi-class sentiment detection
+# Alternative sentiment models:
+# - "cardiffnlp/twitter-roberta-base-sentiment-latest" (fast, lightweight)
+# - "finiteautomata/bertweet-base-sentiment-analysis" (good for social media)
+
+# Context Extraction LLM
+# Mixtral is a powerful open-source model that can replace GPT-3.5/4 for many tasks
+CONTEXT_LLM_MODEL_ID = "mistralai/Mixtral-8x7B-Instruct-v0.1"  # Can be replaced with "MBZUAI/LaMini-Flan-T5-783M" for lower VRAM usage
+USE_4BIT_QUANTIZATION = True  # Set to True to reduce VRAM usage
+
+# Fallbacks for extremely light systems
+LIGHT_LLM_MODEL_ID = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Lightweight alternative for systems with limited VRAM
+
+# Flag for using OpenAI (now disabled by default)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+HAS_OPENAI = False  # Explicitly disabled regardless of API key presence
 
 # Sentiment analysis thresholds
 SENTIMENT_DEFLECTION_THRESHOLD = 0.3  # Sentiment score below which deflection is triggered

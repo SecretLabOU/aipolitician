@@ -1,10 +1,19 @@
 # LangGraph requirements for the AI Politician project
 langgraph>=0.0.25
 langchain>=0.1.0
-langchain-community>=0.0.13
 langchain-core>=0.1.10
-langchain-openai>=0.0.5
 pydantic>=2.5.2
 fastapi>=0.105.0
 uvicorn>=0.24.0
-python-dotenv>=1.0.0 
+python-dotenv>=1.0.0
+
+# Transformer-based models
+transformers>=4.37.0
+accelerate>=0.26.0
+bitsandbytes>=0.41.0
+torch>=2.0.0
+
+# Optional: For improved performance
+nvidia-tensorrt>=9.0.0
+flash-attn>=2.5.0
+optimum>=1.14.0 
