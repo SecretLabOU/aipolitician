@@ -19,21 +19,20 @@ if __name__ == "__main__":
     
     # CLI component
     cli_parser = subparsers.add_parser("cli", help="Launch the command-line interface")
-    cli_parser.add_argument("args", nargs="*", help="Arguments to pass to the CLI")
     
     # API component
     api_parser = subparsers.add_parser("api", help="Launch the API server")
     
-    # Parse arguments
-    args = parser.parse_args()
+    # Parse only the component argument first
+    args, remaining = parser.parse_known_args()
     
     # Handle the specified component
     if args.component == "cli":
-        # Import and run the CLI with the provided arguments
+        # Import the CLI module
         from src.models.langgraph.cli import main
         
-        # Replace sys.argv with the CLI arguments
-        sys.argv = [sys.argv[0]] + args.args
+        # Run the CLI with the remaining arguments
+        sys.argv = [sys.argv[0]] + remaining
         main()
     elif args.component == "api":
         # Import and run the API server
