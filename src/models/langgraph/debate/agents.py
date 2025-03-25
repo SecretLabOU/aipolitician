@@ -282,30 +282,45 @@ def manage_topic(state: Dict[str, Any]) -> Dict[str, Any]:
         print(f"Turn: {current_turn}")
         print("-------------------------")
     
+    # Safety check - if we've gone too many turns, just return without changing topic
+    # This helps prevent infinite loops
+    if current_turn >= 12:
+        # Add a final note if we're ending
+        result["moderator_notes"].append({
+            "turn": current_turn,
+            "message": f"We're approaching the end of our debate on {state['topic']}. Please offer your closing statements.",
+            "timestamp": datetime.now().isoformat()
+        })
+        return result
+    
     # Identify potential subtopics based on the main topic
     potential_subtopics = generate_subtopics(state["topic"], state["current_subtopic"])
     
     # Check if we should switch to a new subtopic
     if current_turn > 0 and current_turn % 3 == 0:  # Every 3 turns
         # Select a new subtopic
-        new_subtopic = select_next_subtopic(
-            potential_subtopics, 
-            state["turn_history"],
-            state["current_subtopic"]
-        )
-        
-        if new_subtopic != state["current_subtopic"]:
-            result["current_subtopic"] = new_subtopic
+        try:
+            new_subtopic = select_next_subtopic(
+                potential_subtopics, 
+                state["turn_history"],
+                state["current_subtopic"]
+            )
             
-            # Add moderator note about topic change
-            result["moderator_notes"].append({
-                "turn": current_turn,
-                "message": f"Let's move on to discuss {new_subtopic}.",
-                "timestamp": datetime.now().isoformat(),
-                "topic_change": True,
-                "old_topic": state["current_subtopic"],
-                "new_topic": new_subtopic
-            })
+            if new_subtopic != state["current_subtopic"]:
+                result["current_subtopic"] = new_subtopic
+                
+                # Add moderator note about topic change
+                result["moderator_notes"].append({
+                    "turn": current_turn,
+                    "message": f"Let's move on to discuss {new_subtopic}.",
+                    "timestamp": datetime.now().isoformat(),
+                    "topic_change": True,
+                    "old_topic": state["current_subtopic"],
+                    "new_topic": new_subtopic
+                })
+        except Exception as e:
+            # If any error occurs, just keep the current subtopic
+            print(f"Error managing topics: {e}")
     
     return result
 
@@ -560,76 +575,92 @@ def generate_interruption(interrupter: str, interrupted: str, topic: str, max_le
 
 
 def generate_subtopics(main_topic: str, current_subtopic: str) -> List[str]:
-    """Generate potential subtopics for a main debate topic."""
-    # This would ideally leverage an LLM to generate relevant subtopics
-    # For this example, we'll use a simple approach with predefined subtopics for common areas
-    
-    # Common topic areas and their subtopics
-    topic_areas = {
-        "economy": [
-            "job creation", "inflation", "taxation", "government spending", 
-            "economic inequality", "trade policy", "infrastructure investment"
+    """Generate a list of potential subtopics for the debate based on the main topic."""
+    # Hard-coded subtopics for common debate topics
+    subtopics_by_topic = {
+        "Climate Change": [
+            "Renewable Energy Implementation",
+            "Carbon Taxation",
+            "Paris Climate Agreement",
+            "Green New Deal",
+            "Climate Change Impacts on Agriculture",
+            "Nuclear Power in the Green Transition"
         ],
-        "healthcare": [
-            "healthcare access", "insurance costs", "prescription drug prices", 
-            "medicare for all", "healthcare reform", "public health initiatives"
+        "Economy": [
+            "Inflation and Consumer Prices",
+            "Job Creation Policies",
+            "Tax Reform",
+            "Government Spending",
+            "Trade Policies and Tariffs",
+            "Small Business Support"
         ],
-        "immigration": [
-            "border security", "path to citizenship", "illegal immigration", 
-            "refugee policy", "immigration reform", "family separation"
+        "Healthcare": [
+            "Universal Healthcare",
+            "Prescription Drug Prices",
+            "Medicare Expansion",
+            "Healthcare for Veterans",
+            "Mental Health Services",
+            "Rural Healthcare Access"
         ],
-        "climate change": [
-            "renewable energy", "emissions targets", "paris agreement", 
-            "carbon tax", "green jobs", "climate resilience", "fossil fuels"
+        "Immigration": [
+            "Border Security",
+            "Path to Citizenship",
+            "Refugee Policy",
+            "DACA and Dreamers",
+            "Skilled Immigration Reform",
+            "Immigration Court System"
         ],
-        "education": [
-            "student loan debt", "free college", "public education funding", 
-            "charter schools", "teacher pay", "education reform"
-        ],
-        "foreign policy": [
-            "international alliances", "military spending", "diplomacy", 
-            "trade agreements", "national security", "terrorism threats"
+        "Foreign Policy": [
+            "Relations with China",
+            "Russia and Eastern Europe",
+            "Middle East Strategy",
+            "NATO Alliances",
+            "Trade Agreements",
+            "Foreign Aid Programs"
         ]
     }
     
-    # Check if the main topic matches any of our predefined areas
-    subtopics = []
-    for area, topics in topic_areas.items():
-        if area.lower() in main_topic.lower():
-            subtopics.extend(topics)
+    # Default subtopics if main topic not found
+    default_subtopics = [
+        f"{main_topic} - Economic Impact",
+        f"{main_topic} - Social Implications",
+        f"{main_topic} - Historical Context",
+        f"{main_topic} - Future Outlook",
+        f"{main_topic} - International Perspective",
+        f"{main_topic} - Policy Reform"
+    ]
     
-    # If no matches or too few matches, add some generic subtopics
-    if len(subtopics) < 3:
-        subtopics.extend([
-            "policy implications", "economic impact", "social considerations", 
-            "historical context", "future outlook", "constitutional questions",
-            "bipartisan solutions", "voter concerns", "implementation challenges"
-        ])
-    
-    # Ensure current subtopic is not repeated
-    if current_subtopic in subtopics:
-        subtopics.remove(current_subtopic)
-    
-    # Return up to 5 subtopics
-    import random
-    return random.sample(subtopics, min(5, len(subtopics)))
+    # Return relevant subtopics or defaults
+    return subtopics_by_topic.get(main_topic, default_subtopics)
 
 
 def select_next_subtopic(potential_subtopics: List[str], history: List[Dict[str, Any]], current_subtopic: str) -> str:
     """Select the next subtopic for the debate."""
-    # Get subtopics that have already been covered
-    covered_subtopics = [turn.get("subtopic", "") for turn in history]
-    
-    # Filter out subtopics that have already been covered extensively
-    new_subtopics = [st for st in potential_subtopics if covered_subtopics.count(st) < 2]
-    
-    # If all have been covered or no new subtopics, return to the main topic or current subtopic
-    if not new_subtopics:
-        return current_subtopic
-    
-    # Otherwise, pick a new subtopic
     import random
-    return random.choice(new_subtopics)
+    
+    # Extract subtopics already covered
+    covered_subtopics = set()
+    for turn in history:
+        if "subtopic" in turn:
+            covered_subtopics.add(turn["subtopic"])
+    
+    # Filter out the current subtopic and previously covered ones
+    available_subtopics = [
+        topic for topic in potential_subtopics 
+        if topic != current_subtopic and topic not in covered_subtopics
+    ]
+    
+    # If there are uncovered subtopics, choose one randomly
+    if available_subtopics:
+        return random.choice(available_subtopics)
+    
+    # If all subtopics have been covered, just return a different one from current
+    other_subtopics = [topic for topic in potential_subtopics if topic != current_subtopic]
+    if other_subtopics:
+        return random.choice(other_subtopics)
+    
+    # Fallback - keep the current subtopic
+    return current_subtopic
 
 
 def get_max_response_length(format_config: Dict[str, Any]) -> int:

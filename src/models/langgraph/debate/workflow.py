@@ -126,17 +126,35 @@ def create_debate_graph() -> StateGraph:
         }
     )
     
-    # Fact checking results
-    workflow.add_edge("fact_checker", "moderator")
+    # Fact checking results - add a check to force end after too many iterations
+    workflow.add_conditional_edges(
+        "fact_checker",
+        lambda state: "end" if len(state.get("turn_history", [])) >= 15 else "moderator",
+        {
+            "moderator": "moderator",
+            "end": END
+        }
+    )
     
-    # Handle interruption
-    workflow.add_edge("interruption_handler", "moderator")
+    # Handle interruption - add a check to force end after too many iterations
+    workflow.add_conditional_edges(
+        "interruption_handler",
+        lambda state: "end" if len(state.get("turn_history", [])) >= 15 else "moderator",
+        {
+            "moderator": "moderator",
+            "end": END
+        }
+    )
     
-    # Topic management
-    workflow.add_edge("topic_manager", "moderator")
-    
-    # Set a higher recursion limit
-    config = {"recursion_limit": 50}
+    # Topic management - add a check to force end after too many iterations 
+    workflow.add_conditional_edges(
+        "topic_manager",
+        lambda state: "end" if len(state.get("turn_history", [])) >= 15 else "moderator",
+        {
+            "moderator": "moderator",
+            "end": END
+        }
+    )
     
     return workflow
 
@@ -183,7 +201,7 @@ def initialize_debate(state: DebateState) -> DebateState:
 def next_step(state: DebateState) -> str:
     """Determine the next step in the debate workflow."""
     # Check if debate should end
-    if len(state["turn_history"]) >= 10:  # Example condition
+    if len(state["turn_history"]) >= 10:  # End after 10 turns
         return "end"
     
     # Check if topic needs management
@@ -220,14 +238,13 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
     # Create the graph
     graph = create_debate_graph()
     
-    # Convert to runnable - in newer LangGraph versions, we use .compile() without arguments
-    # or we might need to set config parameters differently
+    # Convert to runnable and set a higher recursion limit
+    # The error shows we need more than the default 25
     try:
-        # First try the newer approach
-        debate_chain = graph.compile()
+        debate_chain = graph.compile({"recursion_limit": 100})
     except TypeError:
         # Fall back to older approach if needed
-        debate_chain = graph.compile({"recursion_limit": 50})
+        debate_chain = graph.compile()
     
     # Create initial state
     initial_state: DebateState = {
