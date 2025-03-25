@@ -594,11 +594,26 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 for i, claim in enumerate(latest_check["claims"]):
                     fact_check_text += f"Claim {i+1}: \"{claim}\"\n"
                 
+                # Add corrections if available
+                if "corrections" in latest_check and latest_check["corrections"]:
+                    fact_check_text += "\nCorrections:\n"
+                    for i, correction in enumerate(latest_check["corrections"]):
+                        fact_check_text += f"- {correction}\n"
+                
                 # Add sources if available
                 if "sources" in latest_check and latest_check["sources"]:
                     fact_check_text += "\nSources:\n"
                     for i, source in enumerate(latest_check["sources"]):
-                        fact_check_text += f"- {source}\n"
+                        # Handle both string sources and dictionary sources for backward compatibility
+                        if isinstance(source, dict) and "url" in source:
+                            title = source.get('title', 'Source')
+                            url = source.get('url', '')
+                            if url:
+                                fact_check_text += f"- {title} ({url})\n"
+                            else:
+                                fact_check_text += f"- {title}\n"
+                        else:
+                            fact_check_text += f"- {source}\n"
                 
                 fact_check_text += "-----------------------------\n\n"
                 debate_output.append(fact_check_text)
