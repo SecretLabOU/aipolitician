@@ -359,8 +359,7 @@ def retrieve_knowledge_for_debate(main_topic: str, subtopic: str, identity: str)
     try:
         # Combine main topic and subtopic for retrieval
         query = f"{main_topic}: {subtopic}"
-        context = retrieve_knowledge({"user_input": query, "politician_identity": identity})
-        return context.get("context", "")
+        return retrieve_knowledge(query, identity)
     except Exception as e:
         print(f"Error retrieving knowledge: {e}")
         return ""
