@@ -7,8 +7,8 @@ import sys
 import torch
 import logging
 from pathlib import Path
-from typing import Dict, Any
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from typing import Dict, Any, Optional, Union
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig
 from peft import PeftModel
 
 # Add the project root to the Python path
@@ -163,24 +163,157 @@ def _generate_response_with_model(
         print(f"Error during response generation: {str(e)}")
         return _generate_simple_fallback_response(prompt, context, politician_identity, should_deflect)
 
-def generate_response(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate the final response based on the context and sentiment analysis."""
-    # Extract state variables
-    prompt = state["user_input"]
-    context = state["context"]
-    politician_identity = state["politician_identity"]
-    should_deflect = state["should_deflect"]
+def generate_response(state: Dict[str, Any]) -> Union[str, Dict[str, Any]]:
+    """
+    Generate a response from a politician.
+    
+    Args:
+        state: Contains the user input, politician identity, and context
+        
+    Returns:
+        Generated response text or a dictionary containing the response
+    """
+    # Extract input parameters
+    user_input = state.get("user_input", "")
+    politician_identity = state.get("politician_identity", "")
+    context = state.get("context", "")
+    should_deflect = state.get("should_deflect", False)
+    
+    # Get token length parameters if provided, otherwise use defaults
+    max_new_tokens = state.get("max_new_tokens", 1024)  # Default to 1024
+    max_length = state.get("max_length", 1536)  # Default to 1536
+    
+    # Load base model with personality adapter
+    model, tokenizer = _get_model_and_tokenizer(politician_identity)
+    
+    # Generate the prompt
+    prompt = generate_prompt(user_input, context, politician_identity, should_deflect)
     
     # Generate response
-    response = _generate_response_with_model(
-        prompt=prompt,
-        context=context,
-        politician_identity=politician_identity,
-        should_deflect=should_deflect
+    try:
+        response = generate(
+            model=model,
+            tokenizer=tokenizer,
+            prompt=prompt,
+            max_new_tokens=max_new_tokens,
+            max_length=max_length
+        )
+    except torch.cuda.OutOfMemoryError:
+        # Fallback to a smaller generation if we run out of memory
+        print("GPU memory error, attempting reduced generation parameters")
+        response = generate(
+            model=model,
+            tokenizer=tokenizer,
+            prompt=prompt,
+            max_new_tokens=min(max_new_tokens, 512),
+            max_length=min(max_length, 1024),
+            temperature=0.7,  # Lower temperature for more focused output
+            top_p=0.9  # Slightly more focused sampling
+        )
+    
+    # Return the result
+    return {"response": response, "prompt": prompt}
+
+def generate_prompt(
+    user_input: str, 
+    context: str, 
+    politician_identity: str, 
+    should_deflect: bool = False
+) -> str:
+    """
+    Generate a prompt for the language model based on user input and context.
+    
+    Args:
+        user_input: User's question or topic
+        context: Relevant context for response generation
+        politician_identity: Politician identity for role-specific responses
+        should_deflect: Whether the response should avoid answering directly
+        
+    Returns:
+        Formatted prompt for the model
+    """
+    # Simplified prompt structure
+    prompt = f"<s>[INST] <<SYS>>\n"
+    prompt += f"You are {politician_identity}, a political figure.\n"
+    
+    if should_deflect:
+        prompt += (
+            "This is a topic you prefer not to discuss directly. Deflect the question "
+            "gracefully while maintaining your political brand and personality. "
+            "Be brief in your deflection.\n"
+        )
+    else:
+        prompt += (
+            "Speak authentically in your voice, adhering to your typical style, mannerisms, "
+            "and position. Your response should reflect your known political stances.\n"
+        )
+    
+    # Add context information if available
+    if context:
+        prompt += f"\nContext:\n{context}\n"
+    
+    # Add the user question/topic and close the system prompt
+    prompt += f"<</SYS>>\n\n{user_input} [/INST]\n"
+    
+    return prompt
+
+def generate(
+    model, 
+    tokenizer, 
+    prompt: str, 
+    max_new_tokens: int = 1024, 
+    max_length: int = 1536,
+    temperature: float = 0.8, 
+    top_p: float = 0.95
+) -> str:
+    """
+    Generate a response from the model.
+    
+    Args:
+        model: The language model
+        tokenizer: The tokenizer for the model
+        prompt: The input prompt for generation
+        max_new_tokens: Maximum number of new tokens to generate
+        max_length: Maximum length of input sequence
+        temperature: Sampling temperature
+        top_p: Top-p sampling parameter
+        
+    Returns:
+        Generated response text
+    """
+    # Tokenize the input
+    inputs = tokenizer(
+        prompt, 
+        return_tensors="pt", 
+        padding=True, 
+        truncation=True, 
+        max_length=max_length
+    ).to(model.device)
+    
+    # Configure generation parameters
+    generation_config = GenerationConfig(
+        max_new_tokens=max_new_tokens,
+        do_sample=True,
+        temperature=temperature,
+        top_p=top_p,
+        top_k=50,
+        repetition_penalty=1.15,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id
     )
     
-    # Update state with response
-    return {
-        **state,
-        "response": response
-    } 
+    # Generate response
+    with torch.no_grad():
+        generated_ids = model.generate(
+            input_ids=inputs.input_ids,
+            attention_mask=inputs.attention_mask,
+            generation_config=generation_config,
+        )
+    
+    # Decode and clean up the response
+    response = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+    
+    # Extract just the model's response (exclude the prompt)
+    response = response.split("[/INST]")[-1].strip()
+    
+    return response 

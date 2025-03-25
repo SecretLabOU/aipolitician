@@ -375,41 +375,54 @@ def manage_topic(state: Dict[str, Any]) -> Dict[str, Any]:
         print("-------------------------")
     
     # Safety check - if we've gone too many turns, just return without changing topic
-    # This helps prevent infinite loops
-    if current_turn >= 12:
-        # Add a final note if we're ending
-        result["moderator_notes"].append({
-            "turn": current_turn,
-            "message": f"We're approaching the end of our debate on {state['topic']}. Please offer your closing statements.",
-            "timestamp": datetime.now().isoformat()
-        })
+    # Prevent infinite loops or excessive topic changes
+    if current_turn >= 12 or current_turn == 0:
+        # Add a final note if we're ending and near max turns
+        if current_turn >= 10:
+            result["moderator_notes"].append({
+                "turn": current_turn,
+                "message": f"We're approaching the end of our debate on {state['topic']}. Please offer your closing statements.",
+                "timestamp": datetime.now().isoformat()
+            })
         return result
     
-    # Identify potential subtopics based on the main topic
-    potential_subtopics = generate_subtopics(state["topic"], state["current_subtopic"])
-    
-    # Check if we should switch to a new subtopic
-    if current_turn > 0 and current_turn % 3 == 0:  # Every 3 turns
-        # Select a new subtopic
+    # Only change topics at specific intervals (every 4 turns)
+    # This prevents the rapid cycling through topics
+    if current_turn > 0 and current_turn % 4 == 0:
+        # Identify potential subtopics based on the main topic
+        potential_subtopics = generate_subtopics(state["topic"], state["current_subtopic"])
+        
+        # Track which subtopics have been covered in the state
+        if "subtopics_covered" not in result:
+            result["subtopics_covered"] = [state["current_subtopic"]]
+        
+        # Select a new subtopic, avoiding the current one and recently used ones
         try:
-            new_subtopic = select_next_subtopic(
-                potential_subtopics, 
-                state["turn_history"],
-                state["current_subtopic"]
-            )
+            covered_subtopics = result.get("subtopics_covered", [])
             
-            if new_subtopic != state["current_subtopic"]:
-                result["current_subtopic"] = new_subtopic
+            # Filter subtopics to those not recently covered
+            available_subtopics = [
+                topic for topic in potential_subtopics 
+                if topic != state["current_subtopic"] and topic not in covered_subtopics[-3:]
+            ]
+            
+            # If we have available subtopics, select one
+            if available_subtopics:
+                new_subtopic = random.choice(available_subtopics)
                 
-                # Add moderator note about topic change
-                result["moderator_notes"].append({
-                    "turn": current_turn,
-                    "message": f"Let's move on to discuss {new_subtopic}.",
-                    "timestamp": datetime.now().isoformat(),
-                    "topic_change": True,
-                    "old_topic": state["current_subtopic"],
-                    "new_topic": new_subtopic
-                })
+                if new_subtopic != state["current_subtopic"]:
+                    result["current_subtopic"] = new_subtopic
+                    result["subtopics_covered"].append(new_subtopic)
+                    
+                    # Add moderator note about topic change
+                    result["moderator_notes"].append({
+                        "turn": current_turn,
+                        "message": f"Let's move on to discuss {new_subtopic}.",
+                        "timestamp": datetime.now().isoformat(),
+                        "topic_change": True,
+                        "old_topic": state["current_subtopic"],
+                        "new_topic": new_subtopic
+                    })
         except Exception as e:
             # If any error occurs, just keep the current subtopic
             print(f"Error managing topics: {e}")
@@ -484,13 +497,13 @@ def get_max_response_length(format_config: Dict[str, Any]) -> int:
     
     # Significantly increase response lengths across all formats
     if format_type == "town_hall":
-        return 800  # Increased from 400
+        return 1000  # Increased from 800
     elif format_type == "head_to_head":
-        return 600  # Increased from 300
+        return 900  # Increased from 600
     elif format_type == "panel":
-        return 500  # Increased from 250
+        return 800  # Increased from 500
     else:
-        return 700  # Increased from 350
+        return 950  # Increased from 700
 
 
 def generate_politician_debate_response(
@@ -556,6 +569,7 @@ def generate_politician_debate_response(
     # Build the full context
     context = (
         f"Topic: {topic}\n\n"
+        f"You are {identity}, participating in a debate on '{topic}'.\n"
         f"Previous statements in the debate:\n{prev_statements_text}\n"
         f"Opponents: {', '.join(opponents)}\n"
         f"{rebuttal_text}\n"
@@ -563,7 +577,7 @@ def generate_politician_debate_response(
         f"Relevant knowledge:\n{knowledge}\n\n"
         f"IMPORTANT: Respond directly to your opponents' points. Build on the conversation "
         f"rather than repeating yourself. Be specific in your references to what others have said. "
-        f"Provide a complete, thorough response."
+        f"Provide a complete, thorough response in your authentic voice."
     )
     
     # Generate the response using the response agent
@@ -572,15 +586,16 @@ def generate_politician_debate_response(
         "politician_identity": identity,
         "context": context,
         "should_deflect": False,
-        "max_new_tokens": 800  # Add max_new_tokens to avoid length errors
+        "max_new_tokens": 1024,  # Increase max tokens to prevent errors
+        "max_length": 1536  # Add high max_length to prevent token length errors
     }
     
     response = generate_response(input_state)
     
     # Only truncate if response is significantly over the max length
-    if len(response) > max_length + 200:
+    if len(response) > max_length + 300:
         # More gently truncate to preserve more content
-        truncate_point = max(max_length, int(len(response) * 0.8))
+        truncate_point = max(max_length, int(len(response) * 0.85))
         # Try to truncate at the end of a sentence
         sentence_end = response.rfind(".", 0, truncate_point)
         if sentence_end > max_length * 0.7:  # Only use sentence boundary if it's reasonably far in
@@ -949,35 +964,6 @@ def generate_subtopics(main_topic: str, current_subtopic: str) -> List[str]:
     return subtopics_by_topic.get(main_topic, default_subtopics)
 
 
-def select_next_subtopic(potential_subtopics: List[str], history: List[Dict[str, Any]], current_subtopic: str) -> str:
-    """Select the next subtopic for the debate."""
-    import random
-    
-    # Extract subtopics already covered
-    covered_subtopics = set()
-    for turn in history:
-        if "subtopic" in turn:
-            covered_subtopics.add(turn["subtopic"])
-    
-    # Filter out the current subtopic and previously covered ones
-    available_subtopics = [
-        topic for topic in potential_subtopics 
-        if topic != current_subtopic and topic not in covered_subtopics
-    ]
-    
-    # If there are uncovered subtopics, choose one randomly
-    if available_subtopics:
-        return random.choice(available_subtopics)
-    
-    # If all subtopics have been covered, just return a different one from current
-    other_subtopics = [topic for topic in potential_subtopics if topic != current_subtopic]
-    if other_subtopics:
-        return random.choice(other_subtopics)
-    
-    # Fallback - keep the current subtopic
-    return current_subtopic
-
-
 def extract_key_points_from_opponents(previous_statements: List[Dict[str, Any]], current_speaker: str) -> List[Tuple[str, str]]:
     """Extract key points from opponents' statements that should be addressed."""
     opponent_points = []
@@ -1058,7 +1044,10 @@ def generate_response(state: Dict[str, Any]) -> str:
         
         # Add max_new_tokens parameter to avoid token length errors
         input_state = state.copy()
-        input_state["max_new_tokens"] = 800  # Increase max tokens 
+        input_state["max_new_tokens"] = 1024  # Significantly increase max tokens to prevent errors
+        
+        # Add high max_length to prevent token length errors
+        input_state["max_length"] = 1536  # Ensure this is higher than any likely input length
         
         response_data = gen_resp(input_state)
         if isinstance(response_data, dict):
@@ -1067,5 +1056,4 @@ def generate_response(state: Dict[str, Any]) -> str:
             return response_data  # If it's already a string
     except Exception as e:
         print(f"Error generating response: {e}")
-        return "I'm considering my position on this issue." 
         return "I'm considering my position on this issue." 

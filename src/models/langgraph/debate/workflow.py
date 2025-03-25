@@ -13,6 +13,7 @@ from typing import Dict, Any, TypedDict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from datetime import datetime
+import random
 
 # Add the project root to the Python path
 root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
@@ -118,7 +119,7 @@ def create_debate_graph() -> StateGraph:
         """Determine the next step with clearer end condition."""
         if should_end(state):
             return "end"
-        elif len(state.get("turn_history", [])) % 3 == 0 and len(state.get("turn_history", [])) > 0:
+        elif len(state.get("turn_history", [])) % 4 == 0 and len(state.get("turn_history", [])) > 0:
             return "topic_manager"
         else:
             return "debater"
@@ -271,7 +272,7 @@ def next_step(state: DebateState) -> str:
             return "end"
         
         # Check if topic needs management
-        if len(state.get("turn_history", [])) % 3 == 0 and len(state.get("turn_history", [])) > 0:
+        if len(state.get("turn_history", [])) % 4 == 0 and len(state.get("turn_history", [])) > 0:
             return "topic_manager"
         
         # Default to next debater
@@ -422,6 +423,15 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         print("Initializing debate state...")
         result = initialize_debate(state)
         
+        # Trace information if enabled
+        if state.get("trace", False):
+            print("\n🔎 TRACE: Initializing Debate")
+            print("=================================")
+            print(f"Topic: {result['topic']}")
+            print(f"Format: {result['format']['format_type']}")
+            print(f"Participants: {', '.join(result['participants'])}")
+            print("---------------------------------")
+        
         # Clear any existing turn history or moderator notes to avoid out-of-order statements
         result["turn_history"] = []
         result["moderator_notes"] = []
@@ -431,8 +441,8 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         print(f"Topic: {result['topic']}")
         print(f"Participants: {', '.join(result['participants'])}")
         
-        # Run a fixed number of turns (6 turns = 3 per participant)
-        max_turns = 6
+        # Run a fixed number of turns (8 turns = 4 per participant for better depth)
+        max_turns = 8
         current_turn = 0
         
         # Start with moderator introduction (THIS MUST COME FIRST)
@@ -445,9 +455,10 @@ def run_simplified_debate(state: DebateState) -> DebateState:
             "is_introduction": True  # Mark as introduction for proper display
         })
         
-        # Reset subtopics to avoid excessive changes
+        # Generate subtopics only once to avoid excessive changes
         subtopics = generate_subtopics(result["topic"], result["current_subtopic"])
-        current_subtopic_index = 0
+        # Track subtopics that have been covered
+        covered_subtopics = [result["current_subtopic"]]
         
         # Main debate loop
         while current_turn < max_turns:
@@ -455,10 +466,27 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 # Minimal logging
                 print(f"Turn {current_turn + 1}/{max_turns}: {result['current_speaker']}...")
                 
+                # Trace information if enabled
+                if state.get("trace", False):
+                    print("\n🔎 TRACE: Politician Agent")
+                    print("============================")
+                    print(f"Current Speaker: {result['current_speaker']}")
+                    print(f"Turn: {current_turn}")
+                    print("----------------------------")
+                
                 # Politician's turn
                 previous_speaker = result["current_speaker"]
                 result = politician_turn(result)
                 current_turn += 1
+                
+                # Trace information about fact checking
+                if state.get("trace", False) and result["format"].get("fact_check_enabled", True):
+                    latest_statement = result["turn_history"][-1]["statement"] if result["turn_history"] else ""
+                    print("\n🔎 TRACE: Fact Checker Agent")
+                    print("=============================")
+                    print(f"Checking statement by: {previous_speaker}")
+                    print(f"Statement length: {len(latest_statement)} chars")
+                    print("-----------------------------")
                 
                 # Fact checking (with minimal logging)
                 if result["format"].get("fact_check_enabled", True):
@@ -466,18 +494,40 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 
                 # Handle interruptions if enabled
                 if result.get("interruption_requested", False):
+                    if state.get("trace", False):
+                        print("\n🔎 TRACE: Interruption Handler")
+                        print("===============================")
+                        print(f"Interrupter: {result.get('interrupt_by', '')}")
+                        print(f"Interrupted: {previous_speaker}")
+                        print("-------------------------------")
                     result = handle_interruption(result)
                 
-                # Topic management (only change every 2 turns and limit to available subtopics)
-                if current_turn % 2 == 0 and current_turn > 0 and len(subtopics) > 1:
-                    # Only change topic every other time to avoid excessive changes
-                    if current_turn % 4 == 0:
-                        # Move to next subtopic
-                        current_subtopic_index = (current_subtopic_index + 1) % len(subtopics)
-                        new_subtopic = subtopics[current_subtopic_index]
+                # Topic management (change topic after 4 turns only, not every 2 turns)
+                if current_turn % 4 == 0 and current_turn > 0 and len(subtopics) > 1:
+                    # Only change to a subtopic we haven't covered yet
+                    available_subtopics = [s for s in subtopics if s not in covered_subtopics]
+                    
+                    # If all subtopics have been covered, use any subtopic other than current
+                    if not available_subtopics:
+                        available_subtopics = [s for s in subtopics if s != result["current_subtopic"]]
+                    
+                    # Only change if we have an available subtopic
+                    if available_subtopics:
+                        # Choose a new subtopic randomly
+                        new_subtopic = random.choice(available_subtopics)
+                        
+                        # Trace information about topic change
+                        if state.get("trace", False):
+                            print("\n🔎 TRACE: Topic Manager")
+                            print("=========================")
+                            print(f"Current Topic: {result['topic']}")
+                            print(f"Current Subtopic: {result['current_subtopic']}")
+                            print(f"Turn: {current_turn}")
+                            print("-------------------------")
                         
                         # Update the current subtopic
                         result["current_subtopic"] = new_subtopic
+                        covered_subtopics.append(new_subtopic)
                         
                         # Add moderator note about topic change (minimal logging)
                         print(f"Topic changed to: {new_subtopic}")
@@ -492,10 +542,25 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 
                 # Generate moderator transition to next speaker (only if not the last turn)
                 if current_turn < max_turns:
-                    # Rotate speaking queue
-                    next_speaker = result["speaking_queue"].pop(0) if result["speaking_queue"] else result["participants"][0]
-                    # Add current speaker to end of queue
+                    # Trace information about moderator
+                    if state.get("trace", False):
+                        print("\n🔎 TRACE: Moderator Agent")
+                        print("===========================")
+                        print(f"Turn: {current_turn}")
+                        print(f"Current Speaker: {result['current_speaker']}")
+                        print(f"Current Subtopic: {result['current_subtopic']}")
+                        print("---------------------------")
+                    
+                    # Rotate speaking queue - get next speaker
+                    if not result["speaking_queue"]:
+                        # Initialize the queue if empty (should only happen on first turn)
+                        result["speaking_queue"] = [p for p in result["participants"] if p != result["current_speaker"]]
+                    
+                    next_speaker = result["speaking_queue"].pop(0)
+                    
+                    # Add current speaker to end of queue for next round
                     result["speaking_queue"].append(result["current_speaker"])
+                    
                     # Update current speaker
                     result["current_speaker"] = next_speaker
                     
