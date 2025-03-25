@@ -21,20 +21,28 @@ The project has been organized into a clean, modular structure:
 
 ```
 aipolitician/
-├── src/                           # Main source code directory
-│   ├── data/                      # Data handling components
-│   │   ├── scraper/               # Web scraping functionality
-│   │   ├── pipeline/              # Data processing pipeline
-│   │   └── db/                    # Database functionality
-│   ├── models/                    # Model training and inference
-│   │   ├── training/              # Training scripts
-│   │   └── chat/                  # Chat interface scripts
-│   └── utils/                     # Shared utilities
-├── tests/                         # All tests in one place
-├── docs/                          # Documentation
-├── requirements/                  # All requirements files
-├── logs/                          # Centralized logs directory
-└── setup.py                       # For making the package installable
+├── aipolitician.py        # Unified launcher script
+├── langgraph_politician.py # Main entry point
+├── requirements/           # Dependencies
+├── scripts/                # Helper scripts
+│   ├── chat_politician.py  # Clean chat mode
+│   ├── debug_politician.py # Debug mode with analysis info
+│   └── trace_politician.py # Trace mode with detailed output
+└── src/                    # Core source code
+    ├── data/               # Data storage
+    │   └── db/             # Database files
+    │       └── milvus/     # Vector database
+    └── models/             # Model definitions
+        ├── chat/           # Chat models
+        ├── langgraph/      # LangGraph implementation
+        │   ├── agents/     # Individual agents
+        │   │   ├── context_agent.py    # Context extraction
+        │   │   ├── sentiment_agent.py  # Sentiment analysis
+        │   │   └── response_agent.py   # Response generation
+        │   ├── config.py   # Configuration settings
+        │   ├── cli.py      # Command-line interface
+        │   └── workflow.py # Workflow definition
+        └── training/       # Training utilities
 ```
 
 See [docs/README.md](docs/README.md) for detailed information about the project structure.
@@ -98,36 +106,77 @@ python scripts/initialize_db.py --recreate
 
 ## 💬 Usage
 
-### Chatting with Trump AI
-```bash
-# Using the launcher script
-./trump_chat.py  # Basic mode
-./trump_chat.py --rag  # With RAG for factual responses
+The system provides three ways to interact with the AI Politician:
 
-# Alternatively
-python -m src.models.chat.chat_trump
+### Unified Launcher
+
+The easiest way to use the system is with the unified launcher:
+
+```bash
+# Clean chat mode
+./aipolitician.py chat biden
+
+# Debug mode
+./aipolitician.py debug biden
+
+# Trace mode
+./aipolitician.py trace biden
+
+# Disable RAG database (for any mode)
+./aipolitician.py chat biden --no-rag
 ```
 
-### Chatting with Biden AI
-```bash
-# Using the launcher script
-./biden_chat.py  # Basic mode
-./biden_chat.py --rag  # With RAG for factual responses
+### Individual Scripts
 
-# Alternatively
-python -m src.models.chat.chat_biden
+You can also use the individual scripts directly:
+
+#### 1. Clean Chat Mode
+
+For a normal chat experience without technical details:
+
+```bash
+./scripts/chat_politician.py biden
+# or
+./scripts/chat_politician.py trump
 ```
 
-### Command-Line Options
-- `--rag`: Enable Retrieval-Augmented Generation for factual accuracy
-- `--max-length INT`: Set maximum response length (default: 512 tokens)
+#### 2. Debug Mode
 
-### Example Questions
-- "What's your plan for border security?"
-- "How would you handle trade with China?"
-- "Tell me about your healthcare policy."
-- "What was your position on the Paris Climate Agreement?"
-- "How would you address inflation?"
+For a chat with additional debugging information:
+
+```bash
+./scripts/debug_politician.py biden
+# or
+./scripts/debug_politician.py trump
+```
+
+#### 3. Trace Mode
+
+For a detailed view of the entire workflow process:
+
+```bash
+./scripts/trace_politician.py biden
+# or
+./scripts/trace_politician.py trump
+```
+
+### Advanced Usage
+
+You can also use the main script directly with more options:
+
+```bash
+python langgraph_politician.py cli chat --identity biden [--debug] [--trace] [--no-rag]
+```
+
+## Core Components
+
+1. **Context Agent**: Extracts topics from user input and retrieves relevant knowledge
+2. **Sentiment Agent**: Analyzes the sentiment and decides if deflection is needed
+3. **Response Agent**: Generates the final response using the politician's style
+
+## Database
+
+The system uses Milvus for vector storage and retrieval when the `--no-rag` flag is not specified. If Milvus is not available, it falls back to synthetic responses.
 
 ## 🗄️ Vector Database System
 

@@ -77,28 +77,32 @@ def chat_loop(politician_identity: str, use_rag: bool = True, debug: bool = Fals
                 trace=trace
             )
             
-            # Only print the politician prefix if we're not in trace mode
-            # (trace mode will include detailed checkpoints before the response)
-            if not trace:
+            # For clean chat mode (not trace or debug), show a loading indicator
+            if not trace and not debug:
                 print(f"\n{politician_identity.title()}: ", end="", flush=True)
             
             # Process through the graph
             result = process_user_input(input_data)
             
-            # Print the response - ensure it's clearly visible after any trace information
+            # Print the response based on mode
             if trace:
+                # Trace mode - display with clear separation and formatting
                 print(f"\n{politician_identity.title()}'s Response:")
                 print("---------------------")
                 print(result.response)
                 print("---------------------")
-            else:
-                print(result.response)
-            
-            # If debug mode is enabled, print additional information
-            if debug:
+            elif debug:
+                # Debug mode - show response plus debug info
+                print(f"\n{politician_identity.title()}: {result.response}")
+                print("\nDebug Information:")
+                print("-----------------")
                 print(format_sentiment_analysis(result.sentiment_analysis))
                 print(f"Relevant Knowledge Found: {'Yes' if result.has_knowledge else 'No'}")
                 print(f"Deflection Used: {'Yes' if result.should_deflect else 'No'}")
+                print("-----------------")
+            else:
+                # Clean chat mode - just show the response like a normal conversation
+                print(result.response)
             
         except KeyboardInterrupt:
             print("\nExiting chat...")

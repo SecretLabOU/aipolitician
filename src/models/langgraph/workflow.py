@@ -14,8 +14,8 @@ root_dir = Path(__file__).parent.parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
 from src.models.langgraph.config import PoliticianIdentity
-from src.models.langgraph.agents.context_agent import process_context
-from src.models.langgraph.agents.sentiment_agent import process_sentiment
+from src.models.langgraph.agents.context_agent import extract_context
+from src.models.langgraph.agents.sentiment_agent import analyze_sentiment
 from src.models.langgraph.agents.response_agent import generate_response
 
 # Define input/output schemas
@@ -48,43 +48,74 @@ class WorkflowState(TypedDict):
 
 # Wrap agent functions to add tracing
 def trace_context_agent(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Process context with tracing."""
+    """Extract context with tracing."""
     if state.get("trace", False):
-        print("\n✅ CHECKPOINT: Context Agent - Extracting topics and retrieving knowledge...")
+        print("\n🔎 TRACE: Context Agent - Starting")
+        print("=====================================")
+        print(f"Input: \"{state['user_input']}\"")
+        print("-------------------------------------")
     
-    result = process_context(state)
+    result = extract_context(state)
     
     if state.get("trace", False):
-        print(f"✅ CHECKPOINT: Context Extracted: {result['context'].split('Knowledge Base Context')[0].strip()}")
-        print(f"✅ CHECKPOINT: Knowledge Found: {'Yes' if result['has_knowledge'] else 'No'}")
+        print("\n🔎 TRACE: Context Agent - Results")
+        print("=====================================")
+        print(f"Main Topics: {result.get('main_topics', 'None')}")
+        print(f"Policy Areas: {result.get('policy_areas', 'None')}")
+        print(f"Knowledge Retrieved: {'Yes' if result.get('has_knowledge', False) else 'No'}")
+        print(f"Context Length: {len(result.get('context', ''))} characters")
+        print("Context Preview: " + result.get('context', 'None')[:100] + "..." if len(result.get('context', '')) > 100 else result.get('context', 'None'))
+        print("-------------------------------------")
     
     return result
 
 def trace_sentiment_agent(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Process sentiment with tracing."""
+    """Analyze sentiment with tracing."""
     if state.get("trace", False):
-        print("\n✅ CHECKPOINT: Sentiment Agent - Analyzing sentiment...")
+        print("\n🔎 TRACE: Sentiment Agent - Starting")
+        print("=====================================")
+        print(f"Analyzing: \"{state['user_input']}\"")
+        print("-------------------------------------")
     
-    result = process_sentiment(state)
+    result = analyze_sentiment(state)
     
     if state.get("trace", False):
-        sentiment = result["sentiment_analysis"]
-        print(f"✅ CHECKPOINT: Sentiment Score: {sentiment.get('sentiment_score', 0):.2f}")
-        print(f"✅ CHECKPOINT: Sentiment Category: {sentiment.get('sentiment_category', 'unknown')}")
-        print(f"✅ CHECKPOINT: Deflection Needed: {'Yes' if result['should_deflect'] else 'No'}")
+        print("\n🔎 TRACE: Sentiment Agent - Results")
+        print("=====================================")
+        print(f"Sentiment Score: {result.get('sentiment_score', 0):.2f} / 1.0")
+        print(f"Sentiment Category: {result.get('sentiment_category', 'unknown')}")
+        
+        if 'emotion_scores' in result and result['emotion_scores']:
+            print("\nEmotion Breakdown:")
+            for emotion, score in result['emotion_scores'].items():
+                print(f"  - {emotion.capitalize()}: {score:.2f}")
+        
+        print(f"\nDeflection Decision: {'Yes' if result.get('should_deflect', False) else 'No'}")
+        if result.get('should_deflect', False):
+            print(f"Deflection Reason: {result.get('deflection_reason', 'Negative sentiment detected')}")
+        print("-------------------------------------")
     
     return result
 
 def trace_response_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Generate response with tracing."""
     if state.get("trace", False):
-        print("\n✅ CHECKPOINT: Response Agent - Generating response...")
+        print("\n🔎 TRACE: Response Agent - Starting")
+        print("=====================================")
+        print(f"Politician: {state.get('politician_identity', 'unknown')}")
+        print(f"Deflection Mode: {'Yes' if state.get('should_deflect', False) else 'No'}")
+        print(f"Context Available: {'Yes' if state.get('context', '') else 'No'}")
+        print("-------------------------------------")
     
     result = generate_response(state)
     
     if state.get("trace", False):
-        print(f"✅ CHECKPOINT: Response Generated ({len(result['response'])} chars)")
-        print("\n📝 Generated response will be displayed below after all processing completes.\n")
+        print("\n🔎 TRACE: Response Agent - Results")
+        print("=====================================")
+        print(f"Response Generated: {len(result['response'])} characters")
+        print("Response Preview: " + result['response'][:50] + "..." if len(result['response']) > 50 else result['response'])
+        print("\n📝 Complete response will be displayed after all processing completes.")
+        print("-------------------------------------")
     
     return result
 
