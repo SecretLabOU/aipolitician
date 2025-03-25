@@ -479,6 +479,21 @@ def get_recent_statements(state: Dict[str, Any], count: int) -> List[Dict[str, A
     return history[-count:] if len(history) >= count else history
 
 
+def get_max_response_length(format_config: Dict[str, Any]) -> int:
+    """Determine maximum response length based on debate format."""
+    format_type = format_config["format_type"]
+    
+    # Significantly increase response lengths across all formats
+    if format_type == "town_hall":
+        return 800  # Increased from 400
+    elif format_type == "head_to_head":
+        return 600  # Increased from 300
+    elif format_type == "panel":
+        return 500  # Increased from 250
+    else:
+        return 700  # Increased from 350
+
+
 def generate_politician_debate_response(
     identity: str,
     topic: str, 
@@ -491,9 +506,6 @@ def generate_politician_debate_response(
     debate_memory: Dict = None
 ) -> str:
     """Generate a politician's response in the debate context."""
-    # This can leverage the existing response generation system
-    # Build the prompt with the debate context
-    
     # Process debate memory to avoid repetition and enhance coherence
     debate_memory = debate_memory or {}
     already_addressed = debate_memory.get("points_responded_to", set())
@@ -551,7 +563,8 @@ def generate_politician_debate_response(
         f"{continuity_guidance}\n"
         f"Relevant knowledge:\n{knowledge}\n\n"
         f"IMPORTANT: Respond directly to your opponents' points. Build on the conversation "
-        f"rather than repeating yourself. Be specific in your references to what others have said."
+        f"rather than repeating yourself. Be specific in your references to what others have said. "
+        f"Provide a complete, thorough response."
     )
     
     # Generate the response using the response agent
@@ -564,9 +577,16 @@ def generate_politician_debate_response(
     
     response = generate_response(input_state)
     
-    # Truncate if needed
-    if len(response) > max_length:
-        response = response[:max_length-3] + "..."
+    # Only truncate if response is significantly over the max length
+    if len(response) > max_length + 200:
+        # More gently truncate to preserve more content
+        truncate_point = max(max_length, int(len(response) * 0.8))
+        # Try to truncate at the end of a sentence
+        sentence_end = response.rfind(".", 0, truncate_point)
+        if sentence_end > max_length * 0.7:  # Only use sentence boundary if it's reasonably far in
+            response = response[:sentence_end+1]
+        else:
+            response = response[:truncate_point-3] + "..."
     
     return response
 
@@ -718,11 +738,14 @@ def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
     # More generous accuracy distribution - biased toward higher truth values
     if contains_political:
         # More polarized but still more favorable distribution for political claims
-        base_accuracy = random.choice([
-            random.uniform(0.75, 1.0),  # 60% chance
-            random.uniform(0.45, 0.75), # 30% chance
-            random.uniform(0.2, 0.45)   # 10% chance
-        ] * [6, 3, 1])  # Weighted distribution
+        # Fixed the multiplication of a list by creating a weighted choice array
+        options = [
+            random.uniform(0.75, 1.0),  # 60% chance - higher weight
+            random.uniform(0.45, 0.75), # 30% chance - medium weight
+            random.uniform(0.2, 0.45)   # 10% chance - lower weight
+        ]
+        weights = [0.6, 0.3, 0.1]  # Corresponding weights
+        base_accuracy = random.choices(options, weights=weights, k=1)[0]
     else:
         # More balanced distribution for non-political claims, skewed higher
         base_accuracy = random.uniform(0.5, 1.0)
@@ -925,36 +948,6 @@ def select_next_subtopic(potential_subtopics: List[str], history: List[Dict[str,
     return current_subtopic
 
 
-def get_max_response_length(format_config: Dict[str, Any]) -> int:
-    """Determine maximum response length based on debate format."""
-    format_type = format_config["format_type"]
-    
-    # Different formats have different expected response lengths
-    if format_type == "town_hall":
-        return 400  # Longer responses for town hall format
-    elif format_type == "head_to_head":
-        return 300  # Medium-length responses for head-to-head
-    elif format_type == "panel":
-        return 250  # Shorter responses for panel discussions
-    else:
-        return 350  # Default length
-
-
-def generate_response(state: Dict[str, Any]) -> str:
-    """Generate a response from a politician based on their identity and context."""
-    try:
-        # Import here to avoid circular imports and recursion
-        from src.models.langgraph.agents.response_agent import generate_response as gen_resp
-        response_data = gen_resp(state)
-        if isinstance(response_data, dict):
-            return response_data.get("response", "I don't have a specific response to that issue.")
-        else:
-            return response_data  # If it's already a string
-    except Exception as e:
-        print(f"Error generating response: {e}")
-        return "I'm considering my position on this issue."
-
-
 def extract_key_points_from_opponents(previous_statements: List[Dict[str, Any]], current_speaker: str) -> List[Tuple[str, str]]:
     """Extract key points from opponents' statements that should be addressed."""
     opponent_points = []
@@ -1024,4 +1017,19 @@ def extract_key_points(statement: str) -> List[str]:
             key_points.append(sentence)
     
     # Limit to 3 key points per statement
-    return key_points[:3] 
+    return key_points[:3]
+
+
+def generate_response(state: Dict[str, Any]) -> str:
+    """Generate a response from a politician based on their identity and context."""
+    try:
+        # Import here to avoid circular imports and recursion
+        from src.models.langgraph.agents.response_agent import generate_response as gen_resp
+        response_data = gen_resp(state)
+        if isinstance(response_data, dict):
+            return response_data.get("response", "I don't have a specific response to that issue.")
+        else:
+            return response_data  # If it's already a string
+    except Exception as e:
+        print(f"Error generating response: {e}")
+        return "I'm considering my position on this issue." 
