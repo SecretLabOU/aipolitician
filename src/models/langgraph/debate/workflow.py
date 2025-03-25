@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, TypedDict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
+from datetime import datetime
 
 # Add the project root to the Python path
 root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
@@ -250,23 +251,15 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
     # Create the graph
     graph = create_debate_graph()
     
-    # Convert to runnable and set a higher recursion limit
-    # Disable checkpointing to avoid API incompatibilities
+    # Check LangGraph version to handle compatibility
     try:
-        # Try with new API - disable checkpointer
-        debate_chain = graph.compile(
-            {
-                "recursion_limit": 100,
-                "checkpointer": None  # Disable checkpointing
-            }
-        )
-    except (TypeError, ValueError):
-        # Try alternative API
-        try:
-            debate_chain = graph.compile(recursion_limit=100, checkpointer=None)
-        except (TypeError, ValueError):
-            # Last resort, just use defaults
-            debate_chain = graph.compile()
+        import langgraph
+        import pkg_resources
+        langgraph_version = pkg_resources.get_distribution("langgraph").version
+        print(f"Detected LangGraph version: {langgraph_version}")
+    except Exception as e:
+        langgraph_version = "unknown"
+        print(f"Could not detect LangGraph version: {e}")
     
     # Create initial state
     initial_state: DebateState = {
@@ -285,8 +278,45 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
         "current_subtopic": input_data.topic
     }
     
-    # Run the workflow
-    result = debate_chain.invoke(initial_state)
+    # Try multiple approaches to run the debate
+    try:
+        # First attempt: Try using the LangGraph compile/invoke approach
+        try:
+            # Try the approach that works for latest LangGraph
+            from langgraph.prebuilt import DispatchConfig
+            config = DispatchConfig(recursion_limit=100)
+            debate_chain = graph.compile(config=config)
+        except ImportError:
+            # DispatchConfig not available in this version
+            try:
+                # Try direct kwargs approach (works in some versions)
+                debate_chain = graph.compile(recursion_limit=100, checkpointer=None)
+            except Exception as e:
+                print(f"Direct kwargs compilation failed: {e}")
+                try:
+                    # Try with NullCheckpointer
+                    try:
+                        from langgraph.checkpoint import NullCheckpointer
+                        debate_chain = graph.compile(recursion_limit=100, checkpointer=NullCheckpointer())
+                    except ImportError:
+                        # If NullCheckpointer doesn't exist, just use basic compile
+                        print("NullCheckpointer not available, using basic compile")
+                        debate_chain = graph.compile()
+                except Exception as e:
+                    print(f"All attempted compilation methods failed: {e}")
+                    print("Using simplest possible compile")
+                    debate_chain = graph.compile()
+        
+        print("Starting debate workflow execution...")
+        result = debate_chain.invoke(initial_state)
+        
+    except Exception as e:
+        print(f"Error running debate with LangGraph: {e}")
+        print("Falling back to manual debate simulation...")
+        
+        # Fallback: Run a simplified version of the debate manually
+        # This completely bypasses the LangGraph StateGraph
+        result = run_simplified_debate(initial_state)
     
     return {
         "topic": result["topic"],
@@ -294,4 +324,59 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
         "turn_history": result["turn_history"],
         "fact_checks": result["fact_checks"],
         "moderator_notes": result["moderator_notes"]
-    } 
+    }
+
+
+def run_simplified_debate(state: DebateState) -> DebateState:
+    """
+    Run a simplified debate without using LangGraph's StateGraph.
+    This is a fallback method to use when there are compatibility issues.
+    
+    Args:
+        state: Initial debate state
+        
+    Returns:
+        Updated state after running the debate manually
+    """
+    print("Running simplified debate...")
+    result = initialize_debate(state)
+    
+    # Run a fixed number of turns (6 turns = 3 per participant)
+    max_turns = 6
+    current_turn = 0
+    
+    # Initialize with moderator
+    result = moderate_debate(result)
+    
+    while current_turn < max_turns:
+        # Politician's turn
+        result = politician_turn(result)
+        current_turn += 1
+        
+        # Fact checking
+        if result["format"].get("fact_check_enabled", True):
+            result = fact_check(result)
+        
+        # Handle interruptions
+        if result.get("interruption_requested", False):
+            result = handle_interruption(result)
+        
+        # Topic management
+        if current_turn % 2 == 0 and current_turn > 0:
+            result = manage_topic(result)
+        
+        # Moderator transition
+        result = moderate_debate(result)
+        
+        # Check if we've reached max turns for this fallback approach
+        if current_turn >= max_turns:
+            break
+    
+    # Add closing statement from moderator
+    result["moderator_notes"].append({
+        "turn": len(result["turn_history"]),
+        "message": f"This concludes our debate on {result['topic']}. Thank you to our participants for sharing their perspectives.",
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    return result 
