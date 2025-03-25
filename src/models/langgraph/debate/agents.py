@@ -187,13 +187,13 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Calculate an adjustment probability for fact-checking based on balance
     # If this speaker has been checked more, reduce probability; if less, increase it
-    base_probability = 0.8  # Base probability of fact-checking
+    base_probability = 0.5  # Reduced base probability of fact-checking from 0.8 to 0.5
     if len(all_participants) > 1:
         # Normalize: how many more/fewer checks has this speaker had
         check_ratio = (speaker_count / (sum(fact_check_counts.values()) or 1)) 
         # Adjust probability based on imbalance - less checked speakers more likely to be checked
         adjustment = 1.0 - check_ratio * 2  # Adjustment factor (-1 to +1)
-        check_probability = min(1.0, max(0.5, base_probability + adjustment * 0.3))
+        check_probability = min(1.0, max(0.3, base_probability + adjustment * 0.3))
     else:
         check_probability = base_probability
     
@@ -218,9 +218,9 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     if not claims:
         return result
     
-    # Check each claim
+    # Check each claim - limit to at most 2 claims per statement 
     checked_claims = []
-    for claim in claims:
+    for claim in claims[:2]:  # Limit to 2 claims max per statement
         # Perform fact checking
         accuracy, corrected_info, sources = check_claim_accuracy(claim)
         
@@ -228,11 +228,11 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
         rating_categories = [
             (0.95, 1.0, "TRUE"),
             (0.80, 0.95, "MOSTLY TRUE"),
-            (0.60, 0.80, "PARTIALLY TRUE"),
-            (0.40, 0.60, "MIXED"),
-            (0.20, 0.40, "PARTIALLY FALSE"),
-            (0.05, 0.20, "MOSTLY FALSE"),
-            (0.0, 0.05, "FALSE")
+            (0.65, 0.80, "PARTIALLY TRUE"),
+            (0.45, 0.65, "MIXED"),
+            (0.25, 0.45, "PARTIALLY FALSE"),
+            (0.10, 0.25, "MOSTLY FALSE"),
+            (0.0, 0.10, "FALSE")
         ]
         
         rating_label = "UNKNOWN"
@@ -536,49 +536,27 @@ def extract_factual_claims(statement: str) -> List[str]:
     sentences = re.split(r'[.!?]+', statement)
     
     # Look for sentences that might contain factual claims
+    # Reduced list to focus on stronger factual indicators
     factual_indicators = [
         # Numbers and statistics
         r'\b\d+\s*%', # Percentages
         r'\bin\s+\d{4}\b', # Years
-        r'\b(increased|decreased|rose|fell)\b', # Trends
         r'\b(billion|million|trillion)\b', # Large numbers
         
         # Citations and references
         r'\b(according to|research shows|studies show|data shows)\b', # Citations
-        r'\b(report|analysis|study|survey)\b', # Research references
         
         # Absolutes and strong claims
         r'\b(always|never|all|none|every|no one)\b', # Absolutes
-        r'\b(certainly|definitely|absolutely|undoubtedly)\b', # Certainty
-        
-        # Personal assertions presented as facts
-        r'\bI have (always|never)\b', # Personal history claims
-        r'\b(He|She|They) (has|have) (always|never)\b', # Claims about others
-        
-        # Policy positions and promises
-        r'\b(will|won\'t|would|wouldn\'t) (create|destroy|improve|reduce)\b', # Policy effects
-        r'\b(supports|opposes|backed|fought against)\b', # Position statements
         
         # Contested claims
         r'\b(hoax|fake|lie|truth|fact)\b', # Truth claims
-        r'\bthis is (a|an) (fact|lie|truth)\b', # Explicit truth claims
         
-        # Assertions about opponent
-        r'\b(Biden|Trump|Republicans|Democrats) (want|wants|tried|supported)\b', # Claims about opponent's actions
-        r'\b(my opponent|he) (said|claimed|wants|believes)\b', # References to opponent
+        # Assertions about opponent with specifics
+        r'\b(Biden|Trump|Republicans|Democrats) (want|wants|tried|supported) to\b', # Specific claims about opponent's actions
         
-        # Character claims
-        r'\b(corrupt|honest|trustworthy|dishonest|liar)\b', # Character allegations
-        r'\b(threat|dangerous|safe|protect)\b', # Safety/danger claims
-        
-        # Simple factual patterns
-        r'\b(is|are|was|were) (a|an|the) (most|best|worst|only)\b', # Superlative claims
-        r'\b(more|less|better|worse) than\b', # Comparative claims
-        
-        # Generic factual patterns for shorter statements
-        r'\bthis is\b', # Simple assertions
-        r'\bwe (need|must|should|have to)\b', # Necessity claims
-        r'\bthe (American people|country|nation|public)\b', # Appeals to collective
+        # Simple factual patterns only for clear statistical claims
+        r'\b(more|less|better|worse) than \d+\b', # Comparative claims with numbers
     ]
     
     claims = []
@@ -588,6 +566,10 @@ def extract_factual_claims(statement: str) -> List[str]:
     for sentence in sentences:
         sentence = sentence.strip()
         if not sentence:
+            continue
+            
+        # Skip very short sentences and obvious opinions
+        if len(sentence) < 20 or sentence.lower().startswith(("i think", "i believe", "in my opinion")):
             continue
             
         # Check if the sentence contains indicators of factual claims
@@ -601,23 +583,28 @@ def extract_factual_claims(statement: str) -> List[str]:
             for pattern_idx in matching_patterns:
                 seen_patterns.add(pattern_idx)
     
-    # If we have very few claims, use a second pass with looser criteria
-    if len(claims) < 2:
+    # If we have very few claims, use a second pass with looser criteria - but with low probability
+    if len(claims) < 1 and random.random() < 0.3:  # Only 30% chance to add extra claims
         for sentence in sentences:
             sentence = sentence.strip()
-            if not sentence and len(sentence) > 10:  # Skip empty or very short sentences
+            if not sentence or len(sentence) < 25:  # Skip empty or short sentences
                 continue
                 
             # If this sentence isn't already identified as a claim and is substantial
-            if not any(claim[0] == sentence for claim in claims) and len(sentence) > 15:
-                # For very short statements, treat them as claims with certain probability
-                if len(sentence.split()) <= 10 and random.random() < 0.4:  # 40% chance
-                    claims.append((sentence, [-1]))  # -1 indicates it was selected probabilistically
+            if not any(claim[0] == sentence for claim in claims) and len(sentence) > 30:
+                # Only include if it has indicators of being factual (like numbers or specific references)
+                if re.search(r'\b\d+\b', sentence) or re.search(r'\b(report|data|study|analysis)\b', sentence, re.IGNORECASE):
+                    claims.append((sentence, [-1]))
+    
+    # If still no claims but we have sentences and it's the first time checking this speaker,
+    # 50% chance to skip fact checking entirely
+    if not claims and sentences and random.random() < 0.5:
+        return []
     
     # If still no claims but we have sentences, just pick one substantial sentence
     if not claims and sentences:
-        substantial_sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
-        if substantial_sentences:
+        substantial_sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
+        if substantial_sentences and random.random() < 0.4:  # 40% chance to use one
             selected = random.choice(substantial_sentences)
             claims.append((selected, [-1]))
     
@@ -625,7 +612,7 @@ def extract_factual_claims(statement: str) -> List[str]:
     claim_texts = [claim[0] for claim in claims]
     
     # Limit to a reasonable number of claims
-    return claim_texts[:3]
+    return claim_texts[:2]  # Reduced from 3 to 2
 
 
 def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
@@ -644,11 +631,11 @@ def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
     rating_categories = [
         (0.95, 1.0, "TRUE"),
         (0.80, 0.95, "MOSTLY TRUE"),
-        (0.60, 0.80, "PARTIALLY TRUE"),
-        (0.40, 0.60, "MIXED"),
-        (0.20, 0.40, "PARTIALLY FALSE"),
-        (0.05, 0.20, "MOSTLY FALSE"),
-        (0.0, 0.05, "FALSE")
+        (0.65, 0.80, "PARTIALLY TRUE"),
+        (0.45, 0.65, "MIXED"),
+        (0.25, 0.45, "PARTIALLY FALSE"),
+        (0.10, 0.25, "MOSTLY FALSE"),
+        (0.0, 0.10, "FALSE")
     ]
     
     # Determine if the claim contains obvious political trigger words
@@ -659,17 +646,17 @@ def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
     # Check if claim contains political keywords
     contains_political = any(word in claim.lower() for word in political_words)
     
-    # Adjust the distribution based on presence of political keywords
+    # More generous accuracy distribution - biased toward higher truth values
     if contains_political:
-        # More polarized distribution for political claims
+        # More polarized but still more favorable distribution for political claims
         base_accuracy = random.choice([
-            random.uniform(0.75, 1.0),  # Higher probability of true
-            random.uniform(0.0, 0.25),  # Higher probability of false
-            random.uniform(0.4, 0.6)    # Some middle ground
-        ])
+            random.uniform(0.75, 1.0),  # 60% chance
+            random.uniform(0.45, 0.75), # 30% chance
+            random.uniform(0.2, 0.45)   # 10% chance
+        ] * [6, 3, 1])  # Weighted distribution
     else:
-        # More balanced distribution for non-political claims
-        base_accuracy = random.uniform(0.3, 1.0)
+        # More balanced distribution for non-political claims, skewed higher
+        base_accuracy = random.uniform(0.5, 1.0)
     
     # Determine the exact accuracy score
     accuracy = round(base_accuracy, 2)
@@ -681,14 +668,14 @@ def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
             rating_label = label
             break
     
-    # Generate a correction for claims with low accuracy
+    # Generate a correction for claims with low accuracy (only below MIXED rating)
     corrected_info = None
-    if accuracy < 0.6:  # For anything rated MIXED or lower
+    if accuracy < 0.45:  # For anything rated PARTIALLY FALSE or lower
         # Generate different types of corrections based on the claim
         if "never" in claim.lower():
-            corrected_info = f"Correction: Contrary to the claim that \"{claim}\", there have been documented instances."
+            corrected_info = f"Correction: There have been some documented instances contrary to this claim."
         elif "always" in claim.lower():
-            corrected_info = f"Correction: The claim that \"{claim}\" overstates the consistency; there are exceptions."
+            corrected_info = f"Correction: There are some exceptions to this statement."
         elif any(word in claim.lower() for word in ["all", "every", "none"]):
             corrected_info = f"Correction: The claim uses absolutes that don't reflect the nuanced reality."
         elif any(word in claim.lower() for word in ["billion", "million", "trillion"]):
