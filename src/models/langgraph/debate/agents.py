@@ -106,10 +106,32 @@ def politician_turn(state: Dict[str, Any]) -> Dict[str, Any]:
         # Update the politician's knowledge
         result["debater_states"][current_speaker]["knowledge"] = knowledge
     
+    # Update the debate memory with significant points from previous turns
+    if "debate_memory" not in result:
+        result["debate_memory"] = {}
+    
     # Generate the politician's response
     other_participants = [p for p in state["participants"] if p != current_speaker]
-    previous_statements = get_recent_statements(state, 3)
+    previous_statements = get_recent_statements(state, 4)  # Increased from 3 to 4 for more context
     
+    # Extract important points from recent opponent statements
+    opponent_points = extract_key_points_from_opponents(previous_statements, current_speaker)
+    
+    # Update the debate memory with these points
+    if current_speaker not in result["debate_memory"]:
+        result["debate_memory"][current_speaker] = {
+            "opponents_addressed": set(),
+            "topics_addressed": set(),
+            "points_responded_to": set(),
+            "own_points_made": []
+        }
+    
+    # Track which opponents and topics have been addressed
+    for opponent, point_id in opponent_points:
+        result["debate_memory"][current_speaker]["opponents_addressed"].add(opponent)
+        result["debate_memory"][current_speaker]["points_responded_to"].add(point_id)
+    
+    # Generate response considering the debate memory
     response = generate_politician_debate_response(
         identity=current_speaker,
         topic=state["current_subtopic"],
@@ -118,8 +140,14 @@ def politician_turn(state: Dict[str, Any]) -> Dict[str, Any]:
         opponents=other_participants,
         rebuttal_targets=identify_rebuttal_targets(state, current_speaker),
         format_type=state["format"]["format_type"],
-        max_length=get_max_response_length(state["format"])
+        max_length=get_max_response_length(state["format"]),
+        debate_memory=result["debate_memory"].get(current_speaker, {})
     )
+    
+    # Extract key points from the speaker's own response
+    speaker_points = extract_key_points(response)
+    result["debate_memory"][current_speaker]["own_points_made"].extend(speaker_points)
+    result["debate_memory"][current_speaker]["topics_addressed"].add(state["current_subtopic"])
     
     # Record the turn in history
     result["turn_history"].append({
@@ -128,7 +156,8 @@ def politician_turn(state: Dict[str, Any]) -> Dict[str, Any]:
         "statement": response,
         "subtopic": state["current_subtopic"],
         "timestamp": datetime.now().isoformat(),
-        "knowledge_used": bool(result["debater_states"][current_speaker]["knowledge"])
+        "knowledge_used": bool(result["debater_states"][current_speaker]["knowledge"]),
+        "key_points": speaker_points
     })
     
     # Small chance to trigger an interruption based on debate format
@@ -458,31 +487,71 @@ def generate_politician_debate_response(
     opponents: List[str],
     rebuttal_targets: List[Tuple[str, str]],
     format_type: str,
-    max_length: int = 500
+    max_length: int = 500,
+    debate_memory: Dict = None
 ) -> str:
     """Generate a politician's response in the debate context."""
     # This can leverage the existing response generation system
     # Build the prompt with the debate context
     
-    # Extract previous statements in a formatted way
+    # Process debate memory to avoid repetition and enhance coherence
+    debate_memory = debate_memory or {}
+    already_addressed = debate_memory.get("points_responded_to", set())
+    own_points = debate_memory.get("own_points_made", [])
+    
+    # Extract previous statements in a formatted way with special emphasis on new points
     prev_statements_text = ""
     for stmt in previous_statements:
-        prev_statements_text += f"{stmt['speaker']}: {stmt['statement']}\n\n"
+        speaker = stmt['speaker']
+        statement = stmt['statement']
+        is_opponent = speaker != identity
+        
+        # Mark statements that haven't been addressed yet
+        if is_opponent:
+            prev_statements_text += f"{speaker} (opponent): {statement}\n\n"
+        else:
+            prev_statements_text += f"{speaker} (you, earlier): {statement}\n\n"
     
-    # Build rebuttal targets
+    # Build rebuttal targets with priority to unaddressed points
     rebuttal_text = ""
     if rebuttal_targets:
-        rebuttal_text = "Consider addressing these points from your opponents:\n"
+        filtered_targets = []
+        
+        # Prioritize targets that haven't been addressed yet
         for opponent, point in rebuttal_targets:
-            rebuttal_text += f"- {opponent} said: {point}\n"
+            point_id = f"{opponent}:{hash(point) % 10000}"
+            if point_id not in already_addressed:
+                filtered_targets.append((opponent, point, True))  # True = needs addressing
+            else:
+                filtered_targets.append((opponent, point, False))  # False = already addressed
+                
+        # Sort to put unaddressed points first
+        filtered_targets.sort(key=lambda x: not x[2])
+        
+        # Build the rebuttal text
+        if filtered_targets:
+            rebuttal_text = "Consider addressing these points from your opponents:\n"
+            for opponent, point, unaddressed in filtered_targets[:3]:  # Limit to 3 points
+                prefix = "* IMPORTANT TO ADDRESS" if unaddressed else ""
+                rebuttal_text += f"- {opponent} said: {point} {prefix}\n"
+    
+    # Include guidance to avoid repeating points
+    continuity_guidance = ""
+    if own_points:
+        continuity_guidance = "You've previously made these points (avoid direct repetition):\n"
+        for i, point in enumerate(own_points[-3:]):  # Last 3 points
+            continuity_guidance += f"- {point}\n"
     
     # Build the full context
     context = (
         f"Topic: {topic}\n\n"
-        f"Previous statements:\n{prev_statements_text}\n"
+        f"Previous statements in the debate:\n{prev_statements_text}\n"
         f"Opponents: {', '.join(opponents)}\n"
         f"{rebuttal_text}\n"
-        f"Relevant knowledge:\n{knowledge}\n"
+        f"{continuity_guidance}\n"
+        f"Relevant knowledge:\n{knowledge}\n\n"
+        f"IMPORTANT: Respond directly to your opponents' points. Build on the conversation "
+        f"rather than repeating yourself. Be specific in your references to what others have said."
     )
     
     # Generate the response using the response agent
@@ -883,4 +952,76 @@ def generate_response(state: Dict[str, Any]) -> str:
             return response_data  # If it's already a string
     except Exception as e:
         print(f"Error generating response: {e}")
-        return "I'm considering my position on this issue." 
+        return "I'm considering my position on this issue."
+
+
+def extract_key_points_from_opponents(previous_statements: List[Dict[str, Any]], current_speaker: str) -> List[Tuple[str, str]]:
+    """Extract key points from opponents' statements that should be addressed."""
+    opponent_points = []
+    
+    # Look at recent statements by opponents
+    for stmt in reversed(previous_statements):
+        if stmt["speaker"] != current_speaker:
+            # Extract key points from this opponent statement
+            statement = stmt["statement"]
+            speaker = stmt["speaker"]
+            
+            # If the statement has pre-extracted key points, use those
+            if "key_points" in stmt:
+                for point in stmt["key_points"]:
+                    point_id = f"{speaker}:{hash(point) % 10000}"
+                    opponent_points.append((speaker, point_id))
+            else:
+                # Otherwise extract the key points now
+                points = extract_key_points(statement)
+                for point in points:
+                    point_id = f"{speaker}:{hash(point) % 10000}"
+                    opponent_points.append((speaker, point_id))
+    
+    return opponent_points
+
+
+def extract_key_points(statement: str) -> List[str]:
+    """Extract key points from a statement for the debate memory system."""
+    import re
+    
+    # Split into sentences
+    sentences = re.split(r'[.!?]+', statement)
+    key_points = []
+    
+    # Identify sentences that look like key points
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence or len(sentence) < 15:
+            continue
+            
+        # Check for indicators of a key point
+        is_key_point = False
+        indicators = [
+            # Policy positions
+            r'\b(support|oppose|will|would|should|must|need to|plan to)\b',
+            # Strong assertions
+            r'\b(absolutely|certainly|definitely|clearly|always|never)\b',
+            # Comparative claims
+            r'\b(more|less|better|worse|higher|lower|stronger|weaker)\b',
+            # Issue statements
+            r'\b(problem|solution|issue|crisis|challenge|opportunity)\b',
+            # Facts and figures
+            r'\b\d+\s*%',
+            r'\bin\s+\d{4}\b',
+            r'\b(million|billion|trillion)\b',
+        ]
+        
+        for indicator in indicators:
+            if re.search(indicator, sentence, re.IGNORECASE):
+                is_key_point = True
+                break
+                
+        if is_key_point:
+            # Limit length of key points for memory efficiency
+            if len(sentence) > 100:
+                sentence = sentence[:100] + "..."
+            key_points.append(sentence)
+    
+    # Limit to 3 key points per statement
+    return key_points[:3] 
