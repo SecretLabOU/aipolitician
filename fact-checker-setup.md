@@ -88,6 +88,26 @@ The system uses different LLM implementations depending on your selected model:
 1. **Ollama**: Uses `OllamaLLM` from the `langchain_ollama` package
 2. **HuggingFace**: Uses `HuggingFaceEndpoint` or `HuggingFacePipeline` from the `langchain_community` package
 
+To make these LLM implementations compatible with browser-use, we use a wrapper class that provides the required interface:
+
+```python
+class BrowserCompatibleLLM:
+    """Wrapper class to make LLMs compatible with browser-use."""
+    
+    def __init__(self, llm):
+        self.llm = llm
+    
+    def get(self, prompt, **kwargs):
+        """Implement the get method that browser-use expects."""
+        try:
+            return self.llm.invoke(prompt)
+        except Exception as e:
+            logging.error(f"Error invoking LLM: {e}")
+            return "Error processing request"
+```
+
+This wrapper is essential because browser-use expects LLM models to have a `.get()` method, but the LangChain LLMs use `.invoke()` instead.
+
 The implementation is in the `_browser_fact_check` function in `src/models/langgraph/debate/agents.py`.
 
 ## Browser Configuration
@@ -144,4 +164,5 @@ Common issues:
 4. **Poor quality results**: Try a more capable model - Llama 3, Mixtral, or GPT-4 open equivalents will produce the best results
 5. **Memory issues**: If using local models, try a smaller or quantized model if you run out of memory
 6. **Browser configuration errors**: If you encounter issues with the browser configuration, check the browser-use documentation for the latest API changes: https://docs.browser-use.com/
-7. **Compatibility errors**: Make sure you're using the correct LangChain packages. For Ollama, use `langchain_ollama.OllamaLLM` instead of the deprecated `langchain.llms.Ollama` 
+7. **Compatibility errors**: Make sure you're using the correct LangChain packages. For Ollama, use `langchain_ollama.OllamaLLM` instead of the deprecated `langchain.llms.Ollama`
+8. **Interface errors**: If you see errors like `object has no attribute 'get'`, the LLM may need to be wrapped with the `BrowserCompatibleLLM` class to provide the interface browser-use expects 

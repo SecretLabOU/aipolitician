@@ -859,9 +859,25 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
         from langchain_ollama import OllamaLLM
         from langchain_community.llms import HuggingFaceEndpoint
         from langchain_core.language_models.chat_models import BaseChatModel
+        from langchain_core.callbacks.manager import CallbackManagerForLLMRun
     except ImportError:
         logging.error("Required libraries not installed. Install with: pip install browser-use langchain-community langchain-ollama")
         raise ImportError("Required libraries not installed")
+    
+    # Create a wrapper class to make OllamaLLM compatible with browser-use
+    class BrowserCompatibleLLM:
+        """Wrapper class to make LLMs compatible with browser-use."""
+        
+        def __init__(self, llm):
+            self.llm = llm
+        
+        def get(self, prompt, **kwargs):
+            """Implement the get method that browser-use expects."""
+            try:
+                return self.llm.invoke(prompt)
+            except Exception as e:
+                logging.error(f"Error invoking LLM: {e}")
+                return "Error processing request"
     
     logger = logging.getLogger("fact_checker")
     
@@ -904,7 +920,9 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
         try:
             model_name = os.environ.get("OLLAMA_MODEL", "llama3")
             # Use the updated OllamaLLM class instead of Ollama
-            llm = OllamaLLM(model=model_name)
+            raw_llm = OllamaLLM(model=model_name)
+            # Wrap with our compatible class
+            llm = BrowserCompatibleLLM(raw_llm)
             logger.info(f"Using Ollama with model: {model_name}")
         except Exception as e:
             logger.warning(f"Failed to load Ollama model: {str(e)}")
@@ -915,11 +933,13 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
             hf_token = os.environ.get("HUGGINGFACE_API_TOKEN")
             hf_model = os.environ.get("HUGGINGFACE_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
             if hf_token:
-                llm = HuggingFaceEndpoint(
+                raw_llm = HuggingFaceEndpoint(
                     repo_id=hf_model,
                     huggingfacehub_api_token=hf_token,
                     max_length=4096
                 )
+                # Wrap with our compatible class
+                llm = BrowserCompatibleLLM(raw_llm)
                 logger.info(f"Using HuggingFace Inference API with model: {hf_model}")
         except Exception as e:
             logger.warning(f"Failed to load HuggingFace model: {str(e)}")
@@ -945,7 +965,9 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
                 max_new_tokens=2048
             )
             
-            llm = HuggingFacePipeline(pipeline=pipe)
+            raw_llm = HuggingFacePipeline(pipeline=pipe)
+            # Wrap with our compatible class
+            llm = BrowserCompatibleLLM(raw_llm)
             logger.info(f"Using local HuggingFace pipeline with model: {model_id}")
         except Exception as e:
             logger.warning(f"Failed to load local HuggingFace pipeline: {str(e)}")
