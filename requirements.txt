@@ -1,0 +1,54 @@
+# Base dependencies
+torch>=2.1.0
+transformers>=4.36.0
+peft>=0.7.0
+accelerate>=0.25.0
+bitsandbytes>=0.41.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+safetensors>=0.4.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+tqdm>=4.66.0
+
+# High-performance GPU optimization
+flash-attn>=2.3.0  # Flash Attention 2 implementation
+vllm>=0.2.0        # High-throughput LLM inference engine
+awq>=0.1.0         # Activation-aware weight quantization
+deepspeed>=0.12.0  # Zero redundancy optimizer 
+optimum>=1.14.0    # Hugging Face optimization library
+
+# LangGraph dependencies (optional)
+langgraph>=0.2.6
+langchain>=0.2.14
+
+# RAG system dependencies
+pymilvus>=2.3.0
+sentence-transformers>=2.2.0
+scikit-learn>=1.0.0
+faiss-cpu>=1.7.4    # Use faiss-gpu in GPU environments
+rank_bm25>=0.2.2    # Sparse retrieval fallback
+spacy>=3.7.0        # NLP for query enhancement
+cachetools>=5.3.0   # Efficient caching implementation
+
+# API and CLI interface
+fastapi>=0.109.0
+uvicorn>=0.25.0
+pydantic>=2.5.0
+rich>=13.6.0
+typer>=0.9.0
+httpx>=0.25.0
+textual>=0.42.0     # Advanced TUI framework
+aiofiles>=23.2.0    # Async file operations
+sse-starlette>=1.6.1  # Server-sent events support
+
+# Performance monitoring
+psutil>=5.9.0
+prometheus-client>=0.17.0  # Prometheus metrics
+py-spy>=0.3.14      # Sampling profiler for Python
+memory-profiler>=0.61.0    # Memory usage profiling
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-benchmark>=4.0.0 

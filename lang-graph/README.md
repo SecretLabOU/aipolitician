@@ -1,21 +1,95 @@
-# Political AI
+# Political Agent LangGraph
 
-Talk to AI-powered politicians that simulate real-world rhetorical styles and policy positions.
+A streamlined, GPU-optimized conversation system for political personas using LangGraph and LLaMA-cpp.
+
+## Overview
+
+This system provides an efficient implementation for running conversations with political personas. It uses:
+
+- **GPU-Accelerated LLMs**: Optimized for RTX 4090 and RTX 4060 Ti
+- **Parallel Processing**: Faster response generation
+- **LangGraph**: Structured conversation flow
+- **RAG Integration**: Fact-based responses (optional)
 
 ## Quick Start
 
-```bash
-# Setup required models
-./setup_models.sh
+1. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
-# Talk to a politician directly
-python src/main.py donald_trump
+2. Run the demo:
+   ```
+   python src/main.py --demo
+   ```
 
-# See available politicians
-python src/main.py --list
+3. Start a conversation:
+   ```
+   python src/main.py --chat trump
+   ```
 
-# Try a quick demo
-python src/main.py --demo
+## Setup
+
+### Local Models
+
+Place your GGUF model files in the `models` directory and configure in `models/config.json`:
+
+```json
+{
+  "trump": {
+    "model_path": "models/trump-7b.gguf"
+  },
+  "biden": {
+    "model_path": "models/biden-7b.gguf"
+  }
+}
+```
+
+The system will auto-detect your GPU configuration and optimize accordingly.
+
+### Usage
+
+```
+python src/main.py --help
+
+options:
+  -h, --help            show this help message and exit
+  --chat PERSONA, -c PERSONA
+                        Start chat with persona (e.g., trump, biden)
+  --demo, -d            Run demonstration
+  --list, -l            List available personas
+```
+
+## Architecture
+
+The system uses a streamlined LangGraph implementation:
+
+1. **Initial Processing**: Analyzes sentiment, determines topic, and retrieves context
+2. **Strategy**: Decides whether to deflect
+3. **Response Generation**: Creates policy stance and formats response
+4. **Fact Checking**: Verifies responses against retrieved information
+
+All components are optimized for performance and efficiency.
+
+## GPU Support
+
+The system automatically:
+- Detects available CUDA devices
+- Optimizes context size based on available VRAM
+- Uses optimal parallelization for your hardware
+
+## Docker Support
+
+For containerized deployment:
+
+```
+docker-compose up
+```
+
+OR
+
+```
+./run.sh
 ```
 
 ## Features

@@ -1,73 +1,99 @@
-"""State management for the political agent graph.
+"""
+Conversation state management for political agent.
 
-This module defines the state schema for the LangGraph.
+Defines the state structure and initialization for political conversations.
 """
 
-from typing import Dict, List, Optional, Sequence, Any
 from dataclasses import dataclass, field
-import json
+from typing import Dict, List, Optional, Any
 
 
 @dataclass
 class ConversationState:
-    """Conversation state for the political agent graph."""
+    """
+    Maintains the state of a conversation with a political agent.
     
-    # User input
-    user_input: str = ""
+    Attributes:
+        user_input: Current user input text
+        current_topic: Detected topic of conversation
+        topic_sentiment: Detected sentiment toward the topic
+        retrieved_context: Retrieved RAG context (if available)
+        should_deflect: Whether to deflect from direct answer
+        deflection_topic: Alternative topic for deflection 
+        policy_stance: Generated policy stance
+        fact_check_result: Result of fact checking
+        final_response: Final formatted response
+        conversation_history: Running history of the conversation
+    """
     
-    # Conversation history
-    conversation_history: List[Dict[str, str]] = field(default_factory=list)
+    # Input
+    user_input: str
     
-    # Current topic information
+    # Processing data
     current_topic: Optional[str] = None
-    topic_sentiment: Optional[str] = None
+    topic_sentiment: str = "neutral" 
+    retrieved_context: str = ""
     
-    # Strategy decisions
+    # Strategy information
     should_deflect: bool = False
     deflection_topic: Optional[str] = None
     
-    # Response components
+    # Response generation
     policy_stance: Optional[str] = None
+    fact_check_result: Optional[str] = None
     final_response: Optional[str] = None
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert state to dictionary for JSON serialization."""
-        return {
-            "user_input": self.user_input,
-            "conversation_history": self.conversation_history,
-            "current_topic": self.current_topic,
-            "topic_sentiment": self.topic_sentiment,
-            "should_deflect": self.should_deflect,
-            "deflection_topic": self.deflection_topic,
-            "policy_stance": self.policy_stance,
-            "final_response": self.final_response,
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ConversationState":
-        """Create state from dictionary."""
-        return cls(
-            user_input=data.get("user_input", ""),
-            conversation_history=data.get("conversation_history", []),
-            current_topic=data.get("current_topic"),
-            topic_sentiment=data.get("topic_sentiment"),
-            should_deflect=data.get("should_deflect", False),
-            deflection_topic=data.get("deflection_topic"),
-            policy_stance=data.get("policy_stance"),
-            final_response=data.get("final_response"),
-        )
+    # Conversation history
+    conversation_history: List[Dict[str, str]] = field(default_factory=list)
     
     def add_to_history(self, speaker: str, text: str) -> None:
         """Add a message to the conversation history."""
         self.conversation_history.append({
             "speaker": speaker,
-            "text": text,
+            "text": text
         })
+    
+    def copy(self) -> 'ConversationState':
+        """Create a copy of the current state."""
+        return ConversationState(
+            user_input=self.user_input,
+            current_topic=self.current_topic,
+            topic_sentiment=self.topic_sentiment,
+            retrieved_context=self.retrieved_context,
+            should_deflect=self.should_deflect,
+            deflection_topic=self.deflection_topic,
+            policy_stance=self.policy_stance,
+            fact_check_result=self.fact_check_result,
+            final_response=self.final_response,
+            conversation_history=self.conversation_history.copy()
+        )
 
 
-# Factory function for creating new conversation state
 def get_initial_state(user_input: str) -> ConversationState:
-    """Create an initial conversation state with user input."""
-    state = ConversationState(user_input=user_input)
-    state.add_to_history("User", user_input)
-    return state
+    """
+    Create an initial state for a new user input.
+    
+    If this is a continuation of a conversation, preserves the history.
+    
+    Args:
+        user_input: The user's message text
+        
+    Returns:
+        A new ConversationState with the user input
+    """
+    # Add user input to history if there's existing history
+    if hasattr(get_initial_state, "history"):
+        history = getattr(get_initial_state, "history")
+        history.append({"speaker": "User", "text": user_input})
+    else:
+        # First interaction, create new history
+        history = [{"speaker": "User", "text": user_input}]
+        
+    # Store history for next time
+    setattr(get_initial_state, "history", history)
+    
+    # Create new state with history
+    return ConversationState(
+        user_input=user_input,
+        conversation_history=history.copy()
+    )

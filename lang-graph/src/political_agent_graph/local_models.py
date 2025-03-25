@@ -1,26 +1,312 @@
-"""Local model configuration for the political agent.
+"""
+GPU-accelerated model implementation for political agent.
 
-This module provides model implementations for the political agent graph.
-It supports both simple test models and llama-cpp based local models.
-
-To use the local GGUF models:
-1. Place the model files in the paths specified in config.json
-2. The system will automatically use them if available, or fall back to simple models
+Provides advanced multi-GPU inference with tensor parallelism optimization.
 """
 
 import os
 import json
+import logging
 from pathlib import Path
-from typing import Dict, Optional, Any, List, Mapping
+from typing import Dict, Optional, Any, List, Mapping, Union, Tuple
+import torch
 from langchain.llms.base import LLM
 from llama_cpp import Llama
+import threading
+import numpy as np
 
-# Global model references
-models = {}
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-# Simple model for testing
-class SimpleModel(LLM):
-    """Simple LLM for testing without real models."""
+# Global model cache with thread-safe access
+_model_cache = {}
+_cache_lock = threading.RLock()
+
+# GPU allocation strategy
+_gpu_allocation = {}
+_next_gpu_id = 0
+
+class AdvancedGPUModel(LLM):
+    """Advanced GPU-accelerated LLM using tensor parallelism when available."""
+    
+    model_path: str
+    model: Optional[Llama] = None
+    persona: str
+    gpu_id: Optional[int] = None
+    n_ctx: int = 8192  # Default to larger context for RTX 4090
+    n_batch: int = 1024
+    n_threads: int = None
+    tensor_split: Optional[List[float]] = None
+    
+    def __init__(
+        self, 
+        model_path: str, 
+        persona: str,
+        gpu_id: Optional[int] = None,
+        preset: Optional[str] = None
+    ):
+        """Initialize with optimal GPU configuration."""
+        super().__init__(model_path=model_path, persona=persona)
+        
+        self.n_threads = os.cpu_count() or 8
+        
+        # Skip if model doesn't exist
+        if not os.path.exists(model_path):
+            logger.warning(f"Model file not found: {model_path}")
+            self.model = None
+            return
+            
+        try:
+            # GPU detection and allocation
+            self.gpu_id = self._allocate_gpu(gpu_id)
+            
+            # Load optimized configuration
+            gpu_params = self._get_optimal_config(preset)
+            
+            # Configure tensor parallelism if multiple GPUs
+            self.tensor_split = self._configure_tensor_split()
+            
+            # Update settings from optimal config
+            self.n_ctx = gpu_params.get("n_ctx", self.n_ctx)
+            self.n_batch = gpu_params.get("n_batch", self.n_batch)
+            
+            # Log GPU configuration
+            logger.info(f"Loading {persona} model on GPU {self.gpu_id if self.gpu_id is not None else 'CPU'}")
+            if self.tensor_split:
+                logger.info(f"Using tensor parallelism with split: {self.tensor_split}")
+            
+            # Load the model with optimized settings
+            self.model = Llama(
+                model_path=model_path,
+                n_ctx=self.n_ctx,
+                n_batch=self.n_batch,
+                n_gpu_layers=-1,  # All layers on GPU
+                n_threads=self.n_threads,
+                tensor_split=self.tensor_split,
+                verbose=False
+            )
+            
+            logger.info(f"Model loaded successfully with context size {self.n_ctx}")
+            
+        except Exception as e:
+            logger.error(f"Error loading model: {e}")
+            self.model = None
+    
+    def _allocate_gpu(self, requested_gpu: Optional[int] = None) -> Optional[int]:
+        """Allocate GPU based on availability and current load."""
+        global _next_gpu_id, _gpu_allocation
+        
+        # If CPU requested or no CUDA, use CPU
+        if requested_gpu == -1 or not torch.cuda.is_available():
+            return None
+        
+        # Return specific GPU if requested
+        if requested_gpu is not None and requested_gpu < torch.cuda.device_count():
+            return requested_gpu
+        
+        with _cache_lock:
+            # Auto allocation based on VRAM availability
+            if torch.cuda.device_count() > 1:
+                # Find GPU with most free memory
+                free_memory = []
+                for i in range(torch.cuda.device_count()):
+                    with torch.cuda.device(i):
+                        total = torch.cuda.get_device_properties(i).total_memory
+                        reserved = torch.cuda.memory_reserved(i)
+                        allocated = torch.cuda.memory_allocated(i)
+                        free = total - reserved - allocated
+                        free_memory.append((i, free))
+                
+                # Sort by free memory (descending)
+                free_memory.sort(key=lambda x: x[1], reverse=True)
+                return free_memory[0][0]
+            elif torch.cuda.device_count() == 1:
+                return 0
+        
+        return None
+    
+    def _get_optimal_config(self, preset: Optional[str] = None) -> Dict[str, Any]:
+        """Get optimal configuration based on GPU."""
+        if preset == "rtx4090":
+            return {
+                "n_ctx": 16384,  # Extended context for 4090
+                "n_batch": 2048,
+                "kv_overrides": {
+                    "use_flash_attn": True,
+                    "rope_scaling_type": "linear"
+                }
+            }
+        elif preset == "rtx4060ti":
+            return {
+                "n_ctx":
+                 8192,  # Good balance for 4060Ti
+                "n_batch": 1024,
+                "kv_overrides": {
+                    "use_flash_attn": True
+                }
+            }
+        
+        # Auto-detect based on VRAM size
+        config = {
+            "n_ctx": 4096,
+            "n_batch": 512
+        }
+        
+        try:
+            if self.gpu_id is not None:
+                props = torch.cuda.get_device_properties(self.gpu_id)
+                memory_gb = props.total_memory / (1024 ** 3)
+                
+                # Scale context based on available VRAM
+                if memory_gb >= 22:  # RTX 4090
+                    config["n_ctx"] = 16384
+                    config["n_batch"] = 2048
+                elif memory_gb >= 15:  # RTX 4060 Ti
+                    config["n_ctx"] = 8192
+                    config["n_batch"] = 1024
+                elif memory_gb >= 8:
+                    config["n_ctx"] = 4096
+                    config["n_batch"] = 512
+        except Exception as e:
+            logger.warning(f"Error determining GPU config: {e}")
+        
+        return config
+    
+    def _configure_tensor_split(self) -> Optional[List[float]]:
+        """Configure tensor split for multi-GPU inference."""
+        if torch.cuda.device_count() <= 1:
+            return None
+            
+        # For simplicity we'll use the first 2 GPUs if available
+        # You could extend this for more GPUs with more sophisticated allocation
+        if torch.cuda.device_count() >= 2:
+            # Check VRAM capacity for both GPUs
+            vram_0 = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            vram_1 = torch.cuda.get_device_properties(1).total_memory / (1024**3)
+            
+            # If one GPU is significantly larger (like RTX 4090 vs 4060 Ti)
+            if vram_0 >= 1.5 * vram_1:
+                # Allocate proportionally more to the larger GPU
+                total = vram_0 + vram_1
+                split_0 = vram_0 / total
+                split_1 = vram_1 / total
+                return [split_0, split_1]
+            elif vram_1 >= 1.5 * vram_0:
+                # Larger second GPU
+                total = vram_0 + vram_1
+                split_0 = vram_0 / total
+                split_1 = vram_1 / total
+                return [split_0, split_1]
+            else:
+                # Similar sized GPUs - split evenly
+                return [0.5, 0.5]
+                
+        return None
+    
+    def _llm_type(self) -> str:
+        return f"{self.persona.lower()}_advanced_gpu_model"
+    
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        return {
+            "model_path": self.model_path, 
+            "persona": self.persona,
+            "gpu_id": self.gpu_id,
+            "n_ctx": self.n_ctx
+        }
+    
+    def _call(
+        self, 
+        prompt: str, 
+        stop: Optional[List[str]] = None, 
+        **kwargs
+    ) -> str:
+        """Generate a response with GPU acceleration."""
+        if self.model is None:
+            return f"Error: Model for {self.persona} not loaded properly"
+        
+        try:
+            # Get generation parameters with decent defaults
+            max_tokens = kwargs.get("max_tokens", 1024)
+            temperature = kwargs.get("temperature", 0.7)
+            top_p = kwargs.get("top_p", 0.95)
+            top_k = kwargs.get("top_k", 40)
+            frequency_penalty = kwargs.get("frequency_penalty", 0.0)
+            presence_penalty = kwargs.get("presence_penalty", 0.0)
+            
+            # Generate response with optimized parameters
+            response = self.model(
+                prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
+                stop=stop,
+                echo=False
+            )
+            
+            return response["choices"][0]["text"]
+        except Exception as e:
+            logger.error(f"Inference error: {e}")
+            return f"Error generating response: {str(e)}"
+
+
+def get_model(persona_id: str, preset: Optional[str] = None) -> LLM:
+    """Get a model for a specific persona with caching."""
+    global _model_cache, _cache_lock
+    
+    model_key = f"{persona_id}_{preset or 'default'}"
+    
+    with _cache_lock:
+        if model_key in _model_cache:
+            return _model_cache[model_key]
+        
+        # Load model configuration
+        config = load_config()
+        root_dir = Path(__file__).parent.parent.parent.parent
+        
+        # Get model path
+        persona_config = config.get(persona_id, {})
+        if not persona_config:
+            logger.warning(f"No configuration found for {persona_id}")
+            model_path = ""
+        else:
+            model_path = persona_config.get("model_path", "")
+            if model_path:
+                model_path = str(root_dir / model_path)
+        
+        # Create model instance with appropriate GPU
+        if model_path and os.path.exists(model_path):
+            # Auto-detect device type based on GPU preset
+            gpu_id = None  # Auto-select
+            if preset == "rtx4090":
+                # Look for RTX 4090
+                for i in range(torch.cuda.device_count()):
+                    if "4090" in torch.cuda.get_device_name(i):
+                        gpu_id = i
+                        break
+            elif preset == "rtx4060ti":
+                # Look for RTX 4060 Ti
+                for i in range(torch.cuda.device_count()):
+                    if "4060" in torch.cuda.get_device_name(i):
+                        gpu_id = i
+                        break
+            
+            model = AdvancedGPUModel(model_path, persona_id.capitalize(), gpu_id, preset)
+        else:
+            logger.warning(f"Model path not found for {persona_id}, using fallback")
+            model = FallbackModel(persona_id.capitalize())
+        
+        # Cache the model
+        _model_cache[model_key] = model
+        return model
+
+
+class FallbackModel(LLM):
+    """Simple fallback model for when GPU models are unavailable."""
     
     persona: str
     
@@ -28,223 +314,77 @@ class SimpleModel(LLM):
         super().__init__(persona=persona)
     
     def _llm_type(self) -> str:
-        return f"simple_{self.persona.lower()}_model"
+        return f"fallback_{self.persona.lower()}_model"
     
     def _call(self, prompt: str, **kwargs) -> str:
-        """Return a simple response based on the persona."""
+        """Return a basic response when no model is available."""
         if self.persona.lower() == "trump":
-            return f"Let me tell you, that's a great question. The best question. Nobody asks better questions than you. Believe me! When you asked about that, I thought, wow, what a smart person. We're looking at that issue, and frankly, we're doing tremendous things. Just tremendous."
+            return "Let me tell you, that's a tremendous question. Nobody knows more about this than me, believe me!"
         elif self.persona.lower() == "biden":
-            return f"Look, here's the deal folks. That's an important issue that impacts hardworking Americans. Let me be clear about this. We're making real progress, and we've got more work to do. That's what my administration is focused on - delivering for the American people."
+            return "Look, here's the deal folks. That's an important issue for all Americans. My administration is focused on making real progress here."
         else:
-            return f"Generic response from {self.persona} about {prompt[:30]}..."
+            return f"I'm {self.persona} and I'd be happy to discuss this topic. (Note: Running in fallback mode without a GPU model)"
 
 
-class TrumpLLM(LLM):
-    """Trump LLM using llama-cpp-python.
-    
-    This class uses a fine-tuned GGUF model to generate responses in Trump's style.
-    If the model file doesn't exist, it falls back to SimpleModel.
-    """
-    
-    model_path: str
-    model: Optional[Llama] = None
-    
-    def __init__(self, model_path: str):
-        """Initialize the TrumpLLM.
-        
-        Args:
-            model_path: Path to the GGUF model file
-        """
-        super().__init__(model_path=model_path)
-        
-        if os.path.exists(model_path):
-            try:
-                self.model = Llama(
-                    model_path=model_path,
-                    n_ctx=2048,
-                    n_batch=512,
-                    verbose=False
-                )
-                print(f"Loaded Trump model from {model_path}")
-            except Exception as e:
-                print(f"Error loading Trump model: {e}")
-                self.model = None
-    
-    def _llm_type(self) -> str:
-        return "trump_llama_model"
-    
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        return {"model_path": self.model_path}
-    
-    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-        """Generate a response using the Trump model.
-        
-        Args:
-            prompt: The input prompt
-            stop: Optional stop sequences to end generation
-            kwargs: Additional arguments for model inference
-            
-        Returns:
-            The generated text response
-        """
-        if self.model is None:
-            # Fallback to SimpleModel
-            return SimpleModel("Trump")._call(prompt, **kwargs)
-        
-        # Set reasonable defaults for generation
-        max_tokens = kwargs.get("max_tokens", 512)
-        temperature = kwargs.get("temperature", 0.7)
-        
-        response = self.model(
-            prompt, 
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stop=stop,
-            echo=False
-        )
-        
-        # Extract the generated text from the response
-        return response["choices"][0]["text"]
-
-
-class BidenLLM(LLM):
-    """Biden LLM using llama-cpp-python.
-    
-    This class uses a fine-tuned GGUF model to generate responses in Biden's style.
-    If the model file doesn't exist, it falls back to SimpleModel.
-    """
-    
-    model_path: str
-    model: Optional[Llama] = None
-    
-    def __init__(self, model_path: str):
-        """Initialize the BidenLLM.
-        
-        Args:
-            model_path: Path to the GGUF model file
-        """
-        super().__init__(model_path=model_path)
-        
-        if os.path.exists(model_path):
-            try:
-                self.model = Llama(
-                    model_path=model_path,
-                    n_ctx=2048,
-                    n_batch=512,
-                    verbose=False
-                )
-                print(f"Loaded Biden model from {model_path}")
-            except Exception as e:
-                print(f"Error loading Biden model: {e}")
-                self.model = None
-    
-    def _llm_type(self) -> str:
-        return "biden_llama_model"
-    
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        return {"model_path": self.model_path}
-    
-    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-        """Generate a response using the Biden model.
-        
-        Args:
-            prompt: The input prompt
-            stop: Optional stop sequences to end generation
-            kwargs: Additional arguments for model inference
-            
-        Returns:
-            The generated text response
-        """
-        if self.model is None:
-            # Fallback to SimpleModel
-            return SimpleModel("Biden")._call(prompt, **kwargs)
-        
-        # Set reasonable defaults for generation
-        max_tokens = kwargs.get("max_tokens", 512)
-        temperature = kwargs.get("temperature", 0.7)
-        
-        response = self.model(
-            prompt, 
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stop=stop,
-            echo=False
-        )
-        
-        # Extract the generated text from the response
-        return response["choices"][0]["text"]
-
-
-def load_config():
-    """Load the model configuration from config.json.
-    
-    Returns:
-        The configuration as a dictionary
-    """
+def load_config() -> Dict[str, Any]:
+    """Load model configuration from config.json."""
     config_path = Path(__file__).parent.parent.parent.parent / "models" / "config.json"
-    if not config_path.exists():
-        print(f"Config file not found at {config_path}")
+    
+    if not os.path.exists(config_path):
+        logger.warning(f"Config file not found: {config_path}")
         return {}
     
     try:
         with open(config_path, "r") as f:
             return json.load(f)
     except Exception as e:
-        print(f"Error loading config: {e}")
+        logger.error(f"Error loading config: {e}")
         return {}
 
 
-def setup_models():
-    """Set up the models using llama-cpp if available, otherwise fall back to simple models."""
-    global models
+def detect_gpu_preset() -> str:
+    """Auto-detect which GPU preset to use based on available hardware."""
+    if not torch.cuda.is_available():
+        return "cpu"
+        
+    for i in range(torch.cuda.device_count()):
+        name = torch.cuda.get_device_name(i)
+        if "4090" in name:
+            return "rtx4090"
+        elif "4060" in name and "Ti" in name:
+            return "rtx4060ti"
+            
+    # Default to generic GPU preset
+    return "gpu"
+
+
+def get_model_for_task(task_name: str) -> LLM:
+    """Get the appropriate model for a specific task."""
+    # For now, just use the same model for all tasks, but this could be
+    # extended to use different sized models for different tasks
     
-    # Load configuration
+    # Get default persona from config
     config = load_config()
+    default_persona = list(config.keys())[0] if config else "generic"
     
-    # Get model paths
-    trump_model_path = config.get("trump", {}).get("model_path", "")
-    biden_model_path = ""
+    # Auto-detect best GPU configuration
+    preset = detect_gpu_preset()
     
-    # Check if Biden is configured in config.json
-    if "biden" in config:
-        biden_model_path = config.get("biden", {}).get("model_path", "")
-    
-    # Resolve paths relative to project root
-    root_dir = Path(__file__).parent.parent.parent.parent
-    if trump_model_path:
-        trump_model_path = str(root_dir / trump_model_path)
-    if biden_model_path:
-        biden_model_path = str(root_dir / biden_model_path)
-    
-    # Initialize models
-    if trump_model_path and os.path.exists(trump_model_path):
-        models["trump"] = TrumpLLM(trump_model_path)
-    else:
-        print("Trump model file not found, using simple model")
-        models["trump"] = SimpleModel("Trump")
-    
-    if biden_model_path and os.path.exists(biden_model_path):
-        models["biden"] = BidenLLM(biden_model_path)
-    else:
-        print("Biden model file not found, using simple model")
-        models["biden"] = SimpleModel("Biden")
-    
-    # Always include a generic model
-    models["mistral"] = SimpleModel("Generic")
-    
-    return models
+    return get_model(default_persona, preset)
 
 
-def get_model(model_name: str):
-    """Get a model by name."""
-    if not models:
-        setup_models()
-    return models.get(model_name, models.get("mistral"))
-
-
-def get_tokenizer(model_name: str = "mistral"):
-    """Get a tokenizer by model name (placeholder function)."""
-    return None
+def get_temperature_for_task(task_name: str) -> float:
+    """Get appropriate temperature for different tasks."""
+    # Temperature mapping for different tasks
+    temp_map = {
+        "analyze_sentiment": 0.1,  # More deterministic
+        "determine_topic": 0.2,
+        "decide_deflection": 0.3,
+        "generate_policy_stance": 0.8,  # More creative
+        "fact_check": 0.1,  # More deterministic
+        "format_response": 0.8,  # More creative
+        "adjust_policy": 0.4,
+        "process_context": 0.3
+    }
+    
+    return temp_map.get(task_name, 0.7)  # Default temp

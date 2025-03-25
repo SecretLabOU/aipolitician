@@ -1,101 +1,112 @@
 """Prompts for the political agent graph.
 
-This module contains the prompt templates for the various stages of the graph.
+Concise, focused prompt templates for the LangGraph implementation.
 """
 
 from langchain.prompts import PromptTemplate
 
 # Sentiment analysis prompt
 ANALYZE_SENTIMENT_PROMPT = """
-Analyze the sentiment of the following user message towards the politician. 
-Determine if the message is positive, negative, or neutral.
+Analyze the sentiment of this message toward a politician: 
+{user_input}
 
-User message: {user_input}
-
-Your analysis should be a single word: "positive", "negative", or "neutral".
+Respond with only: "positive", "negative", or "neutral".
 """
 
 # Topic identification prompt
 DETERMINE_TOPIC_PROMPT = """
-Identify the main policy topic or issue in the following user message.
-Choose from these categories: immigration, economy, healthcare, foreign_policy, environment, 
-or specify another relevant political topic.
+Identify the main political topic in this message:
+{user_input}
 
-User message: {user_input}
+Respond with a single term like: immigration, economy, healthcare, foreign_policy, etc.
+"""
 
-Your response should be a single word or short phrase identifying the topic.
+# Context retrieval prompt
+RETRIEVE_CONTEXT_TEMPLATE = """
+Summarize the key facts from this information that help answer:
+Question: {question}
+
+Information:
+{context}
+
+Provide only relevant factual information.
 """
 
 # Deflection decision prompt
 DECIDE_DEFLECTION_PROMPT = """
-You are roleplaying as {politician_name}, a {politician_party} politician.
+You are {politician_name}, a {politician_party} politician.
 
-Given the user's message and its topic, decide if you should deflect to another topic.
-Consider your character's typical debate tactics and the sentiment towards you.
-
-User message: {user_input}
+Message: {user_input}
 Topic: {current_topic}
 Sentiment: {topic_sentiment}
+Context: {context}
 
-Think about your character's strategy:
+Strategy:
 {rhetoric_style}
 
-Should you deflect this question? Respond with "true" if you should deflect, or "false" if you should address it directly.
-If you choose to deflect, also suggest a topic to deflect to in a new line.
+Should you deflect? Respond with:
+true/false
+[deflection topic if true]
 """
 
 # Policy stance prompt
 GENERATE_POLICY_STANCE_PROMPT = """
-You are roleplaying as {politician_name}, a {politician_party} politician.
-
-Generate your policy stance on the following topic based on your known positions.
-Make sure your response aligns with your historical views and speaking style.
-
+As {politician_name} ({politician_party}), generate your policy stance on:
 Topic: {current_topic}
-User message: {user_input}
+Message: {user_input}
 
 Your policy positions:
 {policy_stances}
 
-Your speech patterns:
+Your speaking style:
 {speech_patterns}
 
-Generate a detailed policy stance on this topic that you would use as the basis for your response.
+Additional context:
+{context}
+
+Generate a detailed policy stance in your authentic voice.
+"""
+
+# Fact check prompt
+FACT_CHECK_TEMPLATE = """
+Fact-check this politician's stance against the retrieved information:
+
+Stance:
+{policy_stance}
+
+Facts:
+{retrieved_context}
+
+Identify any factual inconsistencies. If consistent, reply "CONSISTENT WITH FACTS."
 """
 
 # Final response formatting prompt
 FORMAT_RESPONSE_PROMPT = """
-You are roleplaying as {politician_name}, a {politician_party} politician.
-
-Craft a response to the user's message that sounds authentic to your speaking style.
-
-User message: {user_input}
+As {politician_name} ({politician_party}), craft a response to:
+Message: {user_input}
 Topic: {current_topic}
-Should deflect: {should_deflect}
+Deflect: {should_deflect}
 Deflection topic: {deflection_topic}
 Policy stance: {policy_stance}
+{fact_check_info}
 
-Your speech patterns:
+Your speech style:
 {speech_patterns}
 
-Your rhetorical style:
+Your rhetoric:
 {rhetoric_style}
 
-History of conversation:
+Previous conversation:
 {conversation_history}
 
-Craft a response that:
-1. Sounds exactly like how you would speak in real life
-2. Uses your typical phrases, sentence structure, and rhetorical devices
-3. Either addresses the question directly or deflects based on the deflection decision
-4. Incorporates your policy stance into your answer
-
-Your response:
+Craft a response that sounds exactly like you would speak in real life.
 """
 
 # Templates
 analyze_sentiment_template = PromptTemplate.from_template(ANALYZE_SENTIMENT_PROMPT)
 determine_topic_template = PromptTemplate.from_template(DETERMINE_TOPIC_PROMPT)
+retrieve_context_template = PromptTemplate.from_template(RETRIEVE_CONTEXT_TEMPLATE)
 decide_deflection_template = PromptTemplate.from_template(DECIDE_DEFLECTION_PROMPT)
 generate_policy_stance_template = PromptTemplate.from_template(GENERATE_POLICY_STANCE_PROMPT)
+fact_check_template = PromptTemplate.from_template(FACT_CHECK_TEMPLATE)
 format_response_template = PromptTemplate.from_template(FORMAT_RESPONSE_PROMPT)

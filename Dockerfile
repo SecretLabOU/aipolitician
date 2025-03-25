@@ -1,11 +1,15 @@
-# Base image using NVIDIA CUDA 12.x with Ubuntu
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+# Base image using lightweight NVIDIA CUDA
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 AS base
 
-# Set environment variables to avoid interactive prompts during installation
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PATH="/home/appuser/.local/bin:${PATH}"
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    CUDA_VISIBLE_DEVICES=0 \
+    PYTHONPATH=/app:$PYTHONPATH \
+    HF_HOME=/app/models \
+    TRANSFORMERS_CACHE=/app/models
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,17 +24,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
-RUN useradd -m -s /bin/bash appuser
-
-# Create directories for data and models
-RUN mkdir -p /app/models /app/data \
+RUN useradd -m -s /bin/bash appuser \
+    && mkdir -p /app/models \
     && chown -R appuser:appuser /app
 
-# Set working directory
+# Set up Python environment
+FROM base AS python-deps
+
 WORKDIR /app
 
-# Copy requirements files
-COPY requirements-chat.txt requirements-training.txt ./
+# Copy only requirements file first for better layer caching
+COPY --chown=appuser:appuser requirements.txt .
 
 # Switch to non-root user
 USER appuser
@@ -39,26 +43,19 @@ USER appuser
 RUN python3.10 -m venv /home/appuser/venv
 ENV PATH="/home/appuser/venv/bin:$PATH"
 
-# Set environment variables for CUDA
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV CUDA_VISIBLE_DEVICES=0
-
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements-chat.txt \
-    && pip install --no-cache-dir -r requirements-training.txt \
-    # Install PyTorch with CUDA support
-    && pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    && pip install --no-cache-dir -r requirements.txt
+
+# Final stage
+FROM python-deps
 
 # Copy application code
 COPY --chown=appuser:appuser . /app
 
-# Set environment variables for the application
-ENV PYTHONPATH=/app:$PYTHONPATH
-ENV HF_HOME=/app/models
-ENV TRANSFORMERS_CACHE=/app/models
-ENV HF_DATASETS_CACHE=/app/data
+# Set default command
+ENTRYPOINT ["python", "chat.py"]
 
-# Default command to run the application
-ENTRYPOINT ["python", "chat_biden.py"]
+# Set default command-line arguments (can be overridden)
+CMD ["--persona", "trump"]
 
