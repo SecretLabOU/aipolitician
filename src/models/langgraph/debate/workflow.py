@@ -18,6 +18,13 @@ root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
 from src.models.langgraph.config import PoliticianIdentity
+from src.models.langgraph.debate.agents import (
+    moderate_debate,
+    politician_turn,
+    fact_check,
+    handle_interruption,
+    manage_topic
+)
 
 
 # Define debate formats
@@ -128,6 +135,10 @@ def create_debate_graph() -> StateGraph:
     # Topic management
     workflow.add_edge("topic_manager", "moderator")
     
+    # Set a higher recursion limit
+    config = {"recursion_limit": 50}
+    workflow.set_graph_config(config)
+    
     return workflow
 
 
@@ -195,37 +206,6 @@ def check_interruption(state: DebateState) -> str:
     
     # Return to moderator for next turn
     return "moderator"
-
-
-# Placeholder implementations for other nodes
-def moderate_debate(state: DebateState) -> DebateState:
-    """Moderator function to guide the debate."""
-    # Moderator functionality implementation
-    return state
-
-
-def politician_turn(state: DebateState) -> DebateState:
-    """Handle a politician's speaking turn."""
-    # Politician turn implementation
-    return state
-
-
-def fact_check(state: DebateState) -> DebateState:
-    """Perform fact checking on politician statements."""
-    # Fact checking implementation
-    return state
-
-
-def handle_interruption(state: DebateState) -> DebateState:
-    """Handle interruptions during the debate."""
-    # Interruption handling implementation
-    return state
-
-
-def manage_topic(state: DebateState) -> DebateState:
-    """Manage the debate topic and subtopics."""
-    # Topic management implementation
-    return state
 
 
 def run_debate(input_data: DebateInput) -> Dict[str, Any]:

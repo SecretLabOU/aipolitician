@@ -13,7 +13,30 @@ A LangGraph-based workflow system that enables different AI politicians to debat
 
 ## Usage
 
-### Running a Debate
+### Running the Debate System
+
+#### Installation
+
+1. First, ensure you have the required dependencies:
+
+```bash
+pip install langgraph
+```
+
+#### Quick Demo
+
+For a quick demonstration of the debate format without setting up the full system:
+
+```bash
+# Run the simplified test script
+python scripts/test_debate_simple.py
+```
+
+This will show a mock debate between Biden and Trump on climate change, demonstrating the key features of the system including interruptions, fact checking, and topic management.
+
+#### Running a Full Debate
+
+For a full LangGraph-powered debate with all features:
 
 ```bash
 # Basic head-to-head debate
@@ -171,3 +194,15 @@ The debate system can be extended in several ways:
 3. Enhance fact-checking capability by connecting to external verification systems
 4. Add support for audience questions in town hall format
 5. Implement real-time visualization of debate dynamics and sentiment analysis 
+
+### Troubleshooting
+
+If you encounter a recursion error, you may need to increase the recursion limit:
+
+```python
+# In your code, before running the graph:
+config = {"recursion_limit": 100}
+workflow.set_graph_config(config)
+```
+
+The test script (`scripts/test_debate_simple.py`) can be used to verify the basic functionality works without requiring external dependencies. 

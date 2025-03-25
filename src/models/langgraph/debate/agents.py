@@ -17,7 +17,7 @@ root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
 from src.models.langgraph.config import PoliticianIdentity
-from src.models.langgraph.agents.response_agent import generate_politician_response
+from src.models.langgraph.agents.response_agent import generate_response
 from src.models.langgraph.agents.context_agent import retrieve_knowledge
 
 
@@ -415,7 +415,7 @@ def generate_politician_debate_response(
         "should_deflect": False
     }
     
-    response = generate_politician_response(input_state)
+    response = generate_response(input_state)
     
     # Truncate if needed
     if len(response) > max_length:
@@ -550,7 +550,7 @@ def generate_interruption(interrupter: str, interrupted: str, topic: str, max_le
         "should_deflect": False
     }
     
-    additional_text = generate_politician_response(input_state)[:100]
+    additional_text = generate_response(input_state)[:100]
     full_interruption = f"{interruption} {additional_text}"
     
     # Ensure it's not too long
@@ -648,10 +648,11 @@ def get_max_response_length(format_config: Dict[str, Any]) -> int:
         return 350  # Default length
 
 
-def generate_politician_response(state: Dict[str, Any]) -> str:
+def generate_response(state: Dict[str, Any]) -> str:
     """Generate a response from a politician based on their identity and context."""
     try:
         # This is a wrapper around the existing response generation system
+        from src.models.langgraph.agents.response_agent import generate_response
         response_data = generate_response(state)
         return response_data.get("response", "I don't have a specific response to that issue.")
     except Exception as e:
