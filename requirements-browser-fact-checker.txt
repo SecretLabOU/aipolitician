@@ -1,5 +1,5 @@
 # Requirements for browser-based fact-checking functionality
-browser-use>=0.1.0
+browser-use>=0.1.40
 langchain-core>=0.1.0
 langchain-community>=0.0.10
 asyncio>=3.4.3

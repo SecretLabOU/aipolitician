@@ -852,7 +852,7 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
     
     # Attempt to import browser-use
     try:
-        from browser_use import Agent
+        from browser_use import Agent, BrowserConfig
         # Import open source model handlers instead of OpenAI
         from langchain.llms import HuggingFacePipeline, Ollama
         from langchain_community.llms import HuggingFaceEndpoint
@@ -953,12 +953,16 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
         logger.error(error_msg)
         raise ValueError(error_msg)
     
-    # Create the browser agent
+    # Create the browser agent with proper configuration
     try:
+        # Create browser config with headless mode
+        browser_config = BrowserConfig(headless=True)
+        
+        # Create the agent using the browser config
         agent = Agent(
             task=fact_check_task,
             llm=llm,
-            headless=True
+            browser_config=browser_config
         )
         
         # Run the agent and get results

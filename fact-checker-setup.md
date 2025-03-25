@@ -75,6 +75,25 @@ If browser automation fails for any reason, the system falls back to a basic ana
 - Links to relevant authoritative sources based on topic
 - Provides general fact-checking resources
 
+## Browser Configuration
+
+The system uses the `BrowserConfig` class from browser-use to configure the browser behavior. The current configuration sets the browser to run in headless mode for server environments. This can be customized by modifying the `_browser_fact_check` function in `src/models/langgraph/debate/agents.py`.
+
+Example configuration:
+```python
+from browser_use import BrowserConfig
+
+# Configure the browser to run headless
+browser_config = BrowserConfig(headless=True)
+
+# Additional options are available, such as:
+# browser_config = BrowserConfig(
+#     headless=True,
+#     locale="en-US",
+#     highlight_elements=True
+# )
+```
+
 ## Testing
 
 To test if your browser-based fact-checking setup is working correctly, you can run:
@@ -101,4 +120,5 @@ Common issues:
 2. **Model loading errors**: Ensure you've set the correct environment variables for your chosen model type
 3. **Slow performance**: Using large language models and browser automation is resource-intensive - this is normal
 4. **Poor quality results**: Try a more capable model - Llama 3, Mixtral, or GPT-4 open equivalents will produce the best results
-5. **Memory issues**: If using local models, try a smaller or quantized model if you run out of memory 
+5. **Memory issues**: If using local models, try a smaller or quantized model if you run out of memory
+6. **Browser configuration errors**: If you encounter issues with the browser configuration, check the browser-use documentation for the latest API changes: https://docs.browser-use.com/ 
