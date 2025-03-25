@@ -163,7 +163,7 @@ def get_rag_context(prompt: str, politician_name: str) -> Optional[str]:
         extracted_info = extract_context_from_prompt(prompt, politician_name)
         return f"Simulated knowledge base information about: {extracted_info}"
 
-def process_context(state: Dict[str, Any]) -> Dict[str, Any]:
+def extract_context(state: Dict[str, Any]) -> Dict[str, Any]:
     """Process the user input to extract context and retrieve relevant information."""
     prompt = state["user_input"]
     politician_name = state["politician_identity"].title()  # Convert "biden" to "Biden"

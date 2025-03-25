@@ -98,7 +98,7 @@ def _simple_sentiment_analysis(prompt: str) -> Dict[str, Any]:
         "is_gotcha_question": is_question and negative_count > 0
     }
 
-def analyze_sentiment(prompt: str, politician_name: str) -> Dict[str, Any]:
+def analyze_sentiment_details(prompt: str, politician_name: str) -> Dict[str, Any]:
     """
     Analyze the sentiment of the user input towards the politician.
     
@@ -170,13 +170,13 @@ def analyze_sentiment(prompt: str, politician_name: str) -> Dict[str, Any]:
         print(f"Error during sentiment analysis: {str(e)}")
         return _simple_sentiment_analysis(prompt)
 
-def process_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
     """Process the user input to analyze sentiment and determine if deflection is needed."""
     prompt = state["user_input"]
     politician_name = state["politician_identity"].title()  # Convert "biden" to "Biden"
     
     # Analyze sentiment
-    sentiment_analysis = analyze_sentiment(prompt, politician_name)
+    sentiment_analysis = analyze_sentiment_details(prompt, politician_name)
     
     # Remove detailed emotion data from state (keeps it cleaner)
     if "emotion_details" in sentiment_analysis:
