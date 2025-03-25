@@ -448,7 +448,9 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                      f"Let's begin with {state['participants'][0]}."
     
     debate_output = [
-        f"\n\nMODERATOR: {moderator_intro}\n\n"
+        f"\n\n----------- MODERATOR INTRODUCTION -----------\n"
+        f"MODERATOR: {moderator_intro}\n"
+        f"--------------------------------------------\n\n"
     ]
     
     # Initialize turn history if not present
@@ -582,17 +584,45 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 
                 # Format the fact check for display
                 accuracy_pct = int(latest_check["accuracy"] * 100)
-                fact_check_text = f"\n\n[FACT CHECK] Claims by {current_speaker}:\n"
                 
+                # Create a cleaner fact check display with sources
+                fact_check_text = f"\n\n--------- FACT CHECK ---------\n"
+                fact_check_text += f"Speaker: {current_speaker.upper()}\n"
+                fact_check_text += f"Rating: {latest_check['rating']} ({accuracy_pct}% accurate)\n\n"
+                
+                # Add each claim with a cleaner format
                 for i, claim in enumerate(latest_check["claims"]):
                     fact_check_text += f"Claim {i+1}: \"{claim}\"\n"
                 
-                fact_check_text += f"Rating: {latest_check['rating']} ({accuracy_pct}% accurate)\n\n"
+                # Add sources if available
+                if "sources" in latest_check and latest_check["sources"]:
+                    fact_check_text += "\nSources:\n"
+                    for i, source in enumerate(latest_check["sources"]):
+                        fact_check_text += f"- {source}\n"
+                
+                fact_check_text += "-----------------------------\n\n"
                 debate_output.append(fact_check_text)
         
-        # Add moderator transition
-        debate_output.append(f"MODERATOR: Your time is up. {'Next up is ' + speaking_queue[turn] + '.' if turn < max_turns else 'This concludes our debate.'}\n\n")
+        # Add moderator transition with better formatting
+        if turn < max_turns:
+            moderator_text = f"\n----------- NEXT SPEAKER -----------\n"
+            moderator_text += f"MODERATOR: Thank you, {current_speaker}. Next, let's hear from {speaking_queue[turn]}.\n"
+            moderator_text += f"----------------------------------\n\n"
+        else:
+            moderator_text = f"\n----------- CONCLUSION -----------\n"
+            moderator_text += f"MODERATOR: Thank you, {current_speaker}. This concludes our debate.\n"
+            moderator_text += f"---------------------------------\n\n"
         
+        debate_output.append(moderator_text)
+        
+        # Add topic change with better formatting if there was one
+        if turn % 4 == 0 and turn > 0 and current_subtopic != state['topic']:
+            topic_change_text = f"\n----------- TOPIC CHANGE -----------\n"
+            topic_change_text += f"MODERATOR: Let's move on to discuss {current_subtopic}.\n"
+            topic_change_text += f"-----------------------------------\n\n"
+            # Replace the generic transition with the topic change
+            debate_output[-1] = topic_change_text
+            
         if state.get("trace", False):
             print(f"\n🔎 TRACE: Moderator Agent")
             print("===========================")
@@ -610,18 +640,24 @@ def run_simplified_debate(state: DebateState) -> DebateState:
     # Format the debate with a header and footer
     formatted_debate = f"""
 ================================================================================
-DEBATE: {state['topic']}
+                           DEBATE TRANSCRIPT
+================================================================================
+TOPIC: {state['topic']}
 PARTICIPANTS: {', '.join(state['participants'])}
+FORMAT: {state.get('format', {}).get('name', 'head_to_head')}
 ================================================================================
 
 {full_debate}
 ================================================================================
-DEBATE SUMMARY:
-  Topic: {state['topic']}
-  Participants: {', '.join(state['participants'])}
-  Turns: {max_turns}
-  Fact Checks: {fact_checks_count}
-  Subtopics Covered: {', '.join(list(covered_subtopics)[:3])}
+                           DEBATE SUMMARY
+================================================================================
+TOPIC: {state['topic']}
+PARTICIPANTS: {', '.join(state['participants'])}
+FORMAT: {state.get('format', {}).get('name', 'head_to_head')}
+TURNS: {max_turns}
+FACT CHECKS: {fact_checks_count}
+SUBTOPICS COVERED: 
+  - {', '.join(list(covered_subtopics))}
 ================================================================================
 """
     
