@@ -184,4 +184,28 @@ def extract_context(state: Dict[str, Any]) -> Dict[str, Any]:
         **state,
         "context": combined_context,
         "has_knowledge": bool(rag_context and rag_context != f"Simulated knowledge base information about: {extracted_context}")
-    } 
+    }
+
+def retrieve_knowledge(topic: str, politician_name: str) -> str:
+    """
+    Retrieve knowledge from the knowledge base about a specific topic for a politician.
+    This function is used by the debate system to get relevant information.
+    
+    Args:
+        topic: The topic to retrieve knowledge about
+        politician_name: The politician identity to retrieve knowledge for
+        
+    Returns:
+        Retrieved knowledge as a string
+    """
+    # Generate a prompt that asks about the topic
+    prompt = f"What is {politician_name}'s position on {topic}?"
+    
+    # Use the existing RAG function to get knowledge
+    knowledge = get_rag_context(prompt, politician_name)
+    
+    if not knowledge or knowledge.startswith("Simulated knowledge base information about:"):
+        # Provide a fallback response if no real knowledge is available
+        return f"In the absence of specific information, {politician_name} is known to generally align with their party's position on {topic}."
+    
+    return knowledge 
