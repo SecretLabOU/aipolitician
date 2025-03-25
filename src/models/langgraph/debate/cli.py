@@ -271,6 +271,129 @@ def display_debate(debate_result: Dict[str, Any]):
     print(f"{'='*80}\n")
 
 
+def format_debate_output(debate_result: Dict[str, Any]) -> str:
+    """Format the debate result into a readable string."""
+    try:
+        # Check if the debate result is already a string
+        if isinstance(debate_result, str):
+            return debate_result
+            
+        # Extract basic information
+        topic = debate_result.get("topic", "Unknown Topic")
+        participants = debate_result.get("participants", ["Unknown Participants"])
+        if isinstance(participants, list):
+            participants_str = ", ".join(participants)
+        else:
+            participants_str = str(participants)
+            
+        # Build the header
+        output = f"""
+================================================================================
+DEBATE: {topic}
+PARTICIPANTS: {participants_str}
+================================================================================
+
+"""
+        
+        # Add moderator introduction if available
+        intro_notes = [note for note in debate_result.get("moderator_notes", []) 
+                       if note.get("turn", -1) == 0]
+        if intro_notes:
+            output += f"MODERATOR: {intro_notes[0].get('message', 'Welcome to the debate.')}\n\n"
+        
+        # Process turns and moderator notes chronologically
+        turn_history = debate_result.get("turn_history", [])
+        moderator_notes = debate_result.get("moderator_notes", [])
+        
+        # Combine events and sort by turn number
+        events = []
+        
+        # Add turn events
+        for turn in turn_history:
+            events.append({
+                "type": "turn",
+                "turn": turn.get("turn", 0),
+                "content": f"{turn.get('speaker', 'Unknown').upper()}: {turn.get('statement', '')}\n\n"
+            })
+        
+        # Add moderator notes (excluding intro which was already added)
+        for note in moderator_notes:
+            if note.get("turn", -1) == 0:  # Skip intro
+                continue
+                
+            # Check if it's a topic change
+            if note.get("topic_change", False):
+                prefix = "[TOPIC CHANGE] "
+            else:
+                prefix = ""
+                
+            events.append({
+                "type": "moderator",
+                "turn": note.get("turn", 0),
+                "content": f"{prefix}MODERATOR: {note.get('message', '')}\n\n"
+            })
+        
+        # Add fact checks
+        for fact_check in debate_result.get("fact_checks", []):
+            speaker = fact_check.get("speaker", "Unknown")
+            claims = fact_check.get("claims", [])
+            
+            # Start building the fact check content
+            fact_content = f"[FACT CHECK] Claims by {speaker.upper()}:\n"
+            
+            # Process each claim
+            if claims and isinstance(claims[0], dict):
+                # Old format with individual accuracy per claim
+                for claim in claims:
+                    statement = claim.get("statement", "")
+                    accuracy = claim.get("accuracy", 0)
+                    rating = claim.get("rating", "UNKNOWN")
+                    
+                    fact_content += f"  • \"{statement}\"\n"
+                    fact_content += f"    Rating: {rating} ({int(accuracy * 100)}% accurate)\n"
+            else:
+                # New format with claims as strings and single accuracy
+                for i, claim in enumerate(claims):
+                    fact_content += f"  • Claim {i+1}: \"{claim}\"\n"
+                
+                accuracy = fact_check.get("accuracy", 0)
+                rating = fact_check.get("rating", "UNKNOWN")
+                fact_content += f"  Rating: {rating} ({int(accuracy * 100)}% accurate)\n"
+            
+            fact_content += "\n"
+            
+            # Add to events
+            events.append({
+                "type": "fact_check",
+                "turn": fact_check.get("turn", 0),
+                "content": fact_content
+            })
+        
+        # Sort events by turn number
+        events.sort(key=lambda e: e.get("turn", 0))
+        
+        # Add all events to the output
+        for event in events:
+            output += event.get("content", "")
+        
+        # Add closing
+        output += f"""
+================================================================================
+DEBATE SUMMARY:
+  Topic: {topic}
+  Participants: {participants_str}
+  Turns: {len(turn_history)}
+  Fact Checks: {len(debate_result.get("fact_checks", []))}
+================================================================================
+"""
+        
+        return output
+        
+    except Exception as e:
+        # If anything goes wrong, return a basic formatted string
+        return f"Error formatting debate: {e}\nRaw debate data: {str(debate_result)[:500]}..."
+
+
 def run_command(args):
     """Run a debate session with the given arguments."""
     try:
@@ -290,6 +413,9 @@ def run_command(args):
         # Determine whether to use RAG
         use_rag = args.use_rag if hasattr(args, 'use_rag') else True
         
+        # Determine if interruptions are enabled
+        interruptions_enabled = args.allow_interruptions if hasattr(args, 'allow_interruptions') else False
+        
         # Set up input for debate
         debate_input = DebateInput(
             topic=topic,
@@ -298,7 +424,7 @@ def run_command(args):
                 name=format_name,
                 # Updated to enable fact-checking by default
                 fact_check_enabled=True,
-                interruptions_enabled=args.interruptions
+                interruptions_enabled=interruptions_enabled
             ),
             trace=args.trace,
             use_rag=use_rag
@@ -310,7 +436,7 @@ def run_command(args):
         # Run the debate
         print(f"Starting debate on topic: {topic}")
         print(f"Participants: {', '.join(participants)}")
-        print(f"Format: {format_name} (Interruptions: {'Enabled' if args.interruptions else 'Disabled'}, Fact-checking: {'Enabled' if True else 'Disabled'})")
+        print(f"Format: {format_name} (Interruptions: {'Enabled' if interruptions_enabled else 'Disabled'}, Fact-checking: {'Enabled' if True else 'Disabled'})")
         print("Running debate, please wait...\n")
         
         try:

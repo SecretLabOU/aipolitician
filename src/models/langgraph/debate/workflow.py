@@ -35,10 +35,10 @@ from src.models.langgraph.debate.agents import (
 # Define debate formats
 class DebateFormat(BaseModel):
     """Configuration for the debate format."""
-    format_type: Literal["town_hall", "head_to_head", "panel"] = Field(..., 
+    name: Literal["town_hall", "head_to_head", "panel"] = Field(..., 
                                                          description="Type of debate format")
     time_per_turn: int = Field(default=60, description="Time in seconds allocated per turn")
-    allow_interruptions: bool = Field(default=True, description="Whether interruptions are allowed")
+    interruptions_enabled: bool = Field(default=True, description="Whether interruptions are allowed")
     fact_check_enabled: bool = Field(default=True, description="Whether fact checking is enabled")
     max_rebuttal_length: int = Field(default=250, description="Maximum character length for rebuttals")
     moderator_control: Literal["strict", "moderate", "minimal"] = Field(default="moderate", 
@@ -188,7 +188,7 @@ def initialize_debate(state: DebateState) -> DebateState:
         print("\n🔎 TRACE: Initializing Debate")
         print("=================================")
         print(f"Topic: {state['topic']}")
-        print(f"Format: {state.get('format', {}).get('format_type', 'unknown')}")
+        print(f"Format: {state.get('format', {}).get('name', 'unknown')}")
         print(f"Participants: {', '.join(state.get('participants', []))}")
         print("---------------------------------")
     
@@ -208,9 +208,9 @@ def initialize_debate(state: DebateState) -> DebateState:
     if not result.get("format"):
         print("Warning: Format not found in input state, using default head_to_head format")
         result["format"] = {
-            "format_type": "head_to_head",
+            "name": "head_to_head",
             "time_per_turn": 60,
-            "allow_interruptions": True,
+            "interruptions_enabled": True,
             "fact_check_enabled": True,
             "max_rebuttal_length": 250,
             "moderator_control": "moderate"
@@ -293,7 +293,7 @@ def check_interruption(state: DebateState) -> str:
     separately with should_end).
     """
     # First check for interruption
-    if state.get("interruption_requested", False) and state.get("format", {}).get("allow_interruptions", False):
+    if state.get("interruption_requested", False) and state.get("format", {}).get("interruptions_enabled", False):
         return "interruption"
     
     # Then check if fact checking is needed
@@ -417,15 +417,15 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         print("\n🔎 TRACE: Initializing Debate")
         print("=================================")
         print(f"Topic: {state['topic']}")
-        print(f"Format: {state['format']['format_type']}")
+        print(f"Format: {state['format']['name']}")
         print(f"Participants: {', '.join(state['participants'])}")
         print("---------------------------------")
 
     # Create a moderator introduction
-    moderator_intro = f"Welcome to today's {state['format']['format_type']} debate on the topic of '{state['topic']}'. " \
+    moderator_intro = f"Welcome to today's {state['format']['name']} debate on the topic of '{state['topic']}'. " \
                      f"Participating in this debate are {', '.join(state['participants'])}. " \
                      f"Each speaker will have 60 seconds per turn. " \
-                     f"{'No interruptions will be permitted.' if not state['format']['allow_interruptions'] else 'Interruptions may occur.'} " \
+                     f"{'No interruptions will be permitted.' if not state['format']['interruptions_enabled'] else 'Interruptions may occur.'} " \
                      f"{'Statements will be fact-checked for accuracy.' if state['format']['fact_check_enabled'] else 'Statements will not be fact-checked.'} " \
                      f"Let's begin with {state['participants'][0]}."
     
@@ -473,7 +473,7 @@ def run_simplified_debate(state: DebateState) -> DebateState:
             print("----------------------------")
         
         # Handle subtopic changes every 4 turns (was 3)
-        if turn % 4 == 0 and state['format']['format_type'] in ['head_to_head', 'town_hall']:
+        if turn % 4 == 0 and state['format']['name'] in ['head_to_head', 'town_hall']:
             same_subtopic_turns += 1
             
             if state.get("trace", False):
@@ -608,3 +608,49 @@ DEBATE SUMMARY:
 """
     
     return formatted_debate 
+
+def generate_politician_response(
+    topic: str,
+    politician_name: str,
+    debate_context: str = "",
+    opponent_names: List[str] = None,
+    previous_statements: List[str] = None
+) -> str:
+    """
+    Generate a response from a politician based on their identity and the debate context.
+    This is a simplified version of the response generation for the simplified debate flow.
+    """
+    from src.models.langgraph.agents.response_agent import generate_response
+
+    # Default empty collections if None
+    opponent_names = opponent_names or []
+    previous_statements = previous_statements or []
+    
+    # Build context from previous statements and opponents
+    opponents_text = ", ".join(opponent_names) if opponent_names else "opponents"
+    
+    # Prepare the input state for the response agent
+    input_state = {
+        "user_input": topic,
+        "politician_identity": politician_name,
+        "context": f"""
+Topic: {topic}
+Previous context: {debate_context}
+You are {politician_name} participating in a debate against {opponents_text}.
+Respond to the debate topic and any relevant points raised by your opponents.
+Keep your response concise, authentic to your speaking style, and focused on the topic.
+Use your own policies and perspectives to address the issue.
+""",
+        "should_deflect": False,
+        "max_new_tokens": 1024,
+        "max_length": 1536
+    }
+    
+    # Generate the response
+    try:
+        response = generate_response(input_state)
+        return response
+    except Exception as e:
+        print(f"Error generating response for {politician_name}: {e}")
+        # Provide a fallback response
+        return f"As {politician_name}, I believe this is an important issue that requires thoughtful consideration. We need to work together to address {topic} with sensible policies that benefit all Americans." 
