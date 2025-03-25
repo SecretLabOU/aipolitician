@@ -854,11 +854,13 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
     try:
         from browser_use import Agent, BrowserConfig
         # Import open source model handlers instead of OpenAI
-        from langchain.llms import HuggingFacePipeline, Ollama
+        from langchain_community.llms import HuggingFacePipeline
+        # Import the proper Ollama implementation
+        from langchain_ollama import OllamaLLM
         from langchain_community.llms import HuggingFaceEndpoint
         from langchain_core.language_models.chat_models import BaseChatModel
     except ImportError:
-        logging.error("Required libraries not installed. Install with: pip install browser-use langchain-community")
+        logging.error("Required libraries not installed. Install with: pip install browser-use langchain-community langchain-ollama")
         raise ImportError("Required libraries not installed")
     
     logger = logging.getLogger("fact_checker")
@@ -901,7 +903,8 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
         # Try Ollama first (locally hosted models)
         try:
             model_name = os.environ.get("OLLAMA_MODEL", "llama3")
-            llm = Ollama(model=model_name)
+            # Use the updated OllamaLLM class instead of Ollama
+            llm = OllamaLLM(model=model_name)
             logger.info(f"Using Ollama with model: {model_name}")
         except Exception as e:
             logger.warning(f"Failed to load Ollama model: {str(e)}")

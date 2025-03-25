@@ -19,6 +19,12 @@ Instead of relying on external APIs that require API keys, this implementation u
 pip install -r requirements-browser-fact-checker.txt
 ```
 
+If you're using Ollama, make sure to install the langchain-ollama package:
+
+```bash
+pip install langchain-ollama
+```
+
 2. Install browser dependencies for Playwright (which is used by browser-use):
 
 ```bash
@@ -75,6 +81,15 @@ If browser automation fails for any reason, the system falls back to a basic ana
 - Links to relevant authoritative sources based on topic
 - Provides general fact-checking resources
 
+## LLM Configuration
+
+The system uses different LLM implementations depending on your selected model:
+
+1. **Ollama**: Uses `OllamaLLM` from the `langchain_ollama` package
+2. **HuggingFace**: Uses `HuggingFaceEndpoint` or `HuggingFacePipeline` from the `langchain_community` package
+
+The implementation is in the `_browser_fact_check` function in `src/models/langgraph/debate/agents.py`.
+
 ## Browser Configuration
 
 The system uses the `BrowserConfig` class from browser-use to configure the browser behavior. The current configuration sets the browser to run in headless mode for server environments. This can be customized by modifying the `_browser_fact_check` function in `src/models/langgraph/debate/agents.py`.
@@ -128,4 +143,5 @@ Common issues:
 3. **Slow performance**: Using large language models and browser automation is resource-intensive - this is normal
 4. **Poor quality results**: Try a more capable model - Llama 3, Mixtral, or GPT-4 open equivalents will produce the best results
 5. **Memory issues**: If using local models, try a smaller or quantized model if you run out of memory
-6. **Browser configuration errors**: If you encounter issues with the browser configuration, check the browser-use documentation for the latest API changes: https://docs.browser-use.com/ 
+6. **Browser configuration errors**: If you encounter issues with the browser configuration, check the browser-use documentation for the latest API changes: https://docs.browser-use.com/
+7. **Compatibility errors**: Make sure you're using the correct LangChain packages. For Ollama, use `langchain_ollama.OllamaLLM` instead of the deprecated `langchain.llms.Ollama` 
