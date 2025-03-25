@@ -27,7 +27,8 @@ aipolitician/
 ├── scripts/                # Helper scripts
 │   ├── chat_politician.py  # Clean chat mode
 │   ├── debug_politician.py # Debug mode with analysis info
-│   └── trace_politician.py # Trace mode with detailed output
+│   ├── trace_politician.py # Trace mode with detailed output
+│   └── manage_db.py        # Database management script
 └── src/                    # Core source code
     ├── data/               # Data storage
     │   └── db/             # Database files
@@ -165,7 +166,7 @@ For a detailed view of the entire workflow process:
 You can also use the main script directly with more options:
 
 ```bash
-python langgraph_politician.py cli chat --identity biden [--debug] [--trace] [--no-rag]
+python langgraph_politician.py chat --identity biden [--debug] [--trace] [--no-rag]
 ```
 
 ## Core Components
@@ -278,3 +279,24 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 *Disclaimer: This project is created for educational and research purposes. The AI models attempt to mimic the speaking styles of public figures but do not represent their actual views or statements. Use responsibly.*
+
+## Database Management
+
+The system uses Milvus as a vector database for RAG. Use the database management script to control it:
+
+```bash
+# Start the database (cleans up any conflicting containers first)
+./scripts/manage_db.py start
+
+# Check database status
+./scripts/manage_db.py status
+
+# Load data into the database (first time setup)
+./scripts/manage_db.py load
+
+# Stop the database
+./scripts/manage_db.py stop
+
+# Restart the database
+./scripts/manage_db.py restart
+```
