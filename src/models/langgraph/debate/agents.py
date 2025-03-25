@@ -172,8 +172,48 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
         print(f"Statement length: {len(statement)} chars")
         print("-----------------------------")
     
+    # Count previous fact checks per politician to ensure balance
+    fact_check_counts = {}
+    for check in result.get("fact_checks", []):
+        check_speaker = check.get("speaker", "unknown")
+        fact_check_counts[check_speaker] = fact_check_counts.get(check_speaker, 0) + 1
+    
+    # Get list of all participants
+    all_participants = state.get("participants", [])
+    
+    # Calculate fact check imbalance
+    speaker_count = fact_check_counts.get(speaker, 0)
+    other_checks = sum(fact_check_counts.get(p, 0) for p in all_participants if p != speaker)
+    
+    # Calculate an adjustment probability for fact-checking based on balance
+    # If this speaker has been checked more, reduce probability; if less, increase it
+    base_probability = 0.8  # Base probability of fact-checking
+    if len(all_participants) > 1:
+        # Normalize: how many more/fewer checks has this speaker had
+        check_ratio = (speaker_count / (sum(fact_check_counts.values()) or 1)) 
+        # Adjust probability based on imbalance - less checked speakers more likely to be checked
+        adjustment = 1.0 - check_ratio * 2  # Adjustment factor (-1 to +1)
+        check_probability = min(1.0, max(0.5, base_probability + adjustment * 0.3))
+    else:
+        check_probability = base_probability
+    
+    # Apply the probability adjustment for fact-checking
+    if random.random() > check_probability and speaker_count > 0:
+        # Skip fact-checking with this probability for more balanced coverage
+        return result
+    
     # Extract factual claims for checking
     claims = extract_factual_claims(statement)
+    
+    # If no claims were detected but we've never checked this speaker before,
+    # extract a claim from the statement anyway to ensure initial coverage
+    if not claims and speaker_count == 0 and len(statement) > 20:
+        # Just take first substantial sentence as a claim
+        import re
+        sentences = re.split(r'[.!?]+', statement)
+        substantial_sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+        if substantial_sentences:
+            claims = [substantial_sentences[0]]
     
     if not claims:
         return result
@@ -181,15 +221,39 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     # Check each claim
     checked_claims = []
     for claim in claims:
-        # Perform fact checking (simplified here)
+        # Perform fact checking
         accuracy, corrected_info, sources = check_claim_accuracy(claim)
         
-        checked_claims.append({
+        # Determine the rating label based on accuracy
+        rating_categories = [
+            (0.95, 1.0, "TRUE"),
+            (0.80, 0.95, "MOSTLY TRUE"),
+            (0.60, 0.80, "PARTIALLY TRUE"),
+            (0.40, 0.60, "MIXED"),
+            (0.20, 0.40, "PARTIALLY FALSE"),
+            (0.05, 0.20, "MOSTLY FALSE"),
+            (0.0, 0.05, "FALSE")
+        ]
+        
+        rating_label = "UNKNOWN"
+        for min_val, max_val, label in rating_categories:
+            if min_val <= accuracy < max_val:
+                rating_label = label
+                break
+        
+        claim_result = {
             "statement": claim,
             "accuracy": accuracy,
-            "corrected_info": corrected_info,
-            "sources": sources
-        })
+            "rating": rating_label
+        }
+        
+        if corrected_info:
+            claim_result["corrected_info"] = corrected_info
+            
+        if sources:
+            claim_result["sources"] = sources
+            
+        checked_claims.append(claim_result)
     
     # Add fact check to the list
     result["fact_checks"].append({
@@ -466,38 +530,102 @@ def extract_factual_claims(statement: str) -> List[str]:
     # and selecting sentences that look like they contain facts
     
     import re
+    import random
     
     # Split into sentences
     sentences = re.split(r'[.!?]+', statement)
     
     # Look for sentences that might contain factual claims
     factual_indicators = [
+        # Numbers and statistics
         r'\b\d+\s*%', # Percentages
         r'\bin\s+\d{4}\b', # Years
         r'\b(increased|decreased|rose|fell)\b', # Trends
         r'\b(billion|million|trillion)\b', # Large numbers
-        r'\b(according to|research shows)\b', # Citations
-        r'\b(always|never|all|none)\b', # Absolutes
+        
+        # Citations and references
+        r'\b(according to|research shows|studies show|data shows)\b', # Citations
+        r'\b(report|analysis|study|survey)\b', # Research references
+        
+        # Absolutes and strong claims
+        r'\b(always|never|all|none|every|no one)\b', # Absolutes
+        r'\b(certainly|definitely|absolutely|undoubtedly)\b', # Certainty
+        
+        # Personal assertions presented as facts
+        r'\bI have (always|never)\b', # Personal history claims
+        r'\b(He|She|They) (has|have) (always|never)\b', # Claims about others
+        
+        # Policy positions and promises
+        r'\b(will|won\'t|would|wouldn\'t) (create|destroy|improve|reduce)\b', # Policy effects
+        r'\b(supports|opposes|backed|fought against)\b', # Position statements
+        
+        # Contested claims
+        r'\b(hoax|fake|lie|truth|fact)\b', # Truth claims
+        r'\bthis is (a|an) (fact|lie|truth)\b', # Explicit truth claims
+        
+        # Assertions about opponent
+        r'\b(Biden|Trump|Republicans|Democrats) (want|wants|tried|supported)\b', # Claims about opponent's actions
+        r'\b(my opponent|he) (said|claimed|wants|believes)\b', # References to opponent
+        
+        # Character claims
+        r'\b(corrupt|honest|trustworthy|dishonest|liar)\b', # Character allegations
+        r'\b(threat|dangerous|safe|protect)\b', # Safety/danger claims
+        
+        # Simple factual patterns
+        r'\b(is|are|was|were) (a|an|the) (most|best|worst|only)\b', # Superlative claims
+        r'\b(more|less|better|worse) than\b', # Comparative claims
+        
+        # Generic factual patterns for shorter statements
+        r'\bthis is\b', # Simple assertions
+        r'\bwe (need|must|should|have to)\b', # Necessity claims
+        r'\bthe (American people|country|nation|public)\b', # Appeals to collective
     ]
     
     claims = []
+    seen_patterns = set()  # Track which patterns have been matched
+    
+    # First pass: extract claims based on patterns
     for sentence in sentences:
         sentence = sentence.strip()
         if not sentence:
             continue
             
         # Check if the sentence contains indicators of factual claims
-        is_claim = False
-        for indicator in factual_indicators:
+        matching_patterns = []
+        for i, indicator in enumerate(factual_indicators):
             if re.search(indicator, sentence, re.IGNORECASE):
-                is_claim = True
-                break
+                matching_patterns.append(i)
                 
-        if is_claim:
-            claims.append(sentence)
+        if matching_patterns:
+            claims.append((sentence, matching_patterns))
+            for pattern_idx in matching_patterns:
+                seen_patterns.add(pattern_idx)
+    
+    # If we have very few claims, use a second pass with looser criteria
+    if len(claims) < 2:
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence and len(sentence) > 10:  # Skip empty or very short sentences
+                continue
+                
+            # If this sentence isn't already identified as a claim and is substantial
+            if not any(claim[0] == sentence for claim in claims) and len(sentence) > 15:
+                # For very short statements, treat them as claims with certain probability
+                if len(sentence.split()) <= 10 and random.random() < 0.4:  # 40% chance
+                    claims.append((sentence, [-1]))  # -1 indicates it was selected probabilistically
+    
+    # If still no claims but we have sentences, just pick one substantial sentence
+    if not claims and sentences:
+        substantial_sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+        if substantial_sentences:
+            selected = random.choice(substantial_sentences)
+            claims.append((selected, [-1]))
+    
+    # Extract just the text from the claims
+    claim_texts = [claim[0] for claim in claims]
     
     # Limit to a reasonable number of claims
-    return claims[:3]
+    return claim_texts[:3]
 
 
 def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
@@ -508,33 +636,111 @@ def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
         Tuple of (accuracy score, corrected info if needed, sources)
     """
     # This is a placeholder - would need to be implemented with a real fact-checking system
-    # For this example, we'll return random results
+    # For this example, we'll return somewhat realistic results
     
     import random
     
-    # Simulate accuracy score between 0.3 and 1.0
-    accuracy = round(random.uniform(0.3, 1.0), 2)
-    
-    # If accuracy is low, provide a correction
-    corrected_info = None
-    if accuracy < 0.7:
-        corrected_info = f"The actual facts differ: {claim.replace('increased', 'decreased').replace('decreased', 'increased')}"
-    
-    # Simulate sources
-    possible_sources = [
-        "Congressional Budget Office report (2022)",
-        "Bureau of Labor Statistics data (2023)",
-        "Department of Health study (2021)",
-        "New York Times analysis (2022)",
-        "Wall Street Journal investigation (2023)",
-        "PolitiFact fact check (2023)",
-        "FactCheck.org verification (2022)"
+    # Define rating categories with human-readable labels
+    rating_categories = [
+        (0.95, 1.0, "TRUE"),
+        (0.80, 0.95, "MOSTLY TRUE"),
+        (0.60, 0.80, "PARTIALLY TRUE"),
+        (0.40, 0.60, "MIXED"),
+        (0.20, 0.40, "PARTIALLY FALSE"),
+        (0.05, 0.20, "MOSTLY FALSE"),
+        (0.0, 0.05, "FALSE")
     ]
     
-    # Pick 1-3 random sources
-    num_sources = random.randint(1, 3)
-    sources = random.sample(possible_sources, num_sources)
+    # Determine if the claim contains obvious political trigger words
+    political_words = ['democrat', 'republican', 'liberal', 'conservative', 
+                       'biden', 'trump', 'obama', 'hoax', 'fake', 'corrupt',
+                       'socialist', 'radical', 'election', 'taxes', 'border']
     
+    # Check if claim contains political keywords
+    contains_political = any(word in claim.lower() for word in political_words)
+    
+    # Adjust the distribution based on presence of political keywords
+    if contains_political:
+        # More polarized distribution for political claims
+        base_accuracy = random.choice([
+            random.uniform(0.75, 1.0),  # Higher probability of true
+            random.uniform(0.0, 0.25),  # Higher probability of false
+            random.uniform(0.4, 0.6)    # Some middle ground
+        ])
+    else:
+        # More balanced distribution for non-political claims
+        base_accuracy = random.uniform(0.3, 1.0)
+    
+    # Determine the exact accuracy score
+    accuracy = round(base_accuracy, 2)
+    
+    # Find the appropriate rating category
+    rating_label = "UNKNOWN"
+    for min_val, max_val, label in rating_categories:
+        if min_val <= accuracy < max_val:
+            rating_label = label
+            break
+    
+    # Generate a correction for claims with low accuracy
+    corrected_info = None
+    if accuracy < 0.6:  # For anything rated MIXED or lower
+        # Generate different types of corrections based on the claim
+        if "never" in claim.lower():
+            corrected_info = f"Correction: Contrary to the claim that \"{claim}\", there have been documented instances."
+        elif "always" in claim.lower():
+            corrected_info = f"Correction: The claim that \"{claim}\" overstates the consistency; there are exceptions."
+        elif any(word in claim.lower() for word in ["all", "every", "none"]):
+            corrected_info = f"Correction: The claim uses absolutes that don't reflect the nuanced reality."
+        elif any(word in claim.lower() for word in ["billion", "million", "trillion"]):
+            corrected_info = f"Correction: The figures cited are inaccurate or lack context."
+        else:
+            corrected_info = f"Correction: The claim contains inaccuracies or lacks important context."
+    
+    # Simulate sources - choose relevant sources based on the topic
+    economic_sources = [
+        "Congressional Budget Office report (2022)",
+        "Bureau of Labor Statistics data (2023)",
+        "Federal Reserve economic analysis (2023)",
+        "Treasury Department figures (2022)"
+    ]
+    
+    political_sources = [
+        "PolitiFact fact check (2023)",
+        "FactCheck.org verification (2022)",
+        "Washington Post Fact Checker (2023)",
+        "Snopes investigation (2022)"
+    ]
+    
+    media_sources = [
+        "New York Times analysis (2022)",
+        "Wall Street Journal investigation (2023)",
+        "Reuters fact check (2023)",
+        "Associated Press verification (2022)"
+    ]
+    
+    health_sources = [
+        "Department of Health study (2021)",
+        "CDC report (2023)",
+        "WHO guidelines (2022)",
+        "National Institutes of Health research (2023)"
+    ]
+    
+    # Determine which category of sources to use based on content
+    if any(word in claim.lower() for word in ['economy', 'economic', 'unemployment', 'jobs', 'inflation', 'tax']):
+        source_pool = economic_sources
+    elif any(word in claim.lower() for word in ['health', 'covid', 'vaccine', 'medical', 'doctor', 'hospital']):
+        source_pool = health_sources
+    elif contains_political:
+        source_pool = political_sources
+    else:
+        # Mix sources from different categories
+        source_pool = random.sample(economic_sources, 1) + random.sample(political_sources, 1) + random.sample(media_sources, 1)
+    
+    # Pick 1-3 relevant sources
+    num_sources = random.randint(1, 3)
+    sources = random.sample(source_pool, min(num_sources, len(source_pool)))
+    
+    # Format the result with the human-readable rating
     return accuracy, corrected_info, sources
 
 

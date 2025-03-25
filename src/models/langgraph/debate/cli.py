@@ -100,21 +100,31 @@ def format_fact_check(fact_check: Dict[str, Any]) -> str:
         accuracy = claim["accuracy"]
         statement = claim["statement"]
         
-        # Color-code accuracy
-        if accuracy >= 0.8:
-            accuracy_str = f"MOSTLY TRUE ({accuracy:.2f})"
-        elif accuracy >= 0.6:
-            accuracy_str = f"PARTIALLY TRUE ({accuracy:.2f})"
-        elif accuracy >= 0.4:
-            accuracy_str = f"PARTIALLY FALSE ({accuracy:.2f})"
+        # Use rating directly if available, or determine based on accuracy score
+        if "rating" in claim:
+            rating_label = claim["rating"]
         else:
-            accuracy_str = f"MOSTLY FALSE ({accuracy:.2f})"
+            # Color-code accuracy based on score ranges
+            if accuracy >= 0.95:
+                rating_label = "TRUE"
+            elif accuracy >= 0.80:
+                rating_label = "MOSTLY TRUE"
+            elif accuracy >= 0.60:
+                rating_label = "PARTIALLY TRUE"
+            elif accuracy >= 0.40:
+                rating_label = "MIXED"
+            elif accuracy >= 0.20:
+                rating_label = "PARTIALLY FALSE"
+            elif accuracy >= 0.05:
+                rating_label = "MOSTLY FALSE"
+            else:
+                rating_label = "FALSE"
         
         output += f"  • Claim: \"{statement}\"\n"
-        output += f"    Rating: {accuracy_str}\n"
+        output += f"    Rating: {rating_label} ({accuracy:.2f})\n"
         
         if claim.get("corrected_info"):
-            output += f"    Correction: {claim['corrected_info']}\n"
+            output += f"    {claim['corrected_info']}\n"
         
         if claim.get("sources"):
             output += f"    Sources: {', '.join(claim['sources'])}\n"
