@@ -956,13 +956,13 @@ async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Di
     # Create the browser agent with proper configuration
     try:
         # Create browser config with headless mode
-        browser_config = BrowserConfig(headless=True)
+        browser_context = BrowserConfig(headless=True)
         
-        # Create the agent using the browser config
+        # Create the agent using the browser context
         agent = Agent(
             task=fact_check_task,
             llm=llm,
-            browser_config=browser_config
+            browser_context=browser_context
         )
         
         # Run the agent and get results

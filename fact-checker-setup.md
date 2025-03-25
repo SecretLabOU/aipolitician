@@ -84,10 +84,17 @@ Example configuration:
 from browser_use import BrowserConfig
 
 # Configure the browser to run headless
-browser_config = BrowserConfig(headless=True)
+browser_context = BrowserConfig(headless=True)
+
+# Pass to Agent as browser_context parameter
+agent = Agent(
+    task="Your task here",
+    llm=your_llm,
+    browser_context=browser_context
+)
 
 # Additional options are available, such as:
-# browser_config = BrowserConfig(
+# browser_context = BrowserConfig(
 #     headless=True,
 #     locale="en-US",
 #     highlight_elements=True
