@@ -417,16 +417,34 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         print("\n🔎 TRACE: Initializing Debate")
         print("=================================")
         print(f"Topic: {state['topic']}")
-        print(f"Format: {state['format']['name']}")
-        print(f"Participants: {', '.join(state['participants'])}")
+        print(f"Format: {state.get('format', {}).get('name', 'head_to_head')}")
+        print(f"Participants: {', '.join(state.get('participants', []))}")
         print("---------------------------------")
 
+    # Validate participants
+    if not state.get('participants') or not isinstance(state.get('participants'), list) or '--' in str(state.get('participants')):
+        # Something is wrong with participants, try to fix it
+        raw_participants = str(state.get('participants', 'biden,trump'))
+        if '--' in raw_participants:
+            # Handle case where command flags are merged with participants
+            print(f"WARNING: Detected possible command flag in participants: {raw_participants}")
+            raw_participants = raw_participants.split('--')[0]
+            print(f"Fixed participants: {raw_participants}")
+        
+        # Parse the fixed participants string
+        state['participants'] = [p.strip() for p in raw_participants.split(',') if p.strip()]
+        
+        # Fallback if still empty
+        if not state['participants']:
+            state['participants'] = ["biden", "trump"]
+            print("Using default participants: biden, trump")
+    
     # Create a moderator introduction
-    moderator_intro = f"Welcome to today's {state['format']['name']} debate on the topic of '{state['topic']}'. " \
+    moderator_intro = f"Welcome to today's {state.get('format', {}).get('name', 'head_to_head')} debate on the topic of '{state['topic']}'. " \
                      f"Participating in this debate are {', '.join(state['participants'])}. " \
                      f"Each speaker will have 60 seconds per turn. " \
-                     f"{'No interruptions will be permitted.' if not state['format']['interruptions_enabled'] else 'Interruptions may occur.'} " \
-                     f"{'Statements will be fact-checked for accuracy.' if state['format']['fact_check_enabled'] else 'Statements will not be fact-checked.'} " \
+                     f"{'No interruptions will be permitted.' if not state.get('format', {}).get('interruptions_enabled', False) else 'Interruptions may occur.'} " \
+                     f"{'Statements will be fact-checked for accuracy.' if state.get('format', {}).get('fact_check_enabled', True) else 'Statements will not be fact-checked.'} " \
                      f"Let's begin with {state['participants'][0]}."
     
     debate_output = [
@@ -473,7 +491,7 @@ def run_simplified_debate(state: DebateState) -> DebateState:
             print("----------------------------")
         
         # Handle subtopic changes every 4 turns (was 3)
-        if turn % 4 == 0 and state['format']['name'] in ['head_to_head', 'town_hall']:
+        if turn % 4 == 0 and state.get('format', {}).get('name', 'head_to_head') in ['head_to_head', 'town_hall']:
             same_subtopic_turns += 1
             
             if state.get("trace", False):
@@ -542,7 +560,7 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         state['latest_statement'] = statement
         
         # Check facts if enabled
-        if state['format']['fact_check_enabled']:
+        if state.get('format', {}).get('fact_check_enabled', True):
             if state.get("trace", False):
                 print(f"\n🔎 TRACE: Fact Checker Agent")
                 print("=============================")

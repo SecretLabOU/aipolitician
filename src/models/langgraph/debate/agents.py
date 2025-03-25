@@ -182,27 +182,49 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     This function extracts factual claims from the latest statement,
     fact checks them, and returns the results.
     """
+    import random
+    import logging
+    import time
+    from typing import Dict, List, Tuple
+    
     # Initialize the result dictionary
     result = {
         "fact_checks": state.get("fact_checks", []),
         "latest_fact_check": None,
     }
     
-    # Get the latest statement from the state
-    latest_statement = state.get("latest_statement", "")
-    speaker = state.get("current_speaker", "")
-    timestamp = time.time()
+    # Try multiple ways to get the latest statement
+    latest_statement = None
+    speaker = None
     
-    # Skip if no statement or no speaker
+    # Option 1: Direct latest_statement in state
+    if "latest_statement" in state and state["latest_statement"]:
+        latest_statement = state["latest_statement"]
+        speaker = state.get("current_speaker", "")
+    
+    # Option 2: Get from turn_history
+    elif "turn_history" in state and state["turn_history"]:
+        try:
+            latest_turn = state["turn_history"][-1]
+            latest_statement = latest_turn.get("statement", "")
+            speaker = latest_turn.get("speaker", "")
+        except (IndexError, KeyError, TypeError):
+            pass
+    
+    # Debug info
+    if latest_statement:
+        print(f"🔎 DEBUG: Checking statement by {speaker}, length: {len(str(latest_statement))} chars")
+    else:
+        print(f"🔎 DEBUG: No statement found to check")
+        return result
+    
+    # Ensure we have both statement and speaker
     if not latest_statement or not speaker:
         return result
     
     # Track fact check counts per speaker for balanced coverage
     speaker_fact_checks = state.get("speaker_fact_checks", {})
     speaker_count = speaker_fact_checks.get(speaker, 0)
-    
-    # Always log what we're checking
-    print(f"🔎 DEBUG: Checking statement by {speaker}, length: {len(latest_statement)} chars")
     
     # Extract claims from the statement
     claims = extract_factual_claims(latest_statement)
@@ -216,9 +238,6 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     if not checkable_claims:
         print(f"🔎 DEBUG: No checkable claims found in statement by {speaker}")
         return result
-    
-    # REMOVE PROBABILISTIC SKIPPING - Always perform fact checking when we have claims
-    # Instead of skipping probabilistically, we now guarantee fact checks happen
     
     # Get the accuracy of the claims using a simple language model
     # In a real implementation, this would use a more sophisticated fact checking system
@@ -264,7 +283,7 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     # Store the fact check results
     fact_check_result = {
         "speaker": speaker,
-        "timestamp": timestamp,
+        "timestamp": time.time(),
         "claims": checkable_claims[:2],
         "accuracy": overall_accuracy,
         "rating": rating,
@@ -619,10 +638,27 @@ def identify_rebuttal_targets(state: Dict[str, Any], current_speaker: str) -> Li
     return targets[:2]  # Limit to 2 rebuttal targets
 
 
-def extract_factual_claims(statement: str) -> List[str]:
+def extract_factual_claims(statement):
     """Extract verifiable factual claims from a statement for fact checking."""
     import re
     import random
+    
+    # Ensure statement is a string - add type checking/conversion
+    if not statement:
+        return []
+    
+    # Handle case where statement might be a dictionary or other object
+    if not isinstance(statement, str):
+        # Try to convert if it has a string representation
+        try:
+            if hasattr(statement, 'get') and isinstance(statement.get('statement', ''), str):
+                statement = statement.get('statement', '')
+            else:
+                statement = str(statement)
+        except Exception:
+            # If conversion fails, return empty list
+            print("🔎 DEBUG: Could not convert statement to string")
+            return []
     
     # Split into sentences
     sentences = re.split(r'[.!?]+', statement)

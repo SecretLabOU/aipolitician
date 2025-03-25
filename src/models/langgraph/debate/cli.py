@@ -404,8 +404,21 @@ def run_command(args):
         # Parse topic
         topic = args.topic
         
-        # Parse participants
-        participants = [p.strip() for p in args.participants.split(",")]
+        # Parse participants - enhanced error checking
+        participants_raw = args.participants
+        if '--' in participants_raw:
+            print(f"WARNING: Possible malformed command. Found '--' in participants: '{participants_raw}'")
+            print("Did you mean to add a space before the flag? Example: 'biden,trump' --trace")
+            # Try to fix it by splitting at the first '--'
+            participants_raw = participants_raw.split('--')[0]
+            print(f"Using participants: '{participants_raw}'")
+            
+        participants = [p.strip() for p in participants_raw.split(",") if p.strip()]
+        
+        # Validate we have at least one valid participant
+        if not participants:
+            participants = ["biden", "trump"]
+            print(f"WARNING: No valid participants found in '{args.participants}', using defaults: {participants}")
         
         # Parse format
         format_name = args.format.lower() if args.format else "head_to_head"
