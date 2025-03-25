@@ -84,6 +84,7 @@ def trace_response_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     
     if state.get("trace", False):
         print(f"✅ CHECKPOINT: Response Generated ({len(result['response'])} chars)")
+        print("\n📝 Generated response will be displayed below after all processing completes.\n")
     
     return result
 

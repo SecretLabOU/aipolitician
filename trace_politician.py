@@ -27,6 +27,8 @@ def main():
     print("\n🔍 Starting AI Politician with trace mode enabled")
     print("=" * 50)
     print("This will show the detailed workflow execution path")
+    print("Checkpoint information will be displayed as the system processes your input")
+    print("The politician's final response will appear after all checkpoints complete")
     print("=" * 50, "\n")
     
     # Execute the command

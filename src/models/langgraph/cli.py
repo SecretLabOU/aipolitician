@@ -77,13 +77,22 @@ def chat_loop(politician_identity: str, use_rag: bool = True, debug: bool = Fals
                 trace=trace
             )
             
-            print(f"\n{politician_identity.title()}: ", end="", flush=True)
+            # Only print the politician prefix if we're not in trace mode
+            # (trace mode will include detailed checkpoints before the response)
+            if not trace:
+                print(f"\n{politician_identity.title()}: ", end="", flush=True)
             
             # Process through the graph
             result = process_user_input(input_data)
             
-            # Print the response
-            print(result.response)
+            # Print the response - ensure it's clearly visible after any trace information
+            if trace:
+                print(f"\n{politician_identity.title()}'s Response:")
+                print("---------------------")
+                print(result.response)
+                print("---------------------")
+            else:
+                print(result.response)
             
             # If debug mode is enabled, print additional information
             if debug:
