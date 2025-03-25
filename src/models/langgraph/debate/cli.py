@@ -136,18 +136,38 @@ def display_debate(debate_result: Dict[str, Any]):
     
     # Collect all events (turns, moderator notes, fact checks)
     events = []
+    seen_statements = set()  # Track statements to avoid duplicates
+    seen_topic_changes = set()  # Track topic changes to avoid duplicates
     
-    # Add turns to events
+    # Add turns to events - avoid duplicates
     for turn in debate_result["turn_history"]:
-        events.append({
-            "type": "turn",
-            "turn": turn["turn"],
-            "data": turn,
-            "timestamp": turn.get("timestamp", "")
-        })
+        # Create a simplified version of the statement for duplicate detection
+        statement_key = f"{turn['speaker']}:{turn['statement'][:50]}"
+        
+        # Only add if we haven't seen this statement before
+        if statement_key not in seen_statements:
+            events.append({
+                "type": "turn",
+                "turn": turn["turn"],
+                "data": turn,
+                "timestamp": turn.get("timestamp", "")
+            })
+            seen_statements.add(statement_key)
     
-    # Add moderator notes to events
+    # Add moderator notes to events - avoid repeated topic changes
     for note in debate_result.get("moderator_notes", []):
+        # Check for topic change notes to avoid duplicates
+        if "topic_change" in note and note.get("topic_change", False):
+            topic_key = note.get("new_topic", "")
+            
+            # Skip if we've already seen this topic change
+            if topic_key and topic_key in seen_topic_changes:
+                continue
+                
+            if topic_key:
+                seen_topic_changes.add(topic_key)
+        
+        # Include this note
         events.append({
             "type": "moderator",
             "turn": note["turn"],
@@ -167,14 +187,39 @@ def display_debate(debate_result: Dict[str, Any]):
     # Sort events by turn number and timestamp
     events.sort(key=lambda e: (e["turn"], e["timestamp"]))
     
-    # Display events in order
+    # Keep track of last speaker for better formatting
+    last_speaker = None
+    
+    # Display events in logical order
     for event in events:
+        # Skip empty turns or duplicate content
+        if event["type"] == "turn" and not event["data"].get("statement"):
+            continue
+            
+        # For turns, track the speaker to avoid showing "Your time is up" right after a speaker
+        # just started (which can happen with moderator notes out of order)
+        if event["type"] == "turn":
+            last_speaker = event["data"]["speaker"]
+        
+        # For moderator notes, check if it's a transition to the same speaker who just talked
+        if (event["type"] == "moderator" and 
+            "Your time is up" in event["data"].get("message", "") and 
+            last_speaker == event["data"].get("next_speaker")):
+            continue
+        
+        # Display the event
         if event["type"] == "turn":
             print(format_statement(event["data"]))
         elif event["type"] == "moderator":
             print(format_moderator_note(event["data"]))
         elif event["type"] == "fact_check":
             print(format_fact_check(event["data"]))
+    
+    # Calculate subtopics covered
+    subtopics = set()
+    for turn in debate_result["turn_history"]:
+        if "subtopic" in turn and turn["subtopic"]:
+            subtopics.add(turn["subtopic"])
     
     # Print summary
     print(f"\n{'='*80}")
@@ -183,7 +228,13 @@ def display_debate(debate_result: Dict[str, Any]):
     print(f"  Participants: {participants}")
     print(f"  Turns: {len(debate_result['turn_history'])}")
     print(f"  Fact Checks: {len(debate_result.get('fact_checks', []))}")
-    print(f"  Subtopics Covered: {', '.join(debate_result.get('subtopics_covered', []))}")
+    
+    # Format subtopics nicely
+    if subtopics:
+        print(f"  Subtopics Covered: {', '.join(sorted(subtopics))}")
+    else:
+        print(f"  Subtopics Covered: Main topic only")
+    
     print(f"{'='*80}\n")
 
 

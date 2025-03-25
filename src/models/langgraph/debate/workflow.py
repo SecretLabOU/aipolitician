@@ -24,7 +24,10 @@ from src.models.langgraph.debate.agents import (
     politician_turn,
     fact_check,
     handle_interruption,
-    manage_topic
+    manage_topic,
+    generate_introduction,
+    generate_transition,
+    generate_subtopics
 )
 
 
@@ -481,6 +484,9 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         print("Initializing debate state...")
         result = initialize_debate(state)
         
+        # Clear any existing moderator_notes to avoid duplication
+        result["moderator_notes"] = []
+        
         # Log initial state
         print(f"Initial participants: {result['participants']}")
         print(f"Initial speaker: {result['current_speaker']}")
@@ -490,9 +496,18 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         max_turns = 6
         current_turn = 0
         
-        # Initialize with moderator
+        # Initialize with moderator introduction
         print("Running moderator introduction...")
-        result = moderate_debate(result)
+        introduction = generate_introduction(result)
+        result["moderator_notes"].append({
+            "turn": 0,
+            "message": introduction,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Reset subtopics to avoid excessive changes
+        subtopics = generate_subtopics(result["topic"], result["current_subtopic"])
+        current_subtopic_index = 0
         
         while current_turn < max_turns:
             try:
@@ -502,6 +517,7 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 
                 # Politician's turn
                 print(f"Running {result['current_speaker']}'s turn...")
+                previous_speaker = result["current_speaker"]
                 result = politician_turn(result)
                 current_turn += 1
                 
@@ -521,23 +537,51 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                     print(f"Handling interruption by {result.get('interrupt_by', 'unknown')}...")
                     result = handle_interruption(result)
                 
-                # Topic management (every 2 turns)
-                if current_turn % 2 == 0 and current_turn > 0:
+                # Topic management (only change every 2 turns and limit to available subtopics)
+                if current_turn % 2 == 0 and current_turn > 0 and len(subtopics) > 1:
                     print("Managing debate topics...")
-                    current_subtopic = result.get("current_subtopic", result["topic"])
-                    print(f"Current subtopic: {current_subtopic}")
-                    result = manage_topic(result)
                     
-                    # Check if topic changed
-                    new_subtopic = result.get("current_subtopic", result["topic"])
-                    if new_subtopic != current_subtopic:
+                    # Only change topic every other time to avoid excessive changes
+                    if current_turn % 4 == 0:
+                        # Move to next subtopic
+                        current_subtopic_index = (current_subtopic_index + 1) % len(subtopics)
+                        new_subtopic = subtopics[current_subtopic_index]
+                        
+                        # Update the current subtopic
+                        result["current_subtopic"] = new_subtopic
+                        
+                        # Add moderator note about topic change
                         print(f"Topic changed to: {new_subtopic}")
+                        result["moderator_notes"].append({
+                            "turn": len(result["turn_history"]),
+                            "message": f"Let's move on to discuss {new_subtopic}.",
+                            "timestamp": datetime.now().isoformat(),
+                            "topic_change": True,
+                            "old_topic": result["topic"],
+                            "new_topic": new_subtopic
+                        })
                 
-                # Moderator transition
-                print("Running moderator transition...")
-                result = moderate_debate(result)
+                # Generate moderator transition to next speaker (only if not the last turn)
+                if current_turn < max_turns:
+                    print("Running moderator transition...")
+                    
+                    # Rotate speaking queue
+                    next_speaker = result["speaking_queue"].pop(0) if result["speaking_queue"] else result["participants"][0]
+                    # Add current speaker to end of queue
+                    result["speaking_queue"].append(result["current_speaker"])
+                    # Update current speaker
+                    result["current_speaker"] = next_speaker
+                    
+                    # Generate and add the transition
+                    transition = generate_transition(result, next_speaker)
+                    result["moderator_notes"].append({
+                        "turn": len(result["turn_history"]),
+                        "message": transition,
+                        "timestamp": datetime.now().isoformat(),
+                        "next_speaker": next_speaker
+                    })
                 
-                # Check if we've reached max turns for this fallback approach
+                # Check if we've reached max turns
                 if current_turn >= max_turns:
                     print(f"Reached maximum turns ({max_turns}), ending debate")
                     break
@@ -554,7 +598,8 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         result["moderator_notes"].append({
             "turn": len(result["turn_history"]),
             "message": f"This concludes our debate on {result['topic']}. Thank you to our participants for sharing their perspectives.",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "is_closing": True
         })
         
         # Summary stats
