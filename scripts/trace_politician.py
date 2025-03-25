@@ -26,7 +26,7 @@ def main():
     
     # Build the command to run the system with trace mode
     script_path = os.path.join(root_dir, "langgraph_politician.py")
-    command = f"python {script_path} cli chat --identity {args.identity} --trace"
+    command = f"python {script_path} chat --identity {args.identity} --trace"
     if args.no_rag:
         command += " --no-rag"
     

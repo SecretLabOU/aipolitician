@@ -180,5 +180,9 @@ def main():
     else:
         parser.print_help()
 
+def run_cli():
+    """Run the CLI directly (for use in imported contexts)."""
+    main()
+
 if __name__ == "__main__":
     main() 

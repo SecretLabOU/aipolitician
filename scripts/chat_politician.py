@@ -26,7 +26,7 @@ def main():
     
     # Build the command to run the system in clean chat mode
     script_path = os.path.join(root_dir, "langgraph_politician.py")
-    command = f"python {script_path} cli chat --identity {args.identity}"
+    command = f"python {script_path} chat --identity {args.identity}"
     if args.no_rag:
         command += " --no-rag"
     
