@@ -572,7 +572,8 @@ def generate_politician_debate_response(
         "user_input": topic,
         "politician_identity": identity,
         "context": context,
-        "should_deflect": False
+        "should_deflect": False,
+        "max_new_tokens": 800  # Add max_new_tokens to avoid length errors
     }
     
     response = generate_response(input_state)
@@ -614,10 +615,6 @@ def identify_rebuttal_targets(state: Dict[str, Any], current_speaker: str) -> Li
 
 def extract_factual_claims(statement: str) -> List[str]:
     """Extract factual claims from a statement for fact checking."""
-    # This is a simplification - in a real system, this would use NLP to identify claims
-    # For this example, we'll use a simple approach of splitting into sentences
-    # and selecting sentences that look like they contain facts
-    
     import re
     import random
     
@@ -625,27 +622,51 @@ def extract_factual_claims(statement: str) -> List[str]:
     sentences = re.split(r'[.!?]+', statement)
     
     # Look for sentences that might contain factual claims
-    # Reduced list to focus on stronger factual indicators
+    # Focus only on strong factual indicators that indicate verifiable facts
     factual_indicators = [
-        # Numbers and statistics
+        # Numbers and statistics (high confidence indicators)
         r'\b\d+\s*%', # Percentages
         r'\bin\s+\d{4}\b', # Years
         r'\b(billion|million|trillion)\b', # Large numbers
+        r'\b\$\d+', # Dollar amounts
         
-        # Citations and references
-        r'\b(according to|research shows|studies show|data shows)\b', # Citations
+        # Data references (high confidence indicators)
+        r'\b(according to|research shows|studies show|data shows|report shows)\b', # Citations
+        r'\b(statistics|figures|data indicates|records show)\b',
         
-        # Absolutes and strong claims
-        r'\b(always|never|all|none|every|no one)\b', # Absolutes
+        # Specific historical claims (medium confidence)
+        r'\bin (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b', # Dates
+        r'\bduring (my|his|her|their) (administration|presidency|term)\b',
         
-        # Contested claims
-        r'\b(hoax|fake|lie|truth|fact)\b', # Truth claims
+        # Strong comparative facts with data
+        r'\b(increased|decreased|rose|fell) by \d+', # Trends with numbers
+        r'\b(more|less|higher|lower) than \d+\b', # Comparatives with numbers
         
-        # Assertions about opponent with specifics
-        r'\b(Biden|Trump|Republicans|Democrats) (want|wants|tried|supported) to\b', # Specific claims about opponent's actions
+        # Clear factual attribution
+        r'\b(has|have) (said|stated|claimed|asserted|voted) that\b', # Attributions
+    ]
+    
+    # Opinion indicators to filter out (these suggest the sentence is opinion, not fact)
+    opinion_indicators = [
+        # Clear opinion markers
+        r'\b(I think|I believe|in my view|in my opinion|I feel|I suggest)\b',
+        r'\b(should|must|need to|ought to|have to)\b', # Prescriptive language
+        r'\b(great|terrible|bad|good|best|worst|tremendous|huge|amazing)\b', # Subjective evaluations
         
-        # Simple factual patterns only for clear statistical claims
-        r'\b(more|less|better|worse) than \d+\b', # Comparative claims with numbers
+        # Value judgments
+        r'\b(beautiful|ugly|wonderful|horrible|fantastic|awful)\b',
+        r'\b(right|wrong|moral|immoral|ethical|unethical)\b',
+        
+        # Vague claims
+        r'\b(many people|some people|everyone knows|people are saying)\b',
+        r'\b(we need|we want|we should|we must|we have to)\b',
+        
+        # Political rhetoric
+        r'\b(make America great again|build back better|America first)\b',
+        r'\b(socialist|communist|radical|extremist|patriotic)\b',
+        
+        # Future hypotheticals (not verifiable)
+        r'\b(will be|would be|could be|might be|going to be)\b',
     ]
     
     claims = []
@@ -657,8 +678,18 @@ def extract_factual_claims(statement: str) -> List[str]:
         if not sentence:
             continue
             
-        # Skip very short sentences and obvious opinions
-        if len(sentence) < 20 or sentence.lower().startswith(("i think", "i believe", "in my opinion")):
+        # Skip very short sentences - unlikely to be substantial claims
+        if len(sentence) < 25:
+            continue
+            
+        # Check if clearly an opinion - if so, skip
+        is_opinion = False
+        for opinion_pattern in opinion_indicators:
+            if re.search(opinion_pattern, sentence, re.IGNORECASE):
+                is_opinion = True
+                break
+                
+        if is_opinion:
             continue
             
         # Check if the sentence contains indicators of factual claims
@@ -672,30 +703,7 @@ def extract_factual_claims(statement: str) -> List[str]:
             for pattern_idx in matching_patterns:
                 seen_patterns.add(pattern_idx)
     
-    # If we have very few claims, use a second pass with looser criteria - but with low probability
-    if len(claims) < 1 and random.random() < 0.3:  # Only 30% chance to add extra claims
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence or len(sentence) < 25:  # Skip empty or short sentences
-                continue
-                
-            # If this sentence isn't already identified as a claim and is substantial
-            if not any(claim[0] == sentence for claim in claims) and len(sentence) > 30:
-                # Only include if it has indicators of being factual (like numbers or specific references)
-                if re.search(r'\b\d+\b', sentence) or re.search(r'\b(report|data|study|analysis)\b', sentence, re.IGNORECASE):
-                    claims.append((sentence, [-1]))
-    
-    # If still no claims but we have sentences and it's the first time checking this speaker,
-    # 50% chance to skip fact checking entirely
-    if not claims and sentences and random.random() < 0.5:
-        return []
-    
-    # If still no claims but we have sentences, just pick one substantial sentence
-    if not claims and sentences:
-        substantial_sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
-        if substantial_sentences and random.random() < 0.4:  # 40% chance to use one
-            selected = random.choice(substantial_sentences)
-            claims.append((selected, [-1]))
+    # Only add very clear factual claims - no "second pass" with looser criteria
     
     # Extract just the text from the claims
     claim_texts = [claim[0] for claim in claims]
@@ -1025,7 +1033,12 @@ def generate_response(state: Dict[str, Any]) -> str:
     try:
         # Import here to avoid circular imports and recursion
         from src.models.langgraph.agents.response_agent import generate_response as gen_resp
-        response_data = gen_resp(state)
+        
+        # Add max_new_tokens parameter to avoid token length errors
+        input_state = state.copy()
+        input_state["max_new_tokens"] = 800  # Increase max tokens 
+        
+        response_data = gen_resp(input_state)
         if isinstance(response_data, dict):
             return response_data.get("response", "I don't have a specific response to that issue.")
         else:
