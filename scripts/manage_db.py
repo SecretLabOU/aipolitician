@@ -119,7 +119,9 @@ def restart_database():
 def load_data():
     """Load data into the Milvus database."""
     print("Loading data into Milvus...")
-    load_script = milvus_dir / "load_data.py"
+    
+    # Use the new load_milvus_data.py script
+    load_script = Path(__file__).parent / "load_milvus_data.py"
     
     if not load_script.exists():
         print(f"❌ Load script not found at {load_script}")
@@ -128,7 +130,7 @@ def load_data():
     # Make sure load script is executable
     run_command(f"chmod +x {load_script}")
     
-    success, output = run_command(f"python {load_script}", cwd=str(milvus_dir))
+    success, output = run_command(f"python {load_script}", cwd=str(root_dir))
     
     if success:
         print(output)
