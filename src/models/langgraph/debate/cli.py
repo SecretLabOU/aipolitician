@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Dict, Any, List
 import time
 from datetime import datetime
+import os
+import traceback
 
 # Add the project root to the Python path
 root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
@@ -21,7 +23,8 @@ sys.path.insert(0, str(root_dir))
 from src.models.langgraph.debate.workflow import (
     DebateInput, 
     DebateFormat, 
-    run_debate
+    run_debate,
+    run_simplified_debate
 )
 
 
@@ -268,71 +271,110 @@ def display_debate(debate_result: Dict[str, Any]):
     print(f"{'='*80}\n")
 
 
-def run_debate_command(args):
-    """Run a debate based on command line arguments."""
-    # Parse participants list
-    participants = [p.strip() for p in args.participants.split(",")]
-    
-    # Create debate format configuration
-    format_config = DebateFormat(
-        format_type=args.format,
-        time_per_turn=args.time_per_turn,
-        allow_interruptions=args.allow_interruptions,
-        fact_check_enabled=args.fact_check,
-        max_rebuttal_length=250,  # Default value
-        moderator_control=args.moderator_control
-    )
-    
-    # Create input configuration
-    input_config = DebateInput(
-        topic=args.topic,
-        format=format_config,
-        participants=participants,
-        use_rag=not args.no_rag,
-        trace=args.trace
-    )
-    
-    # Only show essential information
-    print(f"Starting debate on topic: {args.topic}")
-    print(f"Participants: {', '.join(participants)}")
-    print(f"Format: {args.format} (Interruptions: {'Enabled' if args.allow_interruptions else 'Disabled'}, "
-          f"Fact-checking: {'Enabled' if args.fact_check else 'Disabled'})")
-    print("Running debate, please wait...\n")
-    
-    # Set up logging to minimize output
-    import logging
-    # Silence most loggers except critical errors
-    for logger_name in ['transformers', 'hf_transfer', 'langgraph', 'peft', 'accelerate']:
-        logging.getLogger(logger_name).setLevel(logging.ERROR)
-    
-    # Suppress warnings about PEFT config
-    import warnings
-    warnings.filterwarnings('ignore', category=UserWarning, module='peft')
-    
-    # Run the debate with timing
-    start_time = time.time()
-    result = run_debate(input_config)
-    end_time = time.time()
-    
-    # Display debate results 
-    display_debate(result)
-    
-    # Show simple timing information
-    print(f"Debate completed in {end_time - start_time:.2f} seconds.")
-    
-    # Save to output file if specified
-    if args.output:
-        with open(args.output, 'w') as f:
-            # Add metadata
-            result["metadata"] = {
-                "generated_at": datetime.now().isoformat(),
-                "topic": args.topic,
-                "format": args.format,
-                "participants": participants,
-                "duration_seconds": end_time - start_time
-            }
-            json.dump(result, f, indent=2)
-        print(f"Debate transcript saved to {args.output}")
+def run_command(args):
+    """Run a debate session with the given arguments."""
+    try:
+        # If trace is enabled, set it in the environment
+        if args.trace:
+            os.environ["DEBATE_TRACE"] = "1"
+            
+        # Parse topic
+        topic = args.topic
+        
+        # Parse participants
+        participants = [p.strip() for p in args.participants.split(",")]
+        
+        # Parse format
+        format_name = args.format.lower() if args.format else "head_to_head"
+        
+        # Determine whether to use RAG
+        use_rag = args.use_rag if hasattr(args, 'use_rag') else True
+        
+        # Set up input for debate
+        debate_input = DebateInput(
+            topic=topic,
+            participants=participants,
+            format=DebateFormat(
+                name=format_name,
+                # Updated to enable fact-checking by default
+                fact_check_enabled=True,
+                interruptions_enabled=args.interruptions
+            ),
+            trace=args.trace,
+            use_rag=use_rag
+        )
+        
+        # Measure execution time
+        start_time = time.time()
+        
+        # Run the debate
+        print(f"Starting debate on topic: {topic}")
+        print(f"Participants: {', '.join(participants)}")
+        print(f"Format: {format_name} (Interruptions: {'Enabled' if args.interruptions else 'Disabled'}, Fact-checking: {'Enabled' if True else 'Disabled'})")
+        print("Running debate, please wait...\n")
+        
+        try:
+            # Try the main LangGraph workflow first
+            result = run_debate(debate_input)
+        except Exception as e:
+            # If it fails, fall back to simplified debate
+            print(f"\nEncountered an error with the LangGraph workflow: {e}")
+            print("Running simplified debate mode...\n")
+            result = run_simplified_debate(debate_input.model_dump())
+        
+        # End time measurement
+        elapsed_time = time.time() - start_time
+        
+        # Print the result
+        if isinstance(result, str):
+            # If the result is already a formatted string (from simplified_debate)
+            print(result)
+        else:
+            # Try to format the debate from the state object
+            formatted_debate = format_debate_output(result)
+            print(formatted_debate)
+            
+            # Display fact check summary at the end if any fact checks were performed
+            fact_checks = result.get("fact_checks", [])
+            if fact_checks:
+                print("\n================================================================================")
+                print(f"FACT CHECK SUMMARY: {len(fact_checks)} claims verified")
+                print("================================================================================")
+                
+                for i, check in enumerate(fact_checks):
+                    speaker = check.get("speaker", "Unknown")
+                    claims = check.get("claims", [])
+                    
+                    if isinstance(claims, list) and claims:
+                        print(f"\nFact Check #{i+1} - Speaker: {speaker}")
+                        
+                        if isinstance(claims[0], dict):
+                            # Old format with multiple claim dictionaries
+                            for j, claim_data in enumerate(claims):
+                                statement = claim_data.get("statement", "Unknown claim")
+                                accuracy = claim_data.get("accuracy", 0)
+                                rating = claim_data.get("rating", "UNKNOWN")
+                                
+                                print(f"  Claim: \"{statement}\"")
+                                print(f"  Rating: {rating} ({int(accuracy * 100)}% accurate)")
+                                print("")
+                        else:
+                            # New format with claims as strings and a single accuracy/rating
+                            for j, claim in enumerate(claims):
+                                print(f"  Claim {j+1}: \"{claim}\"")
+                            
+                            accuracy = check.get("accuracy", 0)
+                            rating = check.get("rating", "UNKNOWN")
+                            print(f"  Rating: {rating} ({int(accuracy * 100)}% accurate)")
+                            print("")
+                
+                print("================================================================================")
+                
+        print(f"Debate completed in {elapsed_time:.2f} seconds.")
+        
+    except Exception as e:
+        print(f"Error running debate: {e}")
+        traceback.print_exc()
 
 
 def visualize_command():
@@ -385,7 +427,7 @@ def main():
     args = parse_args()
     
     if args.command == "run":
-        run_debate_command(args)
+        run_command(args)
     elif args.command == "visualize":
         visualize_command()
     elif args.command == "config":
