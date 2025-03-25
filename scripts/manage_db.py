@@ -44,32 +44,50 @@ def check_status():
         return False
 
 def start_database():
-    """Start the Milvus database."""
+    """Start the Milvus database using setup.sh."""
     print("Starting Milvus database...")
     
-    # First clean up any conflicting containers
-    success, output = run_command("docker ps -a | grep milvus", cwd=str(milvus_dir))
-    if success and output.strip():
-        print("Found existing Milvus containers, cleaning up...")
-        run_command("docker rm -f $(docker ps -a | grep milvus | awk '{print $1}')")
+    # Run the setup script
+    setup_script = milvus_dir / "setup.sh"
+    if not setup_script.exists():
+        print(f"❌ Setup script not found at {setup_script}")
+        return False
     
-    # Try to start with docker compose
-    success, output = run_command("docker compose up -d", cwd=str(milvus_dir))
+    # Make sure setup script is executable
+    run_command(f"chmod +x {setup_script}")
+    
+    # Run the setup script
+    success, output = run_command(f"bash {setup_script}", cwd=str(milvus_dir))
     
     if success:
+        print(output)
         print("✅ Milvus database started successfully")
         return True
     else:
-        print(f"Failed to start with 'docker compose': {output}")
-        print("Trying with docker-compose...")
-        success, output = run_command("docker-compose up -d", cwd=str(milvus_dir))
+        print(f"❌ Failed to start Milvus: {output}")
         
+        # Try manual cleanup and restart
+        print("Attempting manual cleanup and restart...")
+        run_command("docker rm -f $(docker ps -a | grep milvus | awk '{print $1}')")
+        
+        # Try to create network if it doesn't exist
+        run_command("docker network create milvus")
+        
+        # Try docker compose
+        success, output = run_command("docker compose up -d", cwd=str(milvus_dir))
         if success:
             print("✅ Milvus database started successfully")
             return True
         else:
-            print(f"❌ Failed to start Milvus: {output}")
-            return False
+            print(f"❌ Failed to start Milvus with docker compose: {output}")
+            
+            # Try docker-compose
+            success, output = run_command("docker-compose up -d", cwd=str(milvus_dir))
+            if success:
+                print("✅ Milvus database started successfully")
+                return True
+        
+        return False
 
 def stop_database():
     """Stop the Milvus database."""
@@ -107,9 +125,13 @@ def load_data():
         print(f"❌ Load script not found at {load_script}")
         return False
     
+    # Make sure load script is executable
+    run_command(f"chmod +x {load_script}")
+    
     success, output = run_command(f"python {load_script}", cwd=str(milvus_dir))
     
     if success:
+        print(output)
         print("✅ Data loaded successfully")
         return True
     else:
