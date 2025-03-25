@@ -216,7 +216,7 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Calculate an adjustment probability for fact-checking based on balance
     # If this speaker has been checked more, reduce probability; if less, increase it
-    base_probability = 0.5  # Reduced base probability of fact-checking from 0.8 to 0.5
+    base_probability = 0.5  # Base probability of fact-checking
     if len(all_participants) > 1:
         # Normalize: how many more/fewer checks has this speaker had
         check_ratio = (speaker_count / (sum(fact_check_counts.values()) or 1)) 
@@ -234,22 +234,20 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
     # Extract factual claims for checking
     claims = extract_factual_claims(statement)
     
-    # If no claims were detected but we've never checked this speaker before,
-    # extract a claim from the statement anyway to ensure initial coverage
-    if not claims and speaker_count == 0 and len(statement) > 20:
-        # Just take first substantial sentence as a claim
-        import re
-        sentences = re.split(r'[.!?]+', statement)
-        substantial_sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
-        if substantial_sentences:
-            claims = [substantial_sentences[0]]
-    
+    # If no claims were detected, no fact checking needed
     if not claims:
         return result
     
-    # Check each claim - limit to at most 2 claims per statement 
+    # Filter claims to ensure they are actually verifiable
+    verifiable_claims = [claim for claim in claims if verify_fact_is_checkable(claim)]
+    
+    # If no verifiable claims after filtering, skip fact checking
+    if not verifiable_claims:
+        return result
+    
+    # Check each claim
     checked_claims = []
-    for claim in claims[:2]:  # Limit to 2 claims max per statement
+    for claim in verifiable_claims:
         # Perform fact checking
         accuracy, corrected_info, sources = check_claim_accuracy(claim)
         
@@ -284,13 +282,14 @@ def fact_check(state: Dict[str, Any]) -> Dict[str, Any]:
             
         checked_claims.append(claim_result)
     
-    # Add fact check to the list
-    result["fact_checks"].append({
-        "turn": len(state["turn_history"]) - 1,
-        "speaker": speaker,
-        "claims": checked_claims,
-        "timestamp": datetime.now().isoformat()
-    })
+    # Only add fact check if we have verifiable claims
+    if checked_claims:
+        result["fact_checks"].append({
+            "turn": len(state["turn_history"]) - 1,
+            "speaker": speaker,
+            "claims": checked_claims,
+            "timestamp": datetime.now().isoformat()
+        })
     
     return result
 
@@ -614,102 +613,125 @@ def identify_rebuttal_targets(state: Dict[str, Any], current_speaker: str) -> Li
 
 
 def extract_factual_claims(statement: str) -> List[str]:
-    """Extract factual claims from a statement for fact checking."""
+    """Extract verifiable factual claims from a statement for fact checking."""
     import re
     import random
     
     # Split into sentences
     sentences = re.split(r'[.!?]+', statement)
     
-    # Look for sentences that might contain factual claims
-    # Focus only on strong factual indicators that indicate verifiable facts
-    factual_indicators = [
-        # Numbers and statistics (high confidence indicators)
-        r'\b\d+\s*%', # Percentages
-        r'\bin\s+\d{4}\b', # Years
-        r'\b(billion|million|trillion)\b', # Large numbers
-        r'\b\$\d+', # Dollar amounts
+    # STRICT FACTUAL PATTERNS - focusing only on highly verifiable claims
+    verifiable_patterns = [
+        # Specific numerical statistics (must have numbers)
+        (r'\b\d+(\.\d+)?\s*%', "percentage"),
+        (r'\$\d+(\.\d+)?([ -]?(million|billion|trillion))?', "dollar_amount"),
+        (r'\b\d+(\.\d+)?[ -]?(million|billion|trillion)', "large_number"),
         
-        # Data references (high confidence indicators)
-        r'\b(according to|research shows|studies show|data shows|report shows)\b', # Citations
-        r'\b(statistics|figures|data indicates|records show)\b',
+        # Concrete dates and time periods (must be specific)
+        (r'in (January|February|March|April|May|June|July|August|September|October|November|December)( \d{1,2})?,? \d{4}', "specific_date"),
+        (r'(from|between) \d{4} (to|and) \d{4}', "date_range"),
         
-        # Specific historical claims (medium confidence)
-        r'\bin (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b', # Dates
-        r'\bduring (my|his|her|their) (administration|presidency|term)\b',
+        # Specific voting records and legislative actions
+        (r'voted (for|against|on) (the |a )?(bill|legislation|measure|act|amendment|resolution)', "voting_record"),
+        (r'(supported|opposed|co-sponsored|authored|introduced) (the |a )?(bill|legislation|measure|act|amendment|resolution)', "legislative_action"),
         
-        # Strong comparative facts with data
-        r'\b(increased|decreased|rose|fell) by \d+', # Trends with numbers
-        r'\b(more|less|higher|lower) than \d+\b', # Comparatives with numbers
+        # Specific policy implementation claims
+        (r'(implemented|created|established|launched|started) (the |a )?(program|policy|initiative|tax|tariff)', "policy_implementation"),
+        (r'(signed|vetoed) (the |a )?(bill|executive order|legislation|treaty|agreement)', "executive_action"),
         
-        # Clear factual attribution
-        r'\b(has|have) (said|stated|claimed|asserted|voted) that\b', # Attributions
-    ]
-    
-    # Opinion indicators to filter out (these suggest the sentence is opinion, not fact)
-    opinion_indicators = [
-        # Clear opinion markers
-        r'\b(I think|I believe|in my view|in my opinion|I feel|I suggest)\b',
-        r'\b(should|must|need to|ought to|have to)\b', # Prescriptive language
-        r'\b(great|terrible|bad|good|best|worst|tremendous|huge|amazing)\b', # Subjective evaluations
+        # Quantifiable changes with specific numbers
+        (r'(increased|decreased|reduced|raised|lowered|grew|fell) by \d+(\.\d+)?( percent| %)?', "specific_change"),
+        (r'(added|created|lost|eliminated) \d+(\.\d+)?[ -]?(million|billion|trillion)? (jobs|positions|dollars)', "quantified_outcome"),
         
-        # Value judgments
-        r'\b(beautiful|ugly|wonderful|horrible|fantastic|awful)\b',
-        r'\b(right|wrong|moral|immoral|ethical|unethical)\b',
-        
-        # Vague claims
-        r'\b(many people|some people|everyone knows|people are saying)\b',
-        r'\b(we need|we want|we should|we must|we have to)\b',
-        
-        # Political rhetoric
-        r'\b(make America great again|build back better|America first)\b',
-        r'\b(socialist|communist|radical|extremist|patriotic)\b',
-        
-        # Future hypotheticals (not verifiable)
-        r'\b(will be|would be|could be|might be|going to be)\b',
+        # Direct attribution of documented statements
+        (r'(said|stated|claimed|wrote|tweeted|posted) ["\']', "direct_quote_start"),
+        (r'["\'] (in|on|during) (a |an |the )?(speech|interview|debate|statement|press conference)', "direct_quote_context")
     ]
     
     claims = []
-    seen_patterns = set()  # Track which patterns have been matched
     
-    # First pass: extract claims based on patterns
+    # First pass: identify sentences with verifiable facts
     for sentence in sentences:
         sentence = sentence.strip()
-        if not sentence:
+        if not sentence or len(sentence) < 20:  # Skip very short sentences
+            continue
+        
+        # Check if the sentence contains verifiable patterns
+        matched_patterns = []
+        for pattern, pattern_type in verifiable_patterns:
+            if re.search(pattern, sentence, re.IGNORECASE):
+                matched_patterns.append(pattern_type)
+        
+        if matched_patterns:
+            verification_score = len(matched_patterns)  # Score based on how many patterns matched
+            claims.append((sentence, verification_score, matched_patterns))
+    
+    # Sort claims by verification score (higher score = more verifiable)
+    claims.sort(key=lambda x: x[1], reverse=True)
+    
+    # Extract just the text from the claims, prioritizing the most verifiable ones
+    claim_texts = [claim[0] for claim in claims[:2]]  # Take top 2 most verifiable claims
+    
+    # Additional checks for the selected claims
+    filtered_claims = []
+    for claim in claim_texts:
+        # Skip claims that are too vague or contain strong opinion markers
+        if re.search(r'\b(I think|I believe|in my opinion|I feel)\b', claim, re.IGNORECASE):
             continue
             
-        # Skip very short sentences - unlikely to be substantial claims
-        if len(sentence) < 25:
+        # Skip claims about subjective qualities
+        if re.search(r'\b(great|terrible|bad|good|best|worst|beautiful|ugly)\b', claim, re.IGNORECASE) and not re.search(r'\b\d+\b', claim):
             continue
             
-        # Check if clearly an opinion - if so, skip
-        is_opinion = False
-        for opinion_pattern in opinion_indicators:
-            if re.search(opinion_pattern, sentence, re.IGNORECASE):
-                is_opinion = True
-                break
-                
-        if is_opinion:
+        # Skip broad generalizations without specifics
+        if re.search(r'\b(everyone|nobody|all people|many people|some people)\b', claim, re.IGNORECASE) and not re.search(r'\b\d+\b', claim):
             continue
             
-        # Check if the sentence contains indicators of factual claims
-        matching_patterns = []
-        for i, indicator in enumerate(factual_indicators):
-            if re.search(indicator, sentence, re.IGNORECASE):
-                matching_patterns.append(i)
-                
-        if matching_patterns:
-            claims.append((sentence, matching_patterns))
-            for pattern_idx in matching_patterns:
-                seen_patterns.add(pattern_idx)
+        # Skip purely subjective statements about America's greatness
+        if re.search(r'America is (already |)(great|strong|wonderful|exceptional)', claim, re.IGNORECASE):
+            continue
+            
+        # Skip claims about the future (not verifiable)
+        if re.search(r'\b(will|would|could|might) (be|become|make|create|establish)\b', claim, re.IGNORECASE) and not re.search(r'\b\d+\b', claim):
+            continue
+        
+        filtered_claims.append(claim)
     
-    # Only add very clear factual claims - no "second pass" with looser criteria
+    return filtered_claims[:2]  # Return at most 2 claims
+
+
+def verify_fact_is_checkable(claim: str) -> bool:
+    """Verify that a claim is actually checkable with objective evidence."""
+    import re
     
-    # Extract just the text from the claims
-    claim_texts = [claim[0] for claim in claims]
+    # Must contain at least one of these elements to be objectively verifiable
+    required_verification_elements = [
+        # Must have numbers for verification
+        r'\b\d+(\.\d+)?\b',  # Any number
+        
+        # Must reference a specific action that could be documented
+        r'\b(signed|vetoed|voted|implemented|established|created|sponsored|introduced)\b',
+        
+        # Must reference a specific measurable outcome
+        r'\b(increased|decreased|reduced|grew|fell|added|gained|lost) (by |to |from )?\d+',
+        
+        # Must reference a specific statement that could be verified
+        r'\b(said|stated|tweeted|wrote|posted|claimed|declared) ["\']',
+        
+        # Must reference a specific date or time period
+        r'in (January|February|March|April|May|June|July|August|September|October|November|December)( \d{1,2})?,? \d{4}',
+        r'in \d{4}',
+        
+        # Must reference a specific policy or legislation
+        r'(bill|legislation|act|policy|program|initiative|executive order) (of|from|in) \d{4}'
+    ]
     
-    # Limit to a reasonable number of claims
-    return claim_texts[:2]  # Reduced from 3 to 2
+    # Check if the claim contains any of the required verification elements
+    for pattern in required_verification_elements:
+        if re.search(pattern, claim, re.IGNORECASE):
+            return True
+            
+    return False
 
 
 def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[str]]:
@@ -1045,4 +1067,5 @@ def generate_response(state: Dict[str, Any]) -> str:
             return response_data  # If it's already a string
     except Exception as e:
         print(f"Error generating response: {e}")
+        return "I'm considering my position on this issue." 
         return "I'm considering my position on this issue." 
