@@ -160,6 +160,9 @@ def main():
     # Load data command
     load_parser = subparsers.add_parser("load", help="Load data into the Milvus database")
     
+    # Add load_data as an alias for load
+    load_data_parser = subparsers.add_parser("load_data", help="Load data into the Milvus database (alias for load)")
+    
     # Parse arguments
     args = parser.parse_args()
     
@@ -172,7 +175,7 @@ def main():
         restart_database()
     elif args.command == "status":
         check_status()
-    elif args.command == "load":
+    elif args.command == "load" or args.command == "load_data":
         load_data()
     else:
         parser.print_help()
