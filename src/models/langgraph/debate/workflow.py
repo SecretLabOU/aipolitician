@@ -137,7 +137,6 @@ def create_debate_graph() -> StateGraph:
     
     # Set a higher recursion limit
     config = {"recursion_limit": 50}
-    workflow.set_graph_config(config)
     
     return workflow
 
@@ -221,13 +220,19 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
     # Create the graph
     graph = create_debate_graph()
     
-    # Convert to runnable
-    debate_chain = graph.compile()
+    # Convert to runnable - in newer LangGraph versions, we use .compile() without arguments
+    # or we might need to set config parameters differently
+    try:
+        # First try the newer approach
+        debate_chain = graph.compile()
+    except TypeError:
+        # Fall back to older approach if needed
+        debate_chain = graph.compile({"recursion_limit": 50})
     
     # Create initial state
     initial_state: DebateState = {
         "topic": input_data.topic,
-        "format": input_data.format.dict(),
+        "format": input_data.format.model_dump() if hasattr(input_data.format, "model_dump") else input_data.format.dict(),
         "participants": input_data.participants,
         "use_rag": input_data.use_rag,
         "trace": input_data.trace,
@@ -249,5 +254,5 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
         "participants": result["participants"],
         "turn_history": result["turn_history"],
         "fact_checks": result["fact_checks"],
-        "subtopics_covered": list(set([turn.get("subtopic", "") for turn in result["turn_history"]]))
+        "moderator_notes": result["moderator_notes"]
     } 
