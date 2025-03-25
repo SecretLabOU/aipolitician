@@ -559,6 +559,9 @@ def run_simplified_debate(state: DebateState) -> DebateState:
         # Update the latest statement for fact-checking
         state['latest_statement'] = statement
         
+        # Add the speaker's statement to the debate output FIRST (before fact checking)
+        debate_output.append(f"{current_speaker.upper()}: {statement}\n\n")
+        
         # Check facts if enabled
         if state.get('format', {}).get('fact_check_enabled', True):
             if state.get("trace", False):
@@ -572,7 +575,7 @@ def run_simplified_debate(state: DebateState) -> DebateState:
             fact_check_results = fact_check(state)
             state.update(fact_check_results)
             
-            # NEW: Add fact check to the output if any were generated
+            # Add fact check to the output AFTER the statement if any were generated
             if fact_check_results.get("latest_fact_check"):
                 latest_check = fact_check_results["latest_fact_check"]
                 fact_checks_count += 1
@@ -586,9 +589,6 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 
                 fact_check_text += f"Rating: {latest_check['rating']} ({accuracy_pct}% accurate)\n\n"
                 debate_output.append(fact_check_text)
-        
-        # Add the speaker's statement to the debate output
-        debate_output.append(f"{current_speaker.upper()}: {statement}\n\n")
         
         # Add moderator transition
         debate_output.append(f"MODERATOR: Your time is up. {'Next up is ' + speaking_queue[turn] + '.' if turn < max_turns else 'This concludes our debate.'}\n\n")
