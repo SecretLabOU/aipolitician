@@ -139,6 +139,22 @@ def display_debate(debate_result: Dict[str, Any]):
     seen_statements = set()  # Track statements to avoid duplicates
     seen_topic_changes = set()  # Track topic changes to avoid duplicates
     
+    # First, identify the introduction event to ensure it comes first
+    introduction_event = None
+    for note in debate_result.get("moderator_notes", []):
+        if note.get("is_introduction", False) or (note["turn"] == 0 and "Welcome to today's" in note.get("message", "")):
+            introduction_event = {
+                "type": "moderator",
+                "turn": -1,  # Ensure it comes first
+                "data": note,
+                "timestamp": "0"  # Ensure it comes first
+            }
+            break
+    
+    # If we found an introduction, add it first
+    if introduction_event:
+        events.append(introduction_event)
+    
     # Add turns to events - avoid duplicates
     for turn in debate_result["turn_history"]:
         # Create a simplified version of the statement for duplicate detection
@@ -154,8 +170,12 @@ def display_debate(debate_result: Dict[str, Any]):
             })
             seen_statements.add(statement_key)
     
-    # Add moderator notes to events - avoid repeated topic changes
+    # Add remaining moderator notes - avoid duplicates and ensure proper order
     for note in debate_result.get("moderator_notes", []):
+        # Skip the introduction as we've already added it
+        if note.get("is_introduction", False) or (note["turn"] == 0 and "Welcome to today's" in note.get("message", "")):
+            continue
+            
         # Check for topic change notes to avoid duplicates
         if "topic_change" in note and note.get("topic_change", False):
             topic_key = note.get("new_topic", "")
@@ -184,8 +204,8 @@ def display_debate(debate_result: Dict[str, Any]):
             "timestamp": check.get("timestamp", "")
         })
     
-    # Sort events by turn number and timestamp
-    events.sort(key=lambda e: (e["turn"], e["timestamp"]))
+    # Sort events by turn number and timestamp (except introduction which is fixed at the start)
+    events.sort(key=lambda e: (-100 if e.get("turn", 0) == -1 else e.get("turn", 0), e.get("timestamp", "")))
     
     # Keep track of last speaker for better formatting
     last_speaker = None
@@ -262,20 +282,32 @@ def run_debate_command(args):
         trace=args.trace
     )
     
+    # Only show essential information
     print(f"Starting debate on topic: {args.topic}")
     print(f"Participants: {', '.join(participants)}")
     print(f"Format: {args.format} (Interruptions: {'Enabled' if args.allow_interruptions else 'Disabled'}, "
           f"Fact-checking: {'Enabled' if args.fact_check else 'Disabled'})")
     print("Running debate, please wait...\n")
     
-    # Run the debate
+    # Set up logging to minimize output
+    import logging
+    # Silence most loggers except critical errors
+    for logger_name in ['transformers', 'hf_transfer', 'langgraph', 'peft', 'accelerate']:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
+    
+    # Suppress warnings about PEFT config
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning, module='peft')
+    
+    # Run the debate with timing
     start_time = time.time()
     result = run_debate(input_config)
     end_time = time.time()
     
-    # Display results
+    # Display debate results 
     display_debate(result)
     
+    # Show simple timing information
     print(f"Debate completed in {end_time - start_time:.2f} seconds.")
     
     # Save to output file if specified

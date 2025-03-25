@@ -316,22 +316,19 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
     # Create the graph
     graph = create_debate_graph()
     
-    # Check LangGraph version to handle compatibility
+    # Check LangGraph version with minimal output
     try:
         import langgraph
         import pkg_resources
         import logging
         
-        # Configure logging for debugging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger("debate_workflow")
+        # Configure minimal logging
+        logging.basicConfig(level=logging.ERROR)
         
+        # Detect version silently
         langgraph_version = pkg_resources.get_distribution("langgraph").version
-        logger.info(f"Detected LangGraph version: {langgraph_version}")
-        print(f"Detected LangGraph version: {langgraph_version}")
-    except Exception as e:
+    except Exception:
         langgraph_version = "unknown"
-        print(f"Could not detect LangGraph version: {e}")
     
     # Create initial state
     initial_state: DebateState = {
@@ -350,120 +347,61 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
         "current_subtopic": input_data.topic
     }
     
-    # Configure for LangGraph 0.3.8 specifically
-    if langgraph_version == "0.3.8":
-        print("Using LangGraph 0.3.8 specific configuration")
-        
-        try:
-            # In LangGraph 0.3.8, we need to set debug mode
-            debug_mode = True
-            
-            # In 0.3.8, recursion_limit is passed to the stream/invoke method, not compile
-            debate_chain = graph.compile()
-            
-            # Inspect the graph
-            print("Graph structure:")
-            if hasattr(graph, "_graph"):
-                print(f"Nodes: {list(graph._graph.nodes)}")
-                print(f"Entry point: {graph._entry_point}")
-                print(f"End node: {END}")
-            
-            # Get available config options
-            print("Looking for available config options")
-            try:
-                from langgraph.prebuilt.config.constructor_config import _DEFAULT_CONFIG_KEYS
-                print(f"Default config keys: {_DEFAULT_CONFIG_KEYS}")
-            except ImportError:
-                print("Could not import _DEFAULT_CONFIG_KEYS")
-            
-            # Try to extract available config options for specific graph
-            try:
-                config_keys = None
-                if hasattr(debate_chain, "_config"):
-                    config_keys = list(debate_chain._config.keys())
-                elif hasattr(debate_chain, "config"):
-                    config_keys = list(debate_chain.config.keys())
-                print(f"Available config keys: {config_keys}")
-            except Exception as e:
-                print(f"Error getting config keys: {e}")
-            
-            # Run the workflow with debug flag and recursion limit 
-            print("Starting debate workflow execution with extended recursion limit...")
-            result = debate_chain.invoke(
-                initial_state,
-                {"debug": debug_mode, "recursion_limit": 100}
-            )
-            return {
-                "topic": result["topic"],
-                "participants": result["participants"],
-                "turn_history": result["turn_history"],
-                "fact_checks": result["fact_checks"],
-                "moderator_notes": result["moderator_notes"]
-            }
-        except Exception as e:
-            print(f"Error with LangGraph 0.3.8 approach: {e}")
-            
-            # Try alternative 0.3.8 approach - sometimes config is not passed via dict
-            try:
-                print("Trying alternative 0.3.8 approach with config as kwargs...")
-                result = debate_chain.invoke(initial_state, debug=True, recursion_limit=100)
-                return {
-                    "topic": result["topic"],
-                    "participants": result["participants"],
-                    "turn_history": result["turn_history"],
-                    "fact_checks": result["fact_checks"],
-                    "moderator_notes": result["moderator_notes"]
-                }
-            except Exception as e:
-                print(f"Alternative 0.3.8 approach failed: {e}")
-    
-    # Try multiple approaches for other versions
+    # Try to run the debate using LangGraph with minimal output
     try:
-        # First attempt: Try using the LangGraph compile/invoke approach
-        try:
-            # Try the approach that works for latest LangGraph
-            from langgraph.prebuilt import DispatchConfig
-            config = DispatchConfig(recursion_limit=100)
-            debate_chain = graph.compile(config=config)
-        except ImportError:
-            # DispatchConfig not available in this version
+        # Minimal status message
+        print("Loading politician response models...")
+        
+        # Configure for LangGraph 0.3.8 specifically
+        if langgraph_version == "0.3.8":
+            # Try to run with 0.3.8-specific approach (without verbose output)
             try:
-                # Try direct kwargs approach (works in some versions)
-                debate_chain = graph.compile(recursion_limit=100, checkpointer=None)
-            except Exception as e:
-                print(f"Direct kwargs compilation failed: {e}")
+                debate_chain = graph.compile()
+                result = debate_chain.invoke(
+                    initial_state,
+                    {"debug": False, "recursion_limit": 100}
+                )
+                return result
+            except Exception:
+                # Silently try alternative method
                 try:
-                    # Try with NullCheckpointer
+                    result = debate_chain.invoke(initial_state, debug=False, recursion_limit=100)
+                    return result
+                except Exception:
+                    # Continue to other approaches
+                    pass
+        
+        # Try other approaches without verbose logging
+        try:
+            # Try different compilation methods silently
+            try:
+                from langgraph.prebuilt import DispatchConfig
+                config = DispatchConfig(recursion_limit=100)
+                debate_chain = graph.compile(config=config)
+            except ImportError:
+                try:
+                    debate_chain = graph.compile(recursion_limit=100, checkpointer=None)
+                except Exception:
                     try:
                         from langgraph.checkpoint import NullCheckpointer
                         debate_chain = graph.compile(recursion_limit=100, checkpointer=NullCheckpointer())
-                    except ImportError:
-                        # If NullCheckpointer doesn't exist, just use basic compile
-                        print("NullCheckpointer not available, using basic compile")
+                    except Exception:
                         debate_chain = graph.compile()
-                except Exception as e:
-                    print(f"All attempted compilation methods failed: {e}")
-                    print("Using simplest possible compile")
-                    debate_chain = graph.compile()
-        
-        print("Starting debate workflow execution...")
-        result = debate_chain.invoke(initial_state)
-        
-    except Exception as e:
-        print(f"Error running debate with LangGraph: {e}")
-        print("Falling back to manual debate simulation...")
-        
-        # Fallback: Run a simplified version of the debate manually
-        # This completely bypasses the LangGraph StateGraph
-        result = run_simplified_debate(initial_state)
+            
+            # Try to run the debate
+            result = debate_chain.invoke(initial_state)
+            return result
+            
+        except Exception:
+            # Fall back to manual simulation
+            pass
+    except Exception:
+        # Silently handle errors
+        pass
     
-    return {
-        "topic": result["topic"],
-        "participants": result["participants"],
-        "turn_history": result["turn_history"],
-        "fact_checks": result["fact_checks"],
-        "moderator_notes": result["moderator_notes"]
-    }
+    # If we get here, all LangGraph approaches failed - run simplified debate
+    print("Running simplified debate mode...")
+    return run_simplified_debate(initial_state)
 
 
 def run_simplified_debate(state: DebateState) -> DebateState:
@@ -480,67 +418,58 @@ def run_simplified_debate(state: DebateState) -> DebateState:
     print("Running simplified debate...")
     
     try:
-        # Initialize the debate
+        # Initialize the debate with a completely fresh state
         print("Initializing debate state...")
         result = initialize_debate(state)
         
-        # Clear any existing moderator_notes to avoid duplication
+        # Clear any existing turn history or moderator notes to avoid out-of-order statements
+        result["turn_history"] = []
         result["moderator_notes"] = []
+        result["fact_checks"] = []
         
-        # Log initial state
-        print(f"Initial participants: {result['participants']}")
-        print(f"Initial speaker: {result['current_speaker']}")
+        # Log initial state (minimal output)
         print(f"Topic: {result['topic']}")
+        print(f"Participants: {', '.join(result['participants'])}")
         
         # Run a fixed number of turns (6 turns = 3 per participant)
         max_turns = 6
         current_turn = 0
         
-        # Initialize with moderator introduction
-        print("Running moderator introduction...")
+        # Start with moderator introduction (THIS MUST COME FIRST)
+        print("Starting debate with moderator introduction...")
         introduction = generate_introduction(result)
         result["moderator_notes"].append({
             "turn": 0,
             "message": introduction,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "is_introduction": True  # Mark as introduction for proper display
         })
         
         # Reset subtopics to avoid excessive changes
         subtopics = generate_subtopics(result["topic"], result["current_subtopic"])
         current_subtopic_index = 0
         
+        # Main debate loop
         while current_turn < max_turns:
             try:
-                # Log current turn information
-                print(f"\nTurn {current_turn + 1}/{max_turns}")
-                print(f"Current speaker: {result['current_speaker']}")
+                # Minimal logging
+                print(f"Turn {current_turn + 1}/{max_turns}: {result['current_speaker']}...")
                 
                 # Politician's turn
-                print(f"Running {result['current_speaker']}'s turn...")
                 previous_speaker = result["current_speaker"]
                 result = politician_turn(result)
                 current_turn += 1
                 
-                # Check what happened in the turn
-                latest_turn = result["turn_history"][-1] if result["turn_history"] else {}
-                print(f"Speaker: {latest_turn.get('speaker', 'unknown')}")
-                statement_excerpt = (latest_turn.get('statement', '')[:50] + '...') if latest_turn.get('statement') else 'No statement'
-                print(f"Statement: {statement_excerpt}")
-                
-                # Fact checking
+                # Fact checking (with minimal logging)
                 if result["format"].get("fact_check_enabled", True):
-                    print("Running fact checking...")
                     result = fact_check(result)
                 
-                # Handle interruptions
+                # Handle interruptions if enabled
                 if result.get("interruption_requested", False):
-                    print(f"Handling interruption by {result.get('interrupt_by', 'unknown')}...")
                     result = handle_interruption(result)
                 
                 # Topic management (only change every 2 turns and limit to available subtopics)
                 if current_turn % 2 == 0 and current_turn > 0 and len(subtopics) > 1:
-                    print("Managing debate topics...")
-                    
                     # Only change topic every other time to avoid excessive changes
                     if current_turn % 4 == 0:
                         # Move to next subtopic
@@ -550,7 +479,7 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                         # Update the current subtopic
                         result["current_subtopic"] = new_subtopic
                         
-                        # Add moderator note about topic change
+                        # Add moderator note about topic change (minimal logging)
                         print(f"Topic changed to: {new_subtopic}")
                         result["moderator_notes"].append({
                             "turn": len(result["turn_history"]),
@@ -563,8 +492,6 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                 
                 # Generate moderator transition to next speaker (only if not the last turn)
                 if current_turn < max_turns:
-                    print("Running moderator transition...")
-                    
                     # Rotate speaking queue
                     next_speaker = result["speaking_queue"].pop(0) if result["speaking_queue"] else result["participants"][0]
                     # Add current speaker to end of queue
@@ -578,7 +505,8 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                         "turn": len(result["turn_history"]),
                         "message": transition,
                         "timestamp": datetime.now().isoformat(),
-                        "next_speaker": next_speaker
+                        "next_speaker": next_speaker,
+                        "transition": True
                     })
                 
                 # Check if we've reached max turns
@@ -588,13 +516,11 @@ def run_simplified_debate(state: DebateState) -> DebateState:
                     
             except Exception as e:
                 print(f"Error during turn {current_turn}: {e}")
-                # Try to continue with next turn if possible
                 current_turn += 1
                 if current_turn >= max_turns:
                     break
         
         # Add closing statement from moderator
-        print("Adding closing statement...")
         result["moderator_notes"].append({
             "turn": len(result["turn_history"]),
             "message": f"This concludes our debate on {result['topic']}. Thank you to our participants for sharing their perspectives.",
@@ -602,16 +528,13 @@ def run_simplified_debate(state: DebateState) -> DebateState:
             "is_closing": True
         })
         
-        # Summary stats
-        print("\nDebate summary:")
-        print(f"Total turns: {len(result['turn_history'])}")
-        print(f"Fact checks: {len(result['fact_checks'])}")
-        print(f"Moderator notes: {len(result['moderator_notes'])}")
+        # Minimal summary stats
+        print(f"Debate completed: {len(result['turn_history'])} turns, {len(result['fact_checks'])} fact checks")
         
         return result
         
     except Exception as e:
-        print(f"Critical error in simplified debate: {e}")
+        print(f"Error in debate: {e}")
         # Return the original state with an error note if everything fails
         state["moderator_notes"] = state.get("moderator_notes", []) + [{
             "turn": 0,
