@@ -1,57 +1,78 @@
-# AI Politician Project Structure
+# AI Politician Documentation
 
-This document explains the organization of the AI Politician project.
+This directory contains comprehensive documentation for the AI Politician system.
 
-## Project Structure
+## Documentation Index
 
-```
-aipolitician/
-├── src/                           # Main source code directory
-│   ├── data/                      # Data handling components
-│   │   ├── scraper/               # Web scraping functionality
-│   │   ├── pipeline/              # Data processing pipeline
-│   │   └── db/                    # Database functionality
-│   ├── models/                    # Model training and inference
-│   │   ├── training/              # Training scripts
-│   │   └── chat/                  # Chat interface scripts
-│   └── utils/                     # Shared utilities
-├── tests/                         # All tests in one place
-├── docs/                          # Documentation
-├── requirements/                  # All requirements files
-├── logs/                          # Centralized logs directory
-└── setup.py                       # For making the package installable
-```
+### Overview
+- [System Overview](system_overview.md) - High-level overview of the system architecture
 
-## Component Descriptions
+### Components
+- [Chat System](chat_system.md) - Documentation for the chat interface
+- [LangGraph Workflow](langgraph_workflow.md) - Documentation for the LangGraph workflow
+- [Database System](database_system.md) - Documentation for the Milvus vector database
+- [Scraper System](scraper_system.md) - Documentation for the data collection scraper
+- [Data Pipeline](pipeline_system.md) - Documentation for the data processing pipeline
+- [Model Training](model_training.md) - Documentation for model training and fine-tuning
 
-### src/data/scraper/
-Contains scripts for scraping data from political sources, including speeches, tweets, and interviews.
+### Guides
+- [Installation Guide](installation.md) - Detailed installation instructions
+- [Usage Guide](usage_guide.md) - How to use the system's various components
 
-### src/data/pipeline/
-Data processing pipelines that transform raw scraped data into formats suitable for model training.
+## Quick Installation
 
-### src/data/db/
-Database components, including Milvus vector database for RAG (Retrieval-Augmented Generation).
+To install the AI Politician system:
 
-### src/models/training/
-Scripts for training language models to mimic specific politicians' speaking styles.
+1. Clone the repository
+   ```bash
+   git clone https://github.com/yourusername/ai-politician.git
+   cd ai-politician
+   ```
 
-### src/models/chat/
-Interactive chat interfaces for interacting with the trained models.
+2. Set up the environment
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-### tests/
-Unit and integration tests for different components of the system.
+3. Install base requirements
+   ```bash
+   pip install -r requirements/requirements-base.txt
+   ```
 
-## Installation
+4. Install component-specific requirements as needed
+   ```bash
+   # For all components
+   pip install -r requirements/requirements-all.txt
+   
+   # Or for specific components:
+   pip install -r requirements/requirements-chat.txt
+   pip install -r requirements/requirements-langgraph.txt
+   pip install -r requirements/requirements-scraper.txt
+   pip install -r requirements/requirements-training.txt
+   ```
+
+5. Set up environment variables by copying and modifying the example
+   ```bash
+   cp .env.example .env
+   # Edit .env with your settings
+   ```
+
+6. Set up the Milvus database (if using RAG)
+   ```bash
+   docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone
+   ```
+
+## Quick Start
+
+Start chatting with the AI politician:
 
 ```bash
-# Install the base package
-pip install -e .
+# Chat with Biden
+python aipolitician.py chat biden
 
-# Install with specific components
-pip install -e ".[scraper,training,chat]"
+# Chat with Trump
+python aipolitician.py chat trump
 ```
 
-## Usage
-
-See the main README.md file for detailed usage instructions. 
+See the [Usage Guide](usage_guide.md) for more detailed instructions on using all components. 
