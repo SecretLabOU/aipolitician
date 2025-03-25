@@ -39,7 +39,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 HAS_OPENAI = False  # Explicitly disabled regardless of API key presence
 
 # Sentiment analysis thresholds
-SENTIMENT_DEFLECTION_THRESHOLD = 0.3  # Sentiment score below which deflection is triggered
+SENTIMENT_DEFLECTION_THRESHOLD = -0.3  # Sentiment score below which deflection is triggered
 
 # RAG Configurations
 ENABLE_RAG = True

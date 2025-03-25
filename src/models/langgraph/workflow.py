@@ -82,8 +82,8 @@ def trace_sentiment_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     if state.get("trace", False):
         print("\n🔎 TRACE: Sentiment Agent - Results")
         print("=====================================")
-        print(f"Sentiment Score: {result.get('sentiment_score', 0):.2f} / 1.0")
-        print(f"Sentiment Category: {result.get('sentiment_category', 'unknown')}")
+        print(f"Sentiment Score: {result.get('sentiment_analysis', {}).get('sentiment_score', 0):.2f} / 1.0")
+        print(f"Sentiment Category: {result.get('sentiment_analysis', {}).get('sentiment_category', 'unknown')}")
         
         if 'emotion_scores' in result and result['emotion_scores']:
             print("\nEmotion Breakdown:")
@@ -92,7 +92,8 @@ def trace_sentiment_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         
         print(f"\nDeflection Decision: {'Yes' if result.get('should_deflect', False) else 'No'}")
         if result.get('should_deflect', False):
-            print(f"Deflection Reason: {result.get('deflection_reason', 'Negative sentiment detected')}")
+            deflection_reason = result.get('deflection_reason', 'Negative sentiment detected')
+            print(f"Deflection Reason: {deflection_reason}")
         print("-------------------------------------")
     
     return result
