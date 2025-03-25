@@ -74,28 +74,42 @@ def _simple_sentiment_analysis(prompt: str) -> Dict[str, Any]:
     negative_count = sum(1 for word in negative_words if word in prompt_lower)
     is_question = "?" in prompt
     
-    if negative_count >= 2:
+    # Check if this is a simple question
+    question_starters = ["who", "what", "where", "when", "how", "why", "is", "are", "can", "do", "does"]
+    is_simple_question = (is_question or any(prompt_lower.strip().startswith(starter) for starter in question_starters)) and len(prompt.split()) < 15
+    
+    # If it's a simple question with no negative words, it's neutral
+    if is_simple_question and negative_count == 0:
+        sentiment_score = 0.1
+        sentiment_category = "neutral"
+        is_biased = False
+        contains_personal_attack = False
+        is_gotcha_question = False
+    elif negative_count >= 2:
         sentiment_score = -0.7
         sentiment_category = "negative"
         is_biased = True
         contains_personal_attack = negative_count >= 3
+        is_gotcha_question = is_question and negative_count > 0
     elif negative_count == 1:
         sentiment_score = -0.3
         sentiment_category = "slightly negative" 
         is_biased = negative_count > 0
         contains_personal_attack = False
+        is_gotcha_question = is_question and negative_count > 0
     else:
         sentiment_score = 0.1
         sentiment_category = "neutral"
         is_biased = False
         contains_personal_attack = False
+        is_gotcha_question = False
     
     return {
         "sentiment_score": sentiment_score,
         "sentiment_category": sentiment_category,
         "is_biased": is_biased,
         "contains_personal_attack": contains_personal_attack,
-        "is_gotcha_question": is_question and negative_count > 0
+        "is_gotcha_question": is_gotcha_question
     }
 
 def analyze_sentiment_details(prompt: str, politician_name: str) -> Dict[str, Any]:
@@ -138,8 +152,20 @@ def analyze_sentiment_details(prompt: str, politician_name: str) -> Dict[str, An
         # Map to a -1 to 1 score (same range as used in the system)
         sentiment_score = float(positive_score - negative_score)
         
-        # Determine category based on score
-        if sentiment_score < -0.3:
+        # Check if this is a question (questions are often neutral)
+        is_question = "?" in prompt
+        
+        # Simple question detection - short inputs with question marks or starting with who/what/where/when/how/why
+        question_starters = ["who", "what", "where", "when", "how", "why", "is", "are", "can", "do", "does"]
+        is_simple_question = (is_question or any(prompt.lower().strip().startswith(starter) for starter in question_starters)) and len(prompt.split()) < 15
+        
+        # Determine category based on score and question type
+        if is_simple_question and abs(sentiment_score) < 0.5:
+            # For simple questions, bias toward neutral unless strongly emotional
+            category = "neutral"
+            # Adjust sentiment score to be more neutral for simple questions
+            sentiment_score = sentiment_score * 0.5  # Dampen the sentiment for questions
+        elif sentiment_score < -0.3:
             category = "negative"
         elif sentiment_score < 0.1:
             category = "slightly negative"
@@ -151,11 +177,23 @@ def analyze_sentiment_details(prompt: str, politician_name: str) -> Dict[str, An
         # Determine if question contains personal attacks
         contains_personal_attack = emotion_data.get('anger', 0) > 0.3 or emotion_data.get('disgust', 0) > 0.3 or emotion_data.get('negative', 0) > 0.7
         
+        # For simple questions, reduce the likelihood of detecting personal attacks
+        if is_simple_question:
+            contains_personal_attack = contains_personal_attack and negative_score > 0.6
+        
         # Determine if question is biased
         is_biased = negative_score > 0.4
         
+        # Simple questions are less likely to be biased
+        if is_simple_question:
+            is_biased = is_biased and negative_score > 0.6
+        
         # Determine if it's a "gotcha" question
-        is_gotcha = "?" in prompt and (negative_score > 0.3 or contains_personal_attack)
+        is_gotcha = is_question and (negative_score > 0.3 or contains_personal_attack)
+        
+        # Simple questions are unlikely to be gotcha questions
+        if is_simple_question:
+            is_gotcha = is_gotcha and negative_score > 0.5
         
         return {
             "sentiment_score": sentiment_score,
@@ -182,6 +220,15 @@ def analyze_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
     if "emotion_details" in sentiment_analysis:
         del sentiment_analysis["emotion_details"]
     
+    # Check for basic identity or information questions
+    basic_question_patterns = [
+        "who are you", "what is your name", "tell me about yourself", 
+        "introduce yourself", "what do you do", "what's your role", 
+        "what's your job", "who is", "what is", "how are you"
+    ]
+    
+    is_basic_question = any(pattern.lower() in prompt.lower() for pattern in basic_question_patterns)
+    
     # Determine if deflection is needed based on negative sentiment and lack of knowledge
     # Multiple factors determine if deflection is needed:
     # 1. Very negative sentiment (below threshold)
@@ -189,16 +236,32 @@ def analyze_sentiment(state: Dict[str, Any]) -> Dict[str, Any]:
     # 3. Is a gotcha question
     # 4. Is highly biased AND we don't have good factual information
     
+    # Don't deflect on basic identity questions regardless of sentiment
     should_deflect = (
-        sentiment_analysis["sentiment_score"] < SENTIMENT_DEFLECTION_THRESHOLD or
-        sentiment_analysis["contains_personal_attack"] or
-        sentiment_analysis["is_gotcha_question"] or
-        (sentiment_analysis["is_biased"] and not state.get("has_knowledge", False))
+        not is_basic_question and (
+            sentiment_analysis["sentiment_score"] < SENTIMENT_DEFLECTION_THRESHOLD or
+            sentiment_analysis["contains_personal_attack"] or
+            sentiment_analysis["is_gotcha_question"] or
+            (sentiment_analysis["is_biased"] and not state.get("has_knowledge", False))
+        )
     )
+    
+    # If this is a basic question but we're deflecting for some reason, add a note for tracing
+    deflection_reason = None
+    if should_deflect:
+        if sentiment_analysis["sentiment_score"] < SENTIMENT_DEFLECTION_THRESHOLD:
+            deflection_reason = "Negative sentiment detected"
+        elif sentiment_analysis["contains_personal_attack"]:
+            deflection_reason = "Contains personal attack"
+        elif sentiment_analysis["is_gotcha_question"]:
+            deflection_reason = "Gotcha question detected"
+        elif sentiment_analysis["is_biased"] and not state.get("has_knowledge", False):
+            deflection_reason = "Biased question with no supporting knowledge"
     
     # Update state with sentiment analysis
     return {
         **state,
         "sentiment_analysis": sentiment_analysis,
-        "should_deflect": should_deflect
+        "should_deflect": should_deflect,
+        "deflection_reason": deflection_reason
     } 

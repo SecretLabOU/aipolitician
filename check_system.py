@@ -1,165 +1,248 @@
 #!/usr/bin/env python3
 """
-System compatibility checker for the AI Politician LangGraph system.
-Run this script to check if your system is compatible with the models.
+System Verification Script for AI Politician
+
+This script checks if all required components of the AI Politician system are 
+properly installed and configured.
 """
-import sys
-import platform
 import os
+import sys
+import importlib
 import subprocess
+import platform
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-def print_section(title):
-    """Print a section title."""
-    print("\n" + "=" * 40)
-    print(f" {title}")
-    print("=" * 40)
+# ANSI colors for output
+class Colors:
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BLUE = "\033[94m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
 
-def run_command(command):
-    """Run a shell command and return the output."""
+# Required packages for different components
+REQUIRED_PACKAGES = {
+    "base": ["python-dotenv", "tqdm", "numpy"],
+    "chat": ["openai", "tiktoken", "bitsandbytes"],
+    "langgraph": ["langgraph", "pymilvus", "pydantic", "sentence-transformers"],
+    "scraper": ["requests", "beautifulsoup4", "playwright"],
+    "training": ["torch", "transformers", "datasets", "peft", "accelerate"]
+}
+
+def print_header(text: str) -> None:
+    """Print a formatted header."""
+    print(f"\n{Colors.BOLD}{Colors.BLUE}==== {text} ===={Colors.RESET}")
+
+def print_result(text: str, success: bool) -> None:
+    """Print a formatted result."""
+    if success:
+        print(f"{Colors.GREEN}✓ {text}{Colors.RESET}")
+    else:
+        print(f"{Colors.RED}✗ {text}{Colors.RESET}")
+
+def print_warning(text: str) -> None:
+    """Print a formatted warning."""
+    print(f"{Colors.YELLOW}! {text}{Colors.RESET}")
+
+def check_package(package_name: str) -> bool:
+    """Check if a Python package is installed."""
     try:
-        result = subprocess.run(
-            command, 
-            shell=True, 
-            check=True, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.stderr.strip()}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+        importlib.import_module(package_name)
+        return True
+    except ImportError:
+        return False
 
-def check_python():
-    """Check Python version and environment."""
-    print_section("Python Environment")
-    print(f"Python version: {platform.python_version()}")
-    print(f"Python executable: {sys.executable}")
-    print(f"Platform: {platform.platform()}")
-    
-    # Check if we're in a virtual environment
-    in_venv = sys.prefix != sys.base_prefix
-    print(f"Virtual environment: {'Yes' if in_venv else 'No'}")
+def check_command(command: str) -> bool:
+    """Check if a command is available."""
+    try:
+        subprocess.run(command.split(), capture_output=True)
+        return True
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return False
 
-def check_required_packages():
-    """Check if required packages are installed."""
-    print_section("Required Packages")
+def check_file_exists(path: str) -> bool:
+    """Check if a file exists."""
+    return Path(path).exists()
+
+def check_env_variables() -> Tuple[int, int]:
+    """Check for required environment variables."""
+    # Load .env file if present
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        print_warning("dotenv package not installed. Skipping .env file loading.")
     
-    required_packages = [
-        "torch",
-        "transformers",
-        "pydantic",
-        "langgraph",
-        "langchain",
-        "bitsandbytes",
-        "accelerate",
-        "fastapi",
-        "uvicorn"
-    ]
+    # Check essential environment variables
+    env_vars = {
+        "Required": [
+            "OPENAI_API_KEY"
+        ],
+        "Optional": [
+            "MILVUS_HOST",
+            "MILVUS_PORT",
+            "MODEL_PROVIDER",
+            "MODEL_PATH"
+        ]
+    }
     
-    for package in required_packages:
-        try:
-            spec = __import__(package)
-            if hasattr(spec, "__version__"):
-                version = spec.__version__
-            elif hasattr(spec, "version"):
-                version = spec.version.__version__
+    present = 0
+    missing = 0
+    
+    print("Required Environment Variables:")
+    for var in env_vars["Required"]:
+        if os.environ.get(var):
+            print_result(f"{var} is set", True)
+            present += 1
+        else:
+            print_result(f"{var} is not set", False)
+            missing += 1
+    
+    print("\nOptional Environment Variables:")
+    for var in env_vars["Optional"]:
+        if os.environ.get(var):
+            print_result(f"{var} is set", True)
+            present += 1
+        else:
+            print_warning(f"{var} is not set (optional)")
+    
+    return present, missing
+
+def check_dependencies() -> Tuple[int, int]:
+    """Check Python package dependencies."""
+    installed = 0
+    missing = 0
+    
+    for category, packages in REQUIRED_PACKAGES.items():
+        print_header(f"Checking {category.capitalize()} Dependencies")
+        
+        for package in packages:
+            is_installed = check_package(package)
+            print_result(f"{package} is installed", is_installed)
+            
+            if is_installed:
+                installed += 1
             else:
-                version = "Unknown version"
-            print(f"✅ {package}: {version}")
-        except ImportError:
-            print(f"❌ {package}: Not installed")
+                missing += 1
+                print(f"  - Install with: pip install {package}")
+    
+    return installed, missing
 
-def check_cuda():
-    """Check CUDA availability and version."""
-    print_section("CUDA and GPU")
-    
+def check_database() -> bool:
+    """Check if Milvus database is accessible."""
     try:
-        import torch
+        from pymilvus import connections
+        from src.data.db.milvus.connection import get_connection_params
         
-        cuda_available = torch.cuda.is_available()
-        print(f"CUDA available: {'Yes' if cuda_available else 'No'}")
-        
-        if cuda_available:
-            print(f"CUDA version: {torch.version.cuda}")
-            print(f"Number of GPUs: {torch.cuda.device_count()}")
-            
-            for i in range(torch.cuda.device_count()):
-                gpu_name = torch.cuda.get_device_name(i)
-                gpu_mem = torch.cuda.get_device_properties(i).total_memory / (1024**3)  # Convert to GB
-                print(f"GPU {i}: {gpu_name} ({gpu_mem:.2f} GB)")
-        
-        # Try to compile a simple operation to check if CUDA works properly
-        if cuda_available:
-            x = torch.randn(10, 10).cuda()
-            y = x + x
-            print("CUDA test: Success")
-    
+        # Try to connect to Milvus
+        conn_params = get_connection_params()
+        connections.connect(**conn_params)
+        connections.disconnect(conn_params.get("alias", "default"))
+        return True
     except Exception as e:
-        print(f"Error checking CUDA: {str(e)}")
+        print(f"  Error: {str(e)}")
+        return False
 
-def check_model_compatibility():
-    """Check compatibility with specific models."""
-    print_section("Model Compatibility")
-    
-    try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-        import torch
-        
-        # Check if we can load a small model
-        print("Testing model loading...")
-        model_id = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-        
+def check_model_availability() -> bool:
+    """Check if model files or API access is available."""
+    # Check for OpenAI API access
+    if os.environ.get("OPENAI_API_KEY"):
         try:
-            # Check tokenizer loading
-            tokenizer = AutoTokenizer.from_pretrained(model_id)
-            print(f"✅ Tokenizer loaded successfully for {model_id}")
-            
-            # Check if 4-bit loading works
-            if torch.cuda.is_available():
-                try:
-                    from bitsandbytes.nn import Linear4bit
-                    
-                    bnb_config = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_compute_dtype=torch.float16,
-                        bnb_4bit_quant_type="nf4",
-                        bnb_4bit_use_double_quant=True,
-                    )
-                    
-                    # Load a small part of the model to test
-                    model = AutoModelForCausalLM.from_pretrained(
-                        model_id,
-                        quantization_config=bnb_config,
-                        device_map="auto",
-                        torch_dtype=torch.float16,
-                        max_memory={0: "2GiB"},
-                        attn_implementation="eager"
-                    )
-                    print(f"✅ 4-bit model loading works")
-                except Exception as e:
-                    print(f"❌ 4-bit model loading failed: {str(e)}")
+            import openai
+            openai.api_key = os.environ.get("OPENAI_API_KEY")
+            # Just test the authentication, don't actually make a completion
+            # to avoid unnecessary API charges
+            return True
         except Exception as e:
-            print(f"❌ Model loading failed: {str(e)}")
+            print(f"  Error testing OpenAI API: {str(e)}")
+            return False
     
-    except ImportError as e:
-        print(f"Cannot check model compatibility: {str(e)}")
+    # Check for local model if specified
+    model_path = os.environ.get("MODEL_PATH")
+    if model_path:
+        model_exists = check_file_exists(model_path)
+        if not model_exists:
+            print(f"  Model path {model_path} does not exist")
+        return model_exists
+    
+    return False
+
+def check_system_resources() -> Dict[str, str]:
+    """Check system resources available."""
+    resources = {}
+    
+    # Check Python version
+    resources["Python Version"] = platform.python_version()
+    
+    # Check for CUDA
+    try:
+        import torch
+        resources["CUDA Available"] = "Yes" if torch.cuda.is_available() else "No"
+        if torch.cuda.is_available():
+            resources["CUDA Version"] = torch.version.cuda
+            resources["GPU Device"] = torch.cuda.get_device_name(0)
+            memory_allocated = torch.cuda.memory_allocated(0)
+            memory_reserved = torch.cuda.memory_reserved(0)
+            resources["GPU Memory Used"] = f"{memory_allocated / (1024**2):.2f} MB"
+            resources["GPU Memory Reserved"] = f"{memory_reserved / (1024**2):.2f} MB"
+    except ImportError:
+        resources["CUDA Available"] = "Unknown (torch not installed)"
+    
+    # Check for Docker (used by Milvus)
+    docker_available = check_command("docker --version")
+    resources["Docker Available"] = "Yes" if docker_available else "No"
+    
+    return resources
 
 def main():
-    """Run all checks."""
-    print("AI Politician System Compatibility Check")
-    print("=======================================")
+    """Main function to run all checks."""
+    print(f"{Colors.BOLD}{Colors.BLUE}AI Politician System Check{Colors.RESET}")
+    print(f"This script will verify that your system is properly set up for the AI Politician project.")
     
-    check_python()
-    check_required_packages()
-    check_cuda()
-    check_model_compatibility()
+    # Check dependencies
+    print_header("Checking Dependencies")
+    installed, missing = check_dependencies()
+    print(f"\nDependency Summary: {installed} installed, {missing} missing")
     
-    print("\nCompatibility check complete!")
-    print("If all checks passed, your system should be compatible with the AI Politician system.")
-    print("If you encountered errors, check the requirements and installation instructions.")
+    # Check environment variables
+    print_header("Checking Environment Variables")
+    present, missing_env = check_env_variables()
+    print(f"\nEnvironment Variable Summary: {present} present, {missing_env} required ones missing")
+    
+    # Check database
+    print_header("Checking Database Connectivity")
+    db_available = check_database()
+    print_result("Milvus database is accessible", db_available)
+    if not db_available:
+        print_warning("  Database not available. RAG features will not work.")
+        print_warning("  Run: docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone")
+    
+    # Check model availability
+    print_header("Checking Model Availability")
+    model_available = check_model_availability()
+    print_result("Model is accessible", model_available)
+    if not model_available:
+        print_warning("  No model available. Set OPENAI_API_KEY or MODEL_PATH in your .env file.")
+    
+    # Check system resources
+    print_header("System Resources")
+    resources = check_system_resources()
+    for key, value in resources.items():
+        print(f"{key}: {value}")
+    
+    # Print overall summary
+    print_header("Summary")
+    checks_passed = (missing == 0) and (missing_env == 0) and db_available and model_available
+    
+    if checks_passed:
+        print(f"{Colors.GREEN}{Colors.BOLD}All checks passed! The system is properly set up.{Colors.RESET}")
+    else:
+        print(f"{Colors.YELLOW}{Colors.BOLD}Some checks failed. Please address the issues above.{Colors.RESET}")
+    
+    # Return success or failure
+    return 0 if checks_passed else 1
 
 if __name__ == "__main__":
-    main() 
+    sys.exit(main()) 

@@ -57,21 +57,21 @@ Examples:
     
     # Handle the specified mode
     if args.mode == "chat":
-        script = str(script_dir / "chat_politician.py")
+        script = str(script_dir / "chat" / "chat_politician.py")
         command = f"python {script} {args.identity}"
         if args.no_rag:
             command += " --no-rag"
         os.system(command)
     
     elif args.mode == "debug":
-        script = str(script_dir / "debug_politician.py")
+        script = str(script_dir / "chat" / "debug_politician.py")
         command = f"python {script} {args.identity}"
         if args.no_rag:
             command += " --no-rag"
         os.system(command)
     
     elif args.mode == "trace":
-        script = str(script_dir / "trace_politician.py")
+        script = str(script_dir / "chat" / "trace_politician.py")
         command = f"python {script} {args.identity}"
         if args.no_rag:
             command += " --no-rag"

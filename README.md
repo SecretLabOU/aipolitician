@@ -31,8 +31,9 @@ aipolitician/
 │   └── manage_db.py        # Database management script
 └── src/                    # Core source code
     ├── data/               # Data storage
-    │   └── db/             # Database files
-    │       └── milvus/     # Vector database
+    │   ├── db/             # Database implementation
+    │   ├── scraper/        # Web scraper for data collection
+    │   └── pipeline/       # Data processing pipeline
     └── models/             # Model definitions
         ├── chat/           # Chat models
         ├── langgraph/      # LangGraph implementation
@@ -46,7 +47,17 @@ aipolitician/
         └── training/       # Training utilities
 ```
 
-See [docs/README.md](docs/README.md) for detailed information about the project structure.
+## 📚 Documentation
+
+Comprehensive documentation for each component is available in the `docs` folder:
+
+- [System Overview](docs/system_overview.md) - High-level architecture and flow
+- [Chat System](docs/chat_system.md) - How to use the chat interface
+- [LangGraph Workflow](docs/langgraph_workflow.md) - Details on the LangGraph implementation
+- [Database System](docs/database_system.md) - Using the vector database for knowledge retrieval
+- [Scraper System](docs/scraper_system.md) - Collecting data from various sources
+- [Pipeline System](docs/pipeline_system.md) - Processing data for the knowledge database
+- [Model Training](docs/model_training.md) - Training politician-specific models
 
 ## 🔗 Pretrained Models
 
@@ -74,35 +85,31 @@ cd aipolitician
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install the package and all dependencies
-pip install -e ".[scraper,training,chat]"
+# Install all dependencies
+pip install -r requirements/requirements-base.txt
+pip install -r requirements/requirements-chat.txt
+pip install -r requirements/requirements-langgraph.txt
 ```
 
 ### Option 2: Install Specific Components
 ```bash
 # Install only the chat interface dependencies
-pip install -e ".[chat]"
+pip install -r requirements/requirements-chat.txt
 
-# Install only the scraper dependencies
-pip install -e ".[scraper]"
+# Install only the scraper dependencies 
+pip install -r requirements/requirements-scraper.txt
 
 # Install only the training dependencies
-pip install -e ".[training]"
+pip install -r requirements/requirements-training.txt
 ```
 
 ### Setting up the Database (for RAG features)
+
+See the [Database System](docs/database_system.md) documentation for detailed setup instructions.
+
 ```bash
-# Create database directories
-mkdir -p /home/username/Databases/ai_politician_milvus/data
-mkdir -p /home/username/Databases/ai_politician_milvus/etcd
-mkdir -p /home/username/Databases/ai_politician_milvus/minio
-
-# Set up Milvus using Docker
-cd src/data/db/milvus
-./setup.sh
-
-# Initialize the database schema
-python scripts/initialize_db.py --recreate
+# Start a local Milvus instance with Docker
+docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone
 ```
 
 ## 💬 Usage
@@ -115,188 +122,51 @@ The easiest way to use the system is with the unified launcher:
 
 ```bash
 # Clean chat mode
-./aipolitician.py chat biden
+python aipolitician.py chat biden
 
 # Debug mode
-./aipolitician.py debug biden
+python aipolitician.py debug biden
 
 # Trace mode
-./aipolitician.py trace biden
+python aipolitician.py trace biden
 
 # Disable RAG database (for any mode)
-./aipolitician.py chat biden --no-rag
+python aipolitician.py chat biden --no-rag
 ```
 
-### Individual Scripts
+For more detailed usage instructions, see the [Chat System](docs/chat_system.md) documentation.
 
-You can also use the individual scripts directly:
-
-#### 1. Clean Chat Mode
-
-For a normal chat experience without technical details:
-
-```bash
-./scripts/chat_politician.py biden
-# or
-./scripts/chat_politician.py trump
-```
-
-#### 2. Debug Mode
-
-For a chat with additional debugging information:
-
-```bash
-./scripts/debug_politician.py biden
-# or
-./scripts/debug_politician.py trump
-```
-
-#### 3. Trace Mode
-
-For a detailed view of the entire workflow process:
-
-```bash
-./scripts/trace_politician.py biden
-# or
-./scripts/trace_politician.py trump
-```
-
-### Advanced Usage
-
-You can also use the main script directly with more options:
-
-```bash
-python langgraph_politician.py chat --identity biden [--debug] [--trace] [--no-rag]
-```
-
-## Core Components
+## System Components
 
 1. **Context Agent**: Extracts topics from user input and retrieves relevant knowledge
 2. **Sentiment Agent**: Analyzes the sentiment and decides if deflection is needed
 3. **Response Agent**: Generates the final response using the politician's style
 
-## Database
+For more details on how these components work together, see the [LangGraph Workflow](docs/langgraph_workflow.md) documentation.
 
-The system uses Milvus for vector storage and retrieval when the `--no-rag` flag is not specified. If Milvus is not available, it falls back to synthetic responses.
+## 🔄 Adding New Politicians
 
-## 🗄️ Vector Database System
+To add a new politician to the system:
 
-The project includes a Retrieval-Augmented Generation (RAG) database system that provides factual information to enhance model responses. This system is built on Milvus, a powerful vector database.
+1. Collect training data for the politician
+2. Process the data into the appropriate format
+3. Fine-tune a model for the politician
+4. Add the necessary chat model implementation
+5. Update the relevant configuration files
 
-### Database Features
-- **Vector Similarity Search**: Find relevant information using semantic similarity
-- **Schema Flexibility**: Combine structured data with vector embeddings
-- **HNSW Indexing**: High-performance approximate nearest neighbor search
-- **768-Dimensional Embeddings**: Using all-MiniLM-L6-v2 sentence transformer model
+For detailed instructions, see the [Model Training](docs/model_training.md) documentation.
 
-### Database Schema
-The political figures collection contains comprehensive information including:
-- Biographical details
-- Policy positions
-- Legislative records
-- Public statements
-- Timeline events
-- Campaign history
-- Personal information
+## 🤝 Contributing
 
-For detailed database documentation, see [src/data/db/milvus/README.md](src/data/db/milvus/README.md).
-
-## 🔄 Fine-tuning Process
-
-The models were fine-tuned using the following datasets:
-
-### Trump Model
-- [Trump interviews dataset](https://huggingface.co/datasets/pookie3000/trump-interviews)
-- [Trump speeches dataset](https://huggingface.co/datasets/bananabot/TrumpSpeeches)
-
-### Biden Model
-- [Biden tweets dataset (2007-2020)](https://www.kaggle.com/datasets/rohanrao/joe-biden-tweets)
-- [Biden 2020 DNC speech dataset](https://www.kaggle.com/datasets/christianlillelund/joe-biden-2020-dnc-speech)
-
-Place datasets in: `/home/natalie/datasets/biden/`
-- joe-biden-tweets.zip
-- joe-biden-2020-dnc-speech.zip
-
-The training process:
-- Used LoRA (Low-Rank Adaptation) for parameter-efficient fine-tuning
-- Applied 4-bit quantization for memory efficiency
-- Fine-tuned for 3 epochs with a cosine learning rate schedule
-- Used a special instruction format to guide stylistic emulation
-
-To run your own fine-tuning:
-```bash
-# Activate your virtual environment
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Run the training scripts
-python -m src.models.training.train_mistral_trump
-python -m src.models.training.train_mistral_biden
-```
-
-## 🚧 Troubleshooting
-
-### Common Issues
-
-#### 1. Model Loading Issues
-- **Symptom**: `Error loading model` or CUDA out-of-memory errors
-- **Solutions**:
-  - Ensure you have sufficient GPU memory
-  - Verify CUDA is properly installed (`nvidia-smi`)
-  - Check your HuggingFace API key has necessary permissions
-
-#### 2. Database Connection Issues
-- **Symptom**: `Failed to connect to Milvus server`
-- **Solutions**:
-  - Ensure Docker is running
-  - Check if Milvus container is active: `docker ps | grep milvus`
-  - Restart the database: `./src/data/db/milvus/setup.sh`
-
-#### 3. Environment Conflicts
-- **Symptom**: Import errors or version conflicts
-- **Solutions**:
-  - Make sure you're in the correct virtual environment
-  - Ensure you installed the package with the right extras
-  - Try reinstalling with `pip install -e ".[scraper,training,chat]"`
-
-#### 4. Out-of-Memory Errors During Training
-- **Symptom**: CUDA out-of-memory errors during training
-- **Solutions**:
-  - Reduce batch size in training scripts
-  - Increase gradient accumulation steps
-  - Use a GPU with more VRAM
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 Acknowledgments
+## 🙏 Acknowledgements
 
-- [Mistral AI](https://mistral.ai/) for the base Mistral-7B model
-- [Hugging Face](https://huggingface.co/) for hosting the models and datasets
-- [Milvus](https://milvus.io/) for the vector database technology
-- The open-source NLP and AI community
-
----
-
-*Disclaimer: This project is created for educational and research purposes. The AI models attempt to mimic the speaking styles of public figures but do not represent their actual views or statements. Use responsibly.*
-
-## Database Management
-
-The system uses Milvus as a vector database for RAG. Use the database management script to control it:
-
-```bash
-# Start the database (cleans up any conflicting containers first)
-./scripts/manage_db.py start
-
-# Check database status
-./scripts/manage_db.py status
-
-# Load data into the database (first time setup)
-./scripts/manage_db.py load
-
-# Stop the database
-./scripts/manage_db.py stop
-
-# Restart the database
-./scripts/manage_db.py restart
-```
+- [Mistral AI](https://mistral.ai/) for the base models
+- [LangChain](https://www.langchain.com/) for the LangGraph framework
+- [Milvus](https://milvus.io/) for the vector database
+- [PEFT](https://github.com/huggingface/peft) for efficient fine-tuning

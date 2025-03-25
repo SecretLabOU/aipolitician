@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 
 # Add project root to path
-root_dir = Path(__file__).parent.parent.absolute()
+root_dir = Path(__file__).parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
 # Set logging level to reduce verbosity
