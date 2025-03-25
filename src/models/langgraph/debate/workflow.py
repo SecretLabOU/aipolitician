@@ -666,8 +666,19 @@ Use your own policies and perspectives to address the issue.
     
     # Generate the response
     try:
-        response = generate_response(input_state)
-        return response
+        response_data = generate_response(input_state)
+        
+        # Handle different response formats
+        if isinstance(response_data, dict):
+            # Extract just the response text from the response dictionary
+            if 'response' in response_data:
+                return response_data['response']
+            else:
+                # If no 'response' key is found, use the entire string representation as fallback
+                return str(response_data)
+        else:
+            # Assume it's already a string
+            return response_data
     except Exception as e:
         print(f"Error generating response for {politician_name}: {e}")
         # Provide a fallback response
