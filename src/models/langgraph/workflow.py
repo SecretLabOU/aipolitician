@@ -23,8 +23,9 @@ class PoliticianInput(BaseModel):
     """Input schema for the AI Politician workflow."""
     user_input: str = Field(..., description="User's input/question")
     politician_identity: Literal["biden", "trump"] = Field(..., 
-                                                         description="Identity of the politician to impersonate")
+                                                          description="Identity of the politician to impersonate")
     use_rag: bool = Field(default=True, description="Whether to use RAG for knowledge retrieval")
+    trace: bool = Field(default=False, description="Whether to output trace information")
 
 class PoliticianOutput(BaseModel):
     """Output schema for the AI Politician workflow."""
@@ -38,11 +39,53 @@ class WorkflowState(TypedDict):
     user_input: str
     politician_identity: str
     use_rag: bool
+    trace: bool
     context: str
     has_knowledge: bool
     sentiment_analysis: Dict[str, Any]
     should_deflect: bool
     response: str
+
+# Wrap agent functions to add tracing
+def trace_context_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Process context with tracing."""
+    if state.get("trace", False):
+        print("\n✅ CHECKPOINT: Context Agent - Extracting topics and retrieving knowledge...")
+    
+    result = process_context(state)
+    
+    if state.get("trace", False):
+        print(f"✅ CHECKPOINT: Context Extracted: {result['context'].split('Knowledge Base Context')[0].strip()}")
+        print(f"✅ CHECKPOINT: Knowledge Found: {'Yes' if result['has_knowledge'] else 'No'}")
+    
+    return result
+
+def trace_sentiment_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Process sentiment with tracing."""
+    if state.get("trace", False):
+        print("\n✅ CHECKPOINT: Sentiment Agent - Analyzing sentiment...")
+    
+    result = process_sentiment(state)
+    
+    if state.get("trace", False):
+        sentiment = result["sentiment_analysis"]
+        print(f"✅ CHECKPOINT: Sentiment Score: {sentiment.get('sentiment_score', 0):.2f}")
+        print(f"✅ CHECKPOINT: Sentiment Category: {sentiment.get('sentiment_category', 'unknown')}")
+        print(f"✅ CHECKPOINT: Deflection Needed: {'Yes' if result['should_deflect'] else 'No'}")
+    
+    return result
+
+def trace_response_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate response with tracing."""
+    if state.get("trace", False):
+        print("\n✅ CHECKPOINT: Response Agent - Generating response...")
+    
+    result = generate_response(state)
+    
+    if state.get("trace", False):
+        print(f"✅ CHECKPOINT: Response Generated ({len(result['response'])} chars)")
+    
+    return result
 
 def create_politician_graph() -> StateGraph:
     """Create the LangGraph workflow for the AI Politician."""
@@ -50,9 +93,9 @@ def create_politician_graph() -> StateGraph:
     workflow = StateGraph(WorkflowState)
     
     # Add nodes for each agent
-    workflow.add_node("context_agent", process_context)
-    workflow.add_node("sentiment_agent", process_sentiment)
-    workflow.add_node("response_agent", generate_response)
+    workflow.add_node("context_agent", trace_context_agent)
+    workflow.add_node("sentiment_agent", trace_sentiment_agent)
+    workflow.add_node("response_agent", trace_response_agent)
     
     # Define the edges (flow) of the graph
     # Start -> Context Agent
@@ -90,6 +133,7 @@ def process_user_input(input_data: PoliticianInput) -> PoliticianOutput:
         "user_input": input_data.user_input,
         "politician_identity": input_data.politician_identity,
         "use_rag": input_data.use_rag,
+        "trace": input_data.trace,
         "context": "",
         "has_knowledge": False,
         "sentiment_analysis": {},

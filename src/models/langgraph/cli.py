@@ -5,6 +5,7 @@ Command-line interface for the AI Politician LangGraph system.
 import sys
 import argparse
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -16,6 +17,11 @@ from src.models.langgraph.config import PoliticianIdentity
 from src.models.langgraph.workflow import process_user_input, PoliticianInput
 from src.models.langgraph.utils.visualization import visualize_graph
 
+# Configure logging to reduce verbose output
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("peft").setLevel(logging.ERROR)
+logging.getLogger("safetensors").setLevel(logging.ERROR)
+
 def format_sentiment_analysis(analysis: Dict[str, Any]) -> str:
     """Format the sentiment analysis for display."""
     result = "\nSentiment Analysis:\n"
@@ -26,7 +32,7 @@ def format_sentiment_analysis(analysis: Dict[str, Any]) -> str:
     result += f"- 'Gotcha' Question: {'Yes' if analysis.get('is_gotcha_question', False) else 'No'}\n"
     return result
 
-def chat_loop(politician_identity: str, use_rag: bool = True, debug: bool = False):
+def chat_loop(politician_identity: str, use_rag: bool = True, debug: bool = False, trace: bool = False):
     """Interactive chat loop with the AI Politician."""
     # Print welcome message
     if politician_identity == PoliticianIdentity.BIDEN:
@@ -67,7 +73,8 @@ def chat_loop(politician_identity: str, use_rag: bool = True, debug: bool = Fals
             input_data = PoliticianInput(
                 user_input=user_input,
                 politician_identity=politician_identity,
-                use_rag=use_rag
+                use_rag=use_rag,
+                trace=trace
             )
             
             print(f"\n{politician_identity.title()}: ", end="", flush=True)
@@ -107,6 +114,8 @@ def main():
                          help="Disable Retrieval-Augmented Generation")
     chat_parser.add_argument("--debug", action="store_true",
                          help="Enable debug mode with additional output")
+    chat_parser.add_argument("--trace", action="store_true",
+                         help="Enable tracing to show the workflow execution path")
     
     # Process input command
     process_parser = subparsers.add_parser("process", help="Process a single input and return JSON output")
@@ -116,6 +125,8 @@ def main():
                              help="Disable Retrieval-Augmented Generation")
     process_parser.add_argument("--input", type=str, required=True,
                              help="Input prompt to process")
+    process_parser.add_argument("--trace", action="store_true",
+                             help="Enable tracing to show the workflow execution path")
     
     # Visualize command
     viz_parser = subparsers.add_parser("visualize", help="Generate a visualization of the workflow graph")
@@ -132,14 +143,16 @@ def main():
         chat_loop(
             politician_identity=args.identity,
             use_rag=not args.no_rag,
-            debug=args.debug
+            debug=args.debug,
+            trace=args.trace
         )
     elif args.command == "process":
         # Process a single input and return JSON output
         input_data = PoliticianInput(
             user_input=args.input,
             politician_identity=args.identity,
-            use_rag=not args.no_rag
+            use_rag=not args.no_rag,
+            trace=args.trace
         )
         
         result = process_user_input(input_data)

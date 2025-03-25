@@ -5,6 +5,7 @@ This agent extracts important information from user input and uses RAG to look t
 """
 import sys
 import torch
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -26,23 +27,33 @@ if HAS_RAG:
 # Global cache for models
 _context_model = None
 _context_tokenizer = None
+_context_model_loading = False
+
+# Silence the transformer logging
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("tokenizers").setLevel(logging.ERROR)
 
 def _get_context_model_and_tokenizer():
     """Load or get cached context analysis model."""
-    global _context_model, _context_tokenizer
+    global _context_model, _context_tokenizer, _context_model_loading
     
     if _context_model is not None and _context_tokenizer is not None:
         return _context_model, _context_tokenizer
+    
+    if _context_model_loading:
+        print("Context model is already loading...")
+        return None, None
+    
+    _context_model_loading = True
     
     try:
         # Check for CUDA availability
         if torch.cuda.is_available():
             device = "cuda"
-            print(f"Using {CONTEXT_LLM_MODEL_ID} for context analysis")
+            print(f"Loading context extraction model...")
             
             # Set up quantization for more efficient memory usage
             if USE_4BIT_QUANTIZATION:
-                print("Using 4-bit quantization for context model")
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_compute_dtype=torch.float16,
@@ -67,7 +78,7 @@ def _get_context_model_and_tokenizer():
         else:
             # CPU-only operation
             device = "cpu"
-            print(f"No GPU detected. Using {CONTEXT_LLM_MODEL_ID} on CPU for context analysis (slow)")
+            print(f"Loading context extraction model on CPU...")
             model = AutoModelForCausalLM.from_pretrained(CONTEXT_LLM_MODEL_ID)
         
         # Load tokenizer
@@ -79,11 +90,14 @@ def _get_context_model_and_tokenizer():
     
         _context_model = model
         _context_tokenizer = tokenizer
+        _context_model_loading = False
+        print("Context extraction model loaded successfully")
         return model, tokenizer
         
     except Exception as e:
+        _context_model_loading = False
         print(f"Error loading context model: {str(e)}")
-        print("Using extremely simple context extraction as fallback")
+        print("Using simple context extraction as fallback")
         return None, None
 
 def _simple_keyword_extraction(prompt: str) -> str:

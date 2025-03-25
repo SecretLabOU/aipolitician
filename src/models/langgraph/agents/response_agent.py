@@ -5,6 +5,7 @@ This agent generates the final response to the user, incorporating context and s
 """
 import sys
 import torch
+import logging
 from pathlib import Path
 from typing import Dict, Any
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -26,14 +27,26 @@ from src.models.langgraph.config import (
 # Cache for models and tokenizers
 _model_cache = {}
 _tokenizer_cache = {}
+_model_loading = False
+
+# Silence the transformer logging
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("tokenizers").setLevel(logging.ERROR)
+logging.getLogger("peft").setLevel(logging.ERROR)
 
 def _get_model_and_tokenizer(politician_identity: str):
     """Get or load the model and tokenizer for the specified politician."""
-    global _model_cache, _tokenizer_cache
+    global _model_cache, _tokenizer_cache, _model_loading
     
     # Return from cache if already loaded
     if politician_identity in _model_cache and politician_identity in _tokenizer_cache:
         return _model_cache[politician_identity], _tokenizer_cache[politician_identity]
+    
+    if _model_loading:
+        print("Politician model is already loading...")
+        return None, None
+    
+    _model_loading = True
     
     try:
         # Create BitsAndBytesConfig for 4-bit quantization
@@ -44,7 +57,7 @@ def _get_model_and_tokenizer(politician_identity: str):
             bnb_4bit_use_double_quant=True,
         )
         
-        print(f"Loading base model {BASE_MODEL_ID}...")
+        print(f"Loading politician response model...")
         # Load model with proper configuration
         model = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL_ID,
@@ -60,24 +73,23 @@ def _get_model_and_tokenizer(politician_identity: str):
             tokenizer.pad_token = tokenizer.eos_token
         
         # Load the appropriate LoRA adapter
-        if politician_identity == PoliticianIdentity.BIDEN:
-            print(f"Loading Biden adapter from {BIDEN_ADAPTER_PATH}...")
-            model = PeftModel.from_pretrained(model, BIDEN_ADAPTER_PATH)
-        elif politician_identity == PoliticianIdentity.TRUMP:
-            print(f"Loading Trump adapter from {TRUMP_ADAPTER_PATH}...")
-            model = PeftModel.from_pretrained(model, TRUMP_ADAPTER_PATH)
-        
+        adapter_path = BIDEN_ADAPTER_PATH if politician_identity == PoliticianIdentity.BIDEN else TRUMP_ADAPTER_PATH
+        print(f"Loading political personality adapter...")
+        model = PeftModel.from_pretrained(model, adapter_path)
         model.eval()  # Set to evaluation mode
         
         # Cache the model and tokenizer
         _model_cache[politician_identity] = model
         _tokenizer_cache[politician_identity] = tokenizer
         
+        _model_loading = False
+        print("Response model loaded successfully")
         return model, tokenizer
     
     except Exception as e:
+        _model_loading = False
         print(f"Error loading politician model: {str(e)}")
-        print("WARNING: Using simple response generation as fallback. The responses will not match the politician's style.")
+        print("WARNING: Using simple response generation as fallback.")
         return None, None
 
 def _generate_simple_fallback_response(prompt: str, context: str, politician_identity: str, should_deflect: bool) -> str:
