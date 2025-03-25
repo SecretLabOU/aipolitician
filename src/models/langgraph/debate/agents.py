@@ -681,10 +681,13 @@ def get_max_response_length(format_config: Dict[str, Any]) -> int:
 def generate_response(state: Dict[str, Any]) -> str:
     """Generate a response from a politician based on their identity and context."""
     try:
-        # This is a wrapper around the existing response generation system
-        from src.models.langgraph.agents.response_agent import generate_response
-        response_data = generate_response(state)
-        return response_data.get("response", "I don't have a specific response to that issue.")
+        # Import here to avoid circular imports and recursion
+        from src.models.langgraph.agents.response_agent import generate_response as gen_resp
+        response_data = gen_resp(state)
+        if isinstance(response_data, dict):
+            return response_data.get("response", "I don't have a specific response to that issue.")
+        else:
+            return response_data  # If it's already a string
     except Exception as e:
         print(f"Error generating response: {e}")
         return "I'm considering my position on this issue." 

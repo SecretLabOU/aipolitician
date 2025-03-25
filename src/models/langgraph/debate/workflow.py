@@ -200,25 +200,37 @@ def initialize_debate(state: DebateState) -> DebateState:
 
 def next_step(state: DebateState) -> str:
     """Determine the next step in the debate workflow."""
-    # Check if debate should end
-    if len(state["turn_history"]) >= 10:  # End after 10 turns
-        return "end"
-    
-    # Check if topic needs management
-    if len(state["turn_history"]) % 3 == 0 and len(state["turn_history"]) > 0:
-        return "topic_manager"
-    
-    # Default to next debater
-    return "debater"
+    try:
+        # Check if debate should end due to turn limit
+        if len(state.get("turn_history", [])) >= 10:
+            return "end"
+        
+        # Check if topic needs management
+        if len(state.get("turn_history", [])) % 3 == 0 and len(state.get("turn_history", [])) > 0:
+            return "topic_manager"
+        
+        # Default to next debater
+        return "debater"
+    except Exception as e:
+        # If any error occurs, try to continue with debater or end if too many turns
+        print(f"Error in next_step: {e}")
+        if len(state.get("turn_history", [])) >= 8:
+            return "end"
+        return "debater"
 
 
 def check_interruption(state: DebateState) -> str:
     """Check if an interruption should occur."""
-    if state["interruption_requested"] and state["format"]["allow_interruptions"]:
+    # Safeguard - if turn history is too long, force end
+    if len(state.get("turn_history", [])) >= 12:
+        return "end"
+        
+    # Check for interruption
+    if state.get("interruption_requested", False) and state.get("format", {}).get("allow_interruptions", False):
         return "interruption"
     
     # Check if fact checking is needed
-    if state["format"]["fact_check_enabled"] and len(state["turn_history"]) > 0:
+    if state.get("format", {}).get("fact_check_enabled", False) and len(state.get("turn_history", [])) > 0:
         return "fact_check"
     
     # Return to moderator for next turn
@@ -239,12 +251,22 @@ def run_debate(input_data: DebateInput) -> Dict[str, Any]:
     graph = create_debate_graph()
     
     # Convert to runnable and set a higher recursion limit
-    # The error shows we need more than the default 25
+    # Disable checkpointing to avoid API incompatibilities
     try:
-        debate_chain = graph.compile({"recursion_limit": 100})
-    except TypeError:
-        # Fall back to older approach if needed
-        debate_chain = graph.compile()
+        # Try with new API - disable checkpointer
+        debate_chain = graph.compile(
+            {
+                "recursion_limit": 100,
+                "checkpointer": None  # Disable checkpointing
+            }
+        )
+    except (TypeError, ValueError):
+        # Try alternative API
+        try:
+            debate_chain = graph.compile(recursion_limit=100, checkpointer=None)
+        except (TypeError, ValueError):
+            # Last resort, just use defaults
+            debate_chain = graph.compile()
     
     # Create initial state
     initial_state: DebateState = {
