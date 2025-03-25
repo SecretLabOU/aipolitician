@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  lang-graph:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lang-graph
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"
+    stdin_open: true
+    tty: true
+    command: python src/main.py donald_trump

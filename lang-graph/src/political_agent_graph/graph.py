@@ -205,4 +205,6 @@ async def run_conversation(user_input: str) -> str:
     result = await graph.ainvoke(state)
     
     # Return the final response
-    return result.final_response
+    # The result from ainvoke is an AddableValuesDict that contains the state
+    # We need to access the final_response from the state object inside it
+    return result["final_response"]
