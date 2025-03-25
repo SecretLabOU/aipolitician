@@ -24,52 +24,17 @@ tensorrt-llm==0.7.1  # TensorRT for LLMs
 ninja==1.11.1  # Fast build system
 packaging==23.2  # Dependency of many GPU packages
 
-# LLM inference and language models
-llama-cpp-python==0.2.53+cu121  # CUDA optimized llama.cpp bindings
-langchain==0.1.9  # Enhanced LLM integration
-langchain-core==0.1.27
-langgraph==0.0.27  # LangChain graph-based structure
-langchain-community==0.0.19
-langsmith==0.0.87  # Tracing and monitoring
-
 # Vector database and embeddings
 pymilvus==2.3.4  # Vector database client
-sentence-transformers==2.3.1  # Sentence embeddings with GPU support
+sentence-transformers==2.3.1  # Sentence embeddings
 faiss-gpu==1.7.4  # GPU-accelerated similarity search
-pgvector==0.2.4  # PostgreSQL vector extension
-
-# Knowledge processing and RAG
-unstructured==0.12.3  # Document parsing
-unstructured-inference==0.7.24  # Inference for document parsing
-llama-index==0.9.32  # Enhanced RAG framework
-chromadb==0.4.22  # Vector store
-
-# Cross-encoders for reranking
-farm-haystack==1.23.0  # Document retrieval with reranking
 
 # Monitoring and profiling
 nvitop==1.3.1  # NVIDIA GPU monitoring
 py-spy==0.3.14  # Sampling profiler
 torch-tb-profiler==0.4.3  # PyTorch profiler
 pynvml==11.5.0  # NVIDIA Management Library
-prometheus-client==0.19.0  # Metrics collection
-opentelemetry-api==1.22.0  # Distributed tracing
-opentelemetry-sdk==1.22.0  # Distributed tracing
 
 # Optional: Model compression tools
 hqq==0.1.2  # Half-Quadratic Quantization
-torch-quant==0.1.0  # PyTorch Quantization toolkit
-
-# Parallel processing and optimization
-ray==2.9.3  # Distributed computing framework
-aiohttp==3.9.3  # Async HTTP client/server
-dask==2024.3.0  # Parallel computing with NumPy/Pandas interface
-dask-cuda==24.2.0  # GPU support for Dask
-
-# Utilities
-tokenizers==0.15.2  # Fast tokenization
-safetensors==0.4.2  # Safe tensor serialization
-datasets==2.17.1  # Dataset handling
-tqdm==4.66.2  # Progress bars
-psutil==5.9.8  # Process and system utilities
-pyarrow==14.0.2  # Data serialization
+torch-quant==0.1.0  # PyTorch Quantization toolkit==2.9.3  # Distributed computing framework==3.9.3  # Async HTTP client/server==2024.3.0  # Parallel computing with NumPy/Pandas interface==24.2.0  # GPU support for Dask==0.15.2  # Fast tokenization==0.4.2  # Safe tensor serialization==2.17.1  # Dataset handling==4.66.2  # Progress bars==5.9.8  # Process and system utilities==14.0.2  # Data serialization
