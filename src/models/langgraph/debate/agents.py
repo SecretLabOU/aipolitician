@@ -804,10 +804,9 @@ def verify_fact_is_checkable(claim: str) -> bool:
 
 def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
     """
-    Check the accuracy of a factual claim using external fact-checking services.
+    Check the accuracy of a factual claim using browser automation to search reputable fact-checking websites.
     
-    This function connects to real fact-checking APIs to verify claims.
-    Uses API keys sequentially to optimize usage of free tiers.
+    This function uses browser-use to directly search fact-checking websites rather than relying on APIs.
     
     Args:
         claim: The claim to verify
@@ -815,653 +814,255 @@ def check_claim_accuracy(claim: str) -> Tuple[float, Optional[str], List[Dict[st
     Returns:
         Tuple of (accuracy score, corrected info if needed, sources)
     """
-    import requests
-    import json
-    import os
-    import time
-    from typing import Dict, List, Optional, Tuple, Any
     import logging
-    from datetime import datetime, timedelta
+    import asyncio
+    import re
+    from typing import Dict, List, Optional, Tuple, Any
     
     # Setup logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("fact_checker")
-    
-    # Load environment variables from .env file if dotenv is available
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-        logger.info("Loaded environment variables from .env file")
-    except ImportError:
-        logger.warning("python-dotenv not installed, using existing environment variables")
     
     # Initialize default return values
     accuracy = 0.5  # Default to neutral/unknown
     corrected_info = None
     sources = []
     
-    # Log available API keys (without revealing the full keys)
-    google_api_key = os.environ.get('GOOGLE_FACT_CHECK_API_KEY', '')
-    claimbuster_api_key = os.environ.get('CLAIMBUSTER_API_KEY', '')
-    serper_api_key = os.environ.get('SERPER_API_KEY', '')
-    news_api_key = os.environ.get('NEWS_API_KEY', '')
-    
-    logger.info(f"API Keys available - Google: {'Yes' if google_api_key else 'No'}, " +
-                f"ClaimBuster: {'Yes' if claimbuster_api_key else 'No'}, " +
-                f"Serper: {'Yes' if serper_api_key else 'No'}, " +
-                f"NewsAPI: {'Yes' if news_api_key else 'No'}")
-    
-    # Get API usage state from environment or initialize if not present
-    api_state = get_api_usage_state()
+    logger.info(f"Checking claim with browser-based search: {claim[:100]}...")
     
     try:
-        # Try APIs in sequence, using the first available one that hasn't hit rate limits
-        
-        # 1. Try Google Fact Check API if not rate limited
-        if google_api_key and not is_api_rate_limited(api_state, "google"):
-            logger.info("Trying Google Fact Check API")
-            try:
-                google_results = check_with_google_fact_check(claim, google_api_key)
-                if google_results:
-                    increment_api_usage(api_state, "google")
-                    save_api_usage_state(api_state)
-                    return google_results
-            except Exception as e:
-                if "quota" in str(e).lower() or "rate limit" in str(e).lower() or e.args[0] in [429, 403]:
-                    mark_api_rate_limited(api_state, "google")
-                    logger.warning(f"Google Fact Check API rate limited: {str(e)}")
-                else:
-                    logger.error(f"Error with Google Fact Check API: {str(e)}")
-        elif not google_api_key:
-            logger.warning("Google Fact Check API key not found in environment variables")
-        else:
-            logger.info("Google Fact Check API is rate limited, skipping")
-        
-        # 2. Try ClaimBuster API if not rate limited
-        if claimbuster_api_key and not is_api_rate_limited(api_state, "claimbuster"):
-            logger.info("Trying ClaimBuster API")
-            try:
-                claimbuster_results = check_with_claimbuster(claim, claimbuster_api_key)
-                if claimbuster_results:
-                    increment_api_usage(api_state, "claimbuster")
-                    save_api_usage_state(api_state)
-                    return claimbuster_results
-            except Exception as e:
-                if "quota" in str(e).lower() or "rate limit" in str(e).lower() or e.args[0] in [429, 403]:
-                    mark_api_rate_limited(api_state, "claimbuster")
-                    logger.warning(f"ClaimBuster API rate limited: {str(e)}")
-                else:
-                    logger.error(f"Error with ClaimBuster API: {str(e)}")
-        elif not claimbuster_api_key:
-            logger.warning("ClaimBuster API key not found in environment variables")
-        else:
-            logger.info("ClaimBuster API is rate limited, skipping")
-        
-        # 3. Try Serper API if not rate limited
-        if serper_api_key and not is_api_rate_limited(api_state, "serper"):
-            logger.info("Trying Serper API")
-            try:
-                serper_results = search_with_serper_and_analyze(claim, serper_api_key)
-                if serper_results:
-                    increment_api_usage(api_state, "serper")
-                    save_api_usage_state(api_state)
-                    return serper_results
-            except Exception as e:
-                if "quota" in str(e).lower() or "rate limit" in str(e).lower() or e.args[0] in [429, 403]:
-                    mark_api_rate_limited(api_state, "serper")
-                    logger.warning(f"Serper API rate limited: {str(e)}")
-                else:
-                    logger.error(f"Error with Serper API: {str(e)}")
-        elif not serper_api_key:
-            logger.warning("Serper API key not found in environment variables")
-        else:
-            logger.info("Serper API is rate limited, skipping")
-        
-        # 4. Try News API if not rate limited
-        if news_api_key and not is_api_rate_limited(api_state, "newsapi"):
-            logger.info("Trying News API")
-            try:
-                news_results = search_with_newsapi_and_analyze(claim, news_api_key)
-                if news_results:
-                    increment_api_usage(api_state, "newsapi")
-                    save_api_usage_state(api_state)
-                    return news_results
-            except Exception as e:
-                if "quota" in str(e).lower() or "rate limit" in str(e).lower() or e.args[0] in [429, 403]:
-                    mark_api_rate_limited(api_state, "newsapi")
-                    logger.warning(f"News API rate limited: {str(e)}")
-                else:
-                    logger.error(f"Error with News API: {str(e)}")
-        elif not news_api_key:
-            logger.warning("News API key not found in environment variables")
-        else:
-            logger.info("News API is rate limited, skipping")
-        
-        # 5. Fallback to web search verification without API keys as last resort
-        logger.info("All APIs exhausted or unavailable, using basic web search fallback")
+        # Use synchronous wrapper for asyncio
+        return browser_fact_check(claim)
+    except Exception as e:
+        logger.error(f"Error in browser-based fact checking: {str(e)}")
+        # Fall back to basic analysis if browser automation fails
         return basic_web_search_verification(claim)
-    
-    except Exception as e:
-        logger.error(f"Error in fact checking: {str(e)}")
-        # Return a neutral result if all fact-checking methods fail
-        return 0.5, "Unable to verify this claim due to technical issues.", [
-            {"title": "Fact-checking service unavailable", "url": ""}
-        ]
 
-def get_api_usage_state() -> Dict[str, Any]:
+
+async def _browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
     """
-    Get the current API usage state, tracking rate limits and usage counts.
-    Stored in a temporary file to persist between runs.
+    Asynchronous implementation of browser-based fact checking.
+    Uses browser-use to search fact-checking websites with open source models.
     """
+    import logging
+    import asyncio
+    import re
     import os
-    import json
-    from datetime import datetime, timedelta
+    from typing import Dict, List, Optional, Tuple, Any
     
-    state_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api_usage_state.json")
+    # Attempt to import browser-use
+    try:
+        from browser_use import Agent
+        # Import open source model handlers instead of OpenAI
+        from langchain.llms import HuggingFacePipeline, Ollama
+        from langchain_community.llms import HuggingFaceEndpoint
+        from langchain_core.language_models.chat_models import BaseChatModel
+    except ImportError:
+        logging.error("Required libraries not installed. Install with: pip install browser-use langchain-community")
+        raise ImportError("Required libraries not installed")
     
-    if os.path.exists(state_file):
+    logger = logging.getLogger("fact_checker")
+    
+    # Format the claim for searching
+    search_query = f"fact check: {claim}"
+    
+    # Define the browser agent task
+    fact_check_task = f"""
+    Your task is to fact-check this claim: "{claim}"
+    
+    Follow these steps:
+    1. Search for this claim on fact-checking websites like Snopes, PolitiFact, FactCheck.org, Reuters Fact Check, or AP Fact Check
+    2. Find at least 2 relevant fact-check articles
+    3. For each article:
+       - Extract the conclusion (true, mostly true, mixed, mostly false, false, etc.)
+       - Note the URL and title
+       - Extract any correction or context provided
+    4. Create a JSON summary of your findings with this structure:
+       {{
+         "sources": [
+           {{ "title": "Article title", "url": "https://article-url", "rating": "conclusion" }}
+         ],
+         "overall_rating": "overall conclusion",
+         "accuracy_score": 0.X,  // 0.9+ for true, 0.7-0.9 for mostly true, 0.5-0.7 for mixed, 0.3-0.5 for mostly false, 0-0.3 for false
+         "correction": "Any correction or important context"
+       }}
+    
+    If you can't find fact-checks for this specific claim, search for related factual information 
+    from reputable sources to make your own assessment.
+    """
+    
+    # Setup the LLM - try different open source options
+    llm = None
+    
+    # Try loading from environment variable to determine which model to use
+    model_type = os.environ.get("FACT_CHECK_MODEL_TYPE", "ollama").lower()
+    
+    if model_type == "ollama":
+        # Try Ollama first (locally hosted models)
         try:
-            with open(state_file, 'r') as f:
-                state = json.load(f)
-                
-            # Convert stored date strings back to datetime objects
-            for api in state:
-                if "rate_limited_until" in state[api] and state[api]["rate_limited_until"]:
-                    state[api]["rate_limited_until"] = datetime.fromisoformat(state[api]["rate_limited_until"])
-                    
-                    # Reset rate limit if the time has passed
-                    if datetime.now() > state[api]["rate_limited_until"]:
-                        state[api]["rate_limited_until"] = None
-                
-                # Reset daily count if it's a new day
-                if "daily_reset_at" in state[api] and state[api]["daily_reset_at"]:
-                    last_reset = datetime.fromisoformat(state[api]["daily_reset_at"])
-                    if datetime.now().date() > last_reset.date():
-                        state[api]["daily_count"] = 0
-                        state[api]["daily_reset_at"] = datetime.now().isoformat()
-                
-            return state
+            model_name = os.environ.get("OLLAMA_MODEL", "llama3")
+            llm = Ollama(model=model_name)
+            logger.info(f"Using Ollama with model: {model_name}")
         except Exception as e:
-            print(f"Error loading API state: {e}")
+            logger.warning(f"Failed to load Ollama model: {str(e)}")
     
-    # Initialize default state if file doesn't exist or has errors
-    return {
-        "google": {"daily_count": 0, "monthly_count": 0, "rate_limited_until": None, "daily_reset_at": datetime.now().isoformat()},
-        "claimbuster": {"daily_count": 0, "monthly_count": 0, "rate_limited_until": None, "daily_reset_at": datetime.now().isoformat()},
-        "serper": {"daily_count": 0, "monthly_count": 0, "rate_limited_until": None, "daily_reset_at": datetime.now().isoformat()},
-        "newsapi": {"daily_count": 0, "monthly_count": 0, "rate_limited_until": None, "daily_reset_at": datetime.now().isoformat()}
-    }
-
-def save_api_usage_state(state: Dict[str, Any]) -> None:
-    """Save the API usage state to a file"""
-    import os
-    import json
+    if llm is None and model_type == "huggingface_endpoint":
+        # Try HuggingFace Inference API
+        try:
+            hf_token = os.environ.get("HUGGINGFACE_API_TOKEN")
+            hf_model = os.environ.get("HUGGINGFACE_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
+            if hf_token:
+                llm = HuggingFaceEndpoint(
+                    repo_id=hf_model,
+                    huggingfacehub_api_token=hf_token,
+                    max_length=4096
+                )
+                logger.info(f"Using HuggingFace Inference API with model: {hf_model}")
+        except Exception as e:
+            logger.warning(f"Failed to load HuggingFace model: {str(e)}")
     
-    state_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api_usage_state.json")
-    
-    # Convert datetime objects to strings for JSON serialization
-    serializable_state = {}
-    for api, api_state in state.items():
-        serializable_state[api] = api_state.copy()
-        if "rate_limited_until" in api_state and api_state["rate_limited_until"]:
-            if isinstance(api_state["rate_limited_until"], datetime):
-                serializable_state[api]["rate_limited_until"] = api_state["rate_limited_until"].isoformat()
-    
-    try:
-        with open(state_file, 'w') as f:
-            json.dump(serializable_state, f)
-    except Exception as e:
-        print(f"Error saving API state: {e}")
-
-def is_api_rate_limited(state: Dict[str, Any], api_name: str) -> bool:
-    """Check if an API is currently rate limited"""
-    if api_name not in state:
-        return False
-    
-    api_state = state[api_name]
-    
-    # Check if explicitly rate limited
-    if "rate_limited_until" in api_state and api_state["rate_limited_until"]:
-        if datetime.now() < api_state["rate_limited_until"]:
-            return True
-    
-    # Check daily limits
-    if api_name == "google" and api_state.get("daily_count", 0) >= 100:  # Google typically has 100 requests/day free
-        return True
-    elif api_name == "claimbuster" and api_state.get("daily_count", 0) >= 50:  # ClaimBuster limit varies
-        return True
-    elif api_name == "serper" and api_state.get("monthly_count", 0) >= 100:  # Serper has 100 free searches/month
-        return True
-    elif api_name == "newsapi" and api_state.get("daily_count", 0) >= 100:  # NewsAPI has 100 requests/day free
-        return True
-    
-    return False
-
-def mark_api_rate_limited(state: Dict[str, Any], api_name: str) -> None:
-    """Mark an API as rate limited for a period of time"""
-    if api_name not in state:
-        state[api_name] = {}
-    
-    # Set rate limited for different durations based on the API
-    if api_name == "google":
-        state[api_name]["rate_limited_until"] = datetime.now() + timedelta(hours=24)
-    elif api_name == "claimbuster":
-        state[api_name]["rate_limited_until"] = datetime.now() + timedelta(hours=24)
-    elif api_name == "serper":
-        state[api_name]["rate_limited_until"] = datetime.now() + timedelta(hours=24)
-    elif api_name == "newsapi":
-        state[api_name]["rate_limited_until"] = datetime.now() + timedelta(hours=24)
-
-def increment_api_usage(state: Dict[str, Any], api_name: str) -> None:
-    """Increment the usage count for an API"""
-    if api_name not in state:
-        state[api_name] = {"daily_count": 0, "monthly_count": 0, "daily_reset_at": datetime.now().isoformat()}
-    
-    state[api_name]["daily_count"] = state[api_name].get("daily_count", 0) + 1
-    state[api_name]["monthly_count"] = state[api_name].get("monthly_count", 0) + 1
-
-def search_with_serper_and_analyze(query: str, api_key: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
-    """Search with Serper API and analyze results to estimate claim accuracy"""
-    search_results = search_with_serper(f"fact check {query}", api_key)
-    if not search_results:
-        return None
-    
-    return analyze_search_results(query, search_results)
-
-def search_with_newsapi_and_analyze(query: str, api_key: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
-    """Search with NewsAPI and analyze results to estimate claim accuracy"""
-    search_results = search_with_newsapi(f"fact check {query}", api_key)
-    if not search_results:
-        return None
-    
-    return analyze_search_results(query, search_results)
-
-def analyze_search_results(claim: str, search_results: List[Dict]) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
-    """Analyze search results to estimate claim accuracy"""
-    import nltk
-    from nltk.sentiment import SentimentIntensityAnalyzer
-    
-    # Try to download nltk data if not already present
-    try:
-        nltk.data.find('sentiment/vader_lexicon.zip')
-    except LookupError:
-        nltk.download('vader_lexicon')
-    
-    # Initialize SentimentIntensityAnalyzer for basic sentiment analysis
-    sia = SentimentIntensityAnalyzer()
-    
-    sources = []
-    source_urls = []
-    sentiment_scores = []
-    
-    # Process search results to extract sources and analyze sentiment
-    for result in search_results[:5]:  # Limit to top 5 results
-        title = result.get('title', '')
-        url = result.get('link', result.get('url', ''))
-        
-        # Skip if we already have this URL or if it's not a valid URL
-        if not url or url in source_urls:
-            continue
+    # Fallback to a local HuggingFace Pipeline if available
+    if llm is None and model_type == "huggingface_local":
+        try:
+            import torch
+            from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
             
-        source_urls.append(url)
+            model_id = os.environ.get("LOCAL_MODEL_PATH", "TheBloke/Llama-2-7B-Chat-GGUF")
+            tokenizer = AutoTokenizer.from_pretrained(model_id)
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id, 
+                device_map="auto",
+                torch_dtype=torch.float16
+            )
+            
+            pipe = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                max_new_tokens=2048
+            )
+            
+            llm = HuggingFacePipeline(pipeline=pipe)
+            logger.info(f"Using local HuggingFace pipeline with model: {model_id}")
+        except Exception as e:
+            logger.warning(f"Failed to load local HuggingFace pipeline: {str(e)}")
+    
+    # If no model could be loaded, raise an error
+    if llm is None:
+        error_msg = "No LLM could be loaded. Set FACT_CHECK_MODEL_TYPE to 'ollama', 'huggingface_endpoint', or 'huggingface_local'"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    # Create the browser agent
+    try:
+        agent = Agent(
+            task=fact_check_task,
+            llm=llm,
+            headless=True
+        )
         
-        # Add to sources list
+        # Run the agent and get results
+        result = await agent.run()
+        
+        # Parse the JSON output from the agent
+        import json
+        import re
+        
+        # Extract JSON from the agent output using regex
+        json_match = re.search(r'({[\s\S]*})', result)
+        if json_match:
+            json_str = json_match.group(1)
+            try:
+                data = json.loads(json_str)
+                
+                # Extract results
+                sources = data.get("sources", [])
+                overall_rating = data.get("overall_rating", "UNVERIFIED")
+                accuracy_score = data.get("accuracy_score", 0.5)
+                correction = data.get("correction", None)
+                
+                # Ensure sources have the correct format
+                formatted_sources = []
+                for source in sources:
+                    formatted_sources.append({
+                        "title": source.get("title", "Source"),
+                        "url": source.get("url", "")
+                    })
+                
+                logger.info(f"Browser fact-check successful: {overall_rating}, accuracy: {accuracy_score}")
+                return accuracy_score, correction, formatted_sources
+                
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse JSON from agent output: {json_str}")
+        
+        # If we couldn't parse JSON, extract URLs and make a best effort analysis
+        urls = re.findall(r'https?://[^\s\)"\']+', result)
+        titles = re.findall(r'Title: ([^\n]+)', result)
+        
+        extracted_sources = []
+        for i, url in enumerate(urls[:5]):  # Limit to 5 sources
+            title = titles[i] if i < len(titles) else f"Source {i+1}"
+            extracted_sources.append({
+                "title": title,
+                "url": url
+            })
+        
+        # Look for rating indicators in the text
+        accuracy = 0.5  # Default to mixed/neutral
+        if re.search(r'true|correct|accurate|confirmed', result, re.IGNORECASE):
+            accuracy = 0.8
+        elif re.search(r'false|incorrect|wrong|misleading', result, re.IGNORECASE):
+            accuracy = 0.2
+        elif re.search(r'mostly true|largely accurate', result, re.IGNORECASE):
+            accuracy = 0.7
+        elif re.search(r'mostly false|largely inaccurate', result, re.IGNORECASE):
+            accuracy = 0.3
+        elif re.search(r'mixed|partially', result, re.IGNORECASE):
+            accuracy = 0.5
+            
+        # Extract any correction
+        correction_match = re.search(r'Correction:?\s*([^\n]+)', result)
+        correction = correction_match.group(1) if correction_match else None
+        
+        return accuracy, correction, extracted_sources
+            
+    except Exception as e:
+        logger.error(f"Error during browser fact-checking: {str(e)}")
+        raise
+
+
+def browser_fact_check(claim: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
+    """
+    Synchronous wrapper for asynchronous browser-based fact checking.
+    """
+    import asyncio
+    import logging
+    import sys
+    
+    logger = logging.getLogger("fact_checker")
+    
+    try:
+        # Different event loop handling depending on platform and context
+        if sys.platform == 'win32' and sys.version_info >= (3, 8):
+            # For Windows
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+            
+        # Setup and run the async function
+        result = asyncio.run(_browser_fact_check(claim))
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to run browser fact check: {str(e)}")
+        
+        # Fall back to basic analysis
         source = {
-            "title": title,
-            "url": url
+            "title": "Browser-based fact-checking unavailable",
+            "url": ""
         }
         
-        # Analyze sentiment of the title to gauge if it supports or refutes the claim
-        sentiment = sia.polarity_scores(title)
-        sentiment_scores.append(sentiment['compound'])
-        
-        # Add to sources
-        sources.append(source)
-    
-    # Estimate accuracy based on sentiment analysis
-    # This is a rough heuristic and not a true fact-check
-    if sentiment_scores:
-        # Average sentiment score
-        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores)
-        
-        # Map to an accuracy score (0.0-1.0)
-        # Positive sentiment generally correlates with supporting the claim
-        accuracy = (avg_sentiment + 1) / 2  # Convert from [-1,1] to [0,1]
-        
-        # Generate corrected info for likely false claims
-        corrected_info = None
-        if accuracy < 0.4:
-            corrected_info = "Based on available sources, this claim may be disputed."
-            
-        return accuracy, corrected_info, sources
-    
-    # If no sentiment scores, return default
-    return 0.5, None, sources
+        # Use our basic verification as fallback
+        return basic_web_search_verification(claim)
 
-def basic_web_search_verification(claim: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
-    """
-    Basic fallback method when all APIs are exhausted.
-    Performs a simple analysis of the claim to provide better results than just a neutral message.
-    """
-    import re
-    from datetime import datetime
-    import logging
-    
-    logger = logging.getLogger("fact_checker")
-    logger.info(f"Using basic fallback verification for: '{claim[:50]}...'")
-    
-    # Try to extract some meaningful information from the claim itself
-    sources = []
-    accuracy = 0.5  # Default neutral
-    corrected_info = None
-    
-    # Check for specific patterns that might indicate truth or falsehood
-    # These are basic heuristics and not a replacement for real fact-checking
-    
-    # Pattern 1: Look for extreme quantifiers which are often problematic
-    extreme_words = ["all", "every", "always", "never", "nobody", "everybody", "completely", "totally"]
-    if any(re.search(r'\b' + word + r'\b', claim, re.IGNORECASE) for word in extreme_words):
-        accuracy = 0.4  # Slightly lower accuracy for extreme claims
-        corrected_info = "Claims with absolute statements often have exceptions."
-    
-    # Pattern 2: Check if the claim includes large specific numbers
-    large_numbers = re.findall(r'\b\d+\s*(million|billion|trillion)\b', claim, re.IGNORECASE)
-    if large_numbers:
-        accuracy = 0.45  # Specific large numbers need verification
-        corrected_info = "Statistical claims require fact-checking from authoritative sources."
-    
-    # Pattern 3: Check for political keywords that might indicate partisan claims
-    political_keywords = ["democrat", "republican", "liberal", "conservative", "biden", "trump", "obama"]
-    if any(re.search(r'\b' + word + r'\b', claim, re.IGNORECASE) for word in political_keywords):
-        accuracy = 0.48  # Political claims are often mixed
-        corrected_info = "Political claims often contain partial truths or need context."
-    
-    # Add some generic but relevant sources based on topic detection
-    topics = {
-        "climate": ["NASA Climate", "https://climate.nasa.gov/", 
-                   "IPCC", "https://www.ipcc.ch/"],
-        "economy": ["Bureau of Economic Analysis", "https://www.bea.gov/",
-                   "Bureau of Labor Statistics", "https://www.bls.gov/"],
-        "healthcare": ["Centers for Disease Control", "https://www.cdc.gov/",
-                      "World Health Organization", "https://www.who.int/"],
-        "immigration": ["U.S. Citizenship and Immigration Services", "https://www.uscis.gov/",
-                       "Department of Homeland Security", "https://www.dhs.gov/"],
-        "taxes": ["Internal Revenue Service", "https://www.irs.gov/",
-                 "Tax Policy Center", "https://www.taxpolicycenter.org/"],
-        "energy": ["U.S. Energy Information Administration", "https://www.eia.gov/",
-                  "Department of Energy", "https://www.energy.gov/"]
-    }
-    
-    # Check which topics are relevant to the claim
-    relevant_topics = []
-    for topic, _ in topics.items():
-        if re.search(r'\b' + topic + r'\b', claim.lower()):
-            relevant_topics.append(topic)
-    
-    # Add sources from relevant topics
-    for topic in relevant_topics:
-        i = 0
-        while i < len(topics[topic]):
-            sources.append({
-                "title": topics[topic][i],
-                "url": topics[topic][i+1]
-            })
-            i += 2
-    
-    # If no topical sources found, add some general fact-checking sources
-    if not sources:
-        sources = [
-            {"title": "Fact-checking resource: Snopes", "url": "https://www.snopes.com/"},
-            {"title": "Fact-checking resource: PolitiFact", "url": "https://www.politifact.com/"},
-            {"title": "Fact-checking resource: FactCheck.org", "url": "https://www.factcheck.org/"}
-        ]
-    
-    # Add a note about the fallback mechanism
-    note = "No external verification available. This is a basic analysis only."
-    if corrected_info:
-        corrected_info = f"{note} {corrected_info}"
-    else:
-        corrected_info = note
-    
-    return accuracy, corrected_info, sources
-
-def check_with_google_fact_check(claim: str, api_key: str) -> Optional[Tuple[float, Optional[str], List[Dict[str, str]]]]:
-    """Check a claim using Google's Fact Check API"""
-    import requests
-    import json
-    
-    base_url = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
-    params = {
-        "key": api_key,
-        "query": claim,
-        "languageCode": "en"
-    }
-    
-    response = requests.get(base_url, params=params)
-    
-    if response.status_code != 200:
-        return None
-        
-    data = response.json()
-    
-    # Check if there are any results
-    if "claims" not in data or not data["claims"]:
-        return None
-    
-    sources = []
-    ratings = []
-    
-    for fc in data["claims"]:
-        # Get the claim review data
-        for review in fc.get("claimReview", []):
-            publisher = review.get("publisher", {}).get("name", "Unknown source")
-            url = review.get("url", "")
-            title = review.get("title", "Fact check")
-            
-            # Extract rating if available
-            rating_value = review.get("textualRating", "")
-            
-            # Add to sources
-            sources.append({
-                "title": f"{publisher}: {title}",
-                "url": url
-            })
-            
-            # Try to map textual rating to numerical score
-            score = map_rating_to_score(rating_value)
-            if score is not None:
-                ratings.append(score)
-    
-    # Calculate average accuracy if ratings were found
-    if ratings:
-        accuracy = sum(ratings) / len(ratings)
-        
-        # Generate corrected info based on accuracy
-        corrected_info = None
-        if accuracy < 0.5:
-            corrected_info = "This claim appears to be disputed by fact-checkers."
-            
-        return accuracy, corrected_info, sources
-    
-    return None
-
-def check_with_claimbuster(claim: str, api_key: str) -> Optional[Tuple[float, Optional[str], List[Dict[str, str]]]]:
-    """Check a claim using ClaimBuster API"""
-    import requests
-    import json
-    import logging
-    
-    logger = logging.getLogger("fact_checker")
-    
-    # First, assess if the statement is check-worthy
-    check_worthy_url = "https://idir.uta.edu/claimbuster/api/v2/score/text/"
-    headers = {"x-api-key": api_key}
-    
-    try:
-        response = requests.get(check_worthy_url + claim, headers=headers)
-        
-        if response.status_code != 200:
-            logger.warning(f"ClaimBuster API returned status code {response.status_code}")
-            return None
-            
-        score_data = response.json()
-        logger.debug(f"ClaimBuster score response: {score_data}")
-        
-        # Handle different response formats
-        if isinstance(score_data, dict):
-            checkworthy_score = score_data.get("results", {}).get("score", 0)
-        elif isinstance(score_data, list) and len(score_data) > 0:
-            # If it's a list, try to extract score from first item
-            if isinstance(score_data[0], dict):
-                checkworthy_score = score_data[0].get("score", 0)
-            else:
-                logger.warning(f"Unexpected ClaimBuster score format: {score_data}")
-                return None
-        else:
-            logger.warning(f"Unexpected ClaimBuster score format: {score_data}")
-            return None
-        
-        # Only proceed if the claim is worth checking (score > 0.4)
-        if checkworthy_score < 0.4:
-            logger.info(f"Claim not check-worthy, score: {checkworthy_score}")
-            return None
-        
-        # Now search for previously fact-checked similar claims
-        search_url = "https://idir.uta.edu/claimbuster/api/v2/factcheck/search/"
-        response = requests.get(search_url + claim, headers=headers)
-        
-        if response.status_code != 200:
-            logger.warning(f"ClaimBuster search API returned status code {response.status_code}")
-            return None
-            
-        search_data = response.json()
-        logger.debug(f"ClaimBuster search response: {search_data}")
-        
-        # Handle different response formats
-        if isinstance(search_data, dict):
-            fact_checks = search_data.get("results", [])
-        elif isinstance(search_data, list):
-            fact_checks = search_data  # Assume the list itself contains the results
-        else:
-            logger.warning(f"Unexpected ClaimBuster search format: {search_data}")
-            return None
-        
-        if not fact_checks:
-            logger.info("No fact checks found for this claim")
-            return None
-        
-        # Process the fact checks
-        sources = []
-        ratings = []
-        
-        for check in fact_checks[:3]:  # Limit to top 3 matches
-            if not isinstance(check, dict):
-                continue
-                
-            source = check.get("source", "Unknown")
-            title = check.get("title", "Fact check")
-            url = check.get("url", "")
-            conclusion = check.get("conclusion", "")
-            
-            # Add to sources
-            sources.append({
-                "title": f"{source}: {title}",
-                "url": url
-            })
-            
-            # Try to map conclusion to numerical score
-            score = map_rating_to_score(conclusion)
-            if score is not None:
-                ratings.append(score)
-        
-        # Calculate average accuracy if ratings were found
-        if ratings:
-            accuracy = sum(ratings) / len(ratings)
-            
-            # Generate corrected info based on accuracy
-            corrected_info = None
-            if accuracy < 0.5:
-                corrected_info = "This claim appears to be disputed by fact-checkers."
-                
-            return accuracy, corrected_info, sources
-            
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error in ClaimBuster API: {str(e)}")
-        return None
-
-def search_with_serper(query: str, api_key: str) -> List[Dict]:
-    """Search the web using Serper API"""
-    import requests
-    import json
-    
-    url = "https://serpapi.com/search"
-    params = {
-        "q": query,
-        "api_key": api_key,
-        "engine": "google"
-    }
-    
-    response = requests.get(url, params=params)
-    
-    if response.status_code != 200:
-        return []
-        
-    data = response.json()
-    organic_results = data.get("organic_results", [])
-    
-    return organic_results
-
-def search_with_newsapi(query: str, api_key: str) -> List[Dict]:
-    """Search news articles using NewsAPI"""
-    import requests
-    
-    url = "https://newsapi.org/v2/everything"
-    params = {
-        "q": query,
-        "apiKey": api_key,
-        "language": "en",
-        "sortBy": "relevancy"
-    }
-    
-    response = requests.get(url, params=params)
-    
-    if response.status_code != 200:
-        return []
-        
-    data = response.json()
-    articles = data.get("articles", [])
-    
-    # Format to match expected structure
-    return [{"title": a["title"], "url": a["url"], "link": a["url"]} for a in articles]
-
-def map_rating_to_score(rating: str) -> Optional[float]:
-    """Map textual ratings to numerical scores between 0 and 1"""
-    rating = rating.lower()
-    
-    # True ratings
-    if any(term in rating for term in ["true", "accurate", "correct", "verified", "confirmed"]):
-        return 0.9
-    
-    # Mostly true ratings
-    if any(term in rating for term in ["mostly true", "largely true", "generally true", "mostly correct"]):
-        return 0.75
-    
-    # Mixed/Partial ratings
-    if any(term in rating for term in ["mixture", "mixed", "partly true", "partially true", "half true"]):
-        return 0.5
-    
-    # Mostly false ratings
-    if any(term in rating for term in ["mostly false", "largely false", "generally false"]):
-        return 0.25
-    
-    # False ratings
-    if any(term in rating for term in ["false", "inaccurate", "incorrect", "wrong", "pants on fire"]):
-        return 0.1
-    
-    # If we can't determine the rating, return None
-    return None
 
 def generate_interruption(interrupter: str, interrupted: str, topic: str, max_length: int = 150) -> str:
     """Generate an interruption from one politician to another."""
@@ -1651,4 +1252,92 @@ def generate_response(state: Dict[str, Any]) -> str:
             return response_data  # If it's already a string
     except Exception as e:
         print(f"Error generating response: {e}")
-        return "I'm considering my position on this issue." 
+        return "I'm considering my position on this issue."
+
+
+def basic_web_search_verification(claim: str) -> Tuple[float, Optional[str], List[Dict[str, str]]]:
+    """
+    Basic fallback method when all APIs are exhausted.
+    Performs a simple analysis of the claim to provide better results than just a neutral message.
+    """
+    import re
+    from datetime import datetime
+    import logging
+    
+    logger = logging.getLogger("fact_checker")
+    logger.info(f"Using basic fallback verification for: '{claim[:50]}...'")
+    
+    # Try to extract some meaningful information from the claim itself
+    sources = []
+    accuracy = 0.5  # Default neutral
+    corrected_info = None
+    
+    # Check for specific patterns that might indicate truth or falsehood
+    # These are basic heuristics and not a replacement for real fact-checking
+    
+    # Pattern 1: Look for extreme quantifiers which are often problematic
+    extreme_words = ["all", "every", "always", "never", "nobody", "everybody", "completely", "totally"]
+    if any(re.search(r'\b' + word + r'\b', claim, re.IGNORECASE) for word in extreme_words):
+        accuracy = 0.4  # Slightly lower accuracy for extreme claims
+        corrected_info = "Claims with absolute statements often have exceptions."
+    
+    # Pattern 2: Check if the claim includes large specific numbers
+    large_numbers = re.findall(r'\b\d+\s*(million|billion|trillion)\b', claim, re.IGNORECASE)
+    if large_numbers:
+        accuracy = 0.45  # Specific large numbers need verification
+        corrected_info = "Statistical claims require fact-checking from authoritative sources."
+    
+    # Pattern 3: Check for political keywords that might indicate partisan claims
+    political_keywords = ["democrat", "republican", "liberal", "conservative", "biden", "trump", "obama"]
+    if any(re.search(r'\b' + word + r'\b', claim, re.IGNORECASE) for word in political_keywords):
+        accuracy = 0.48  # Political claims often contain partial truths or need context."
+        corrected_info = "Political claims often contain partial truths or need context."
+    
+    # Add some generic but relevant sources based on topic detection
+    topics = {
+        "climate": ["NASA Climate", "https://climate.nasa.gov/", 
+                   "IPCC", "https://www.ipcc.ch/"],
+        "economy": ["Bureau of Economic Analysis", "https://www.bea.gov/",
+                   "Bureau of Labor Statistics", "https://www.bls.gov/"],
+        "healthcare": ["Centers for Disease Control", "https://www.cdc.gov/",
+                      "World Health Organization", "https://www.who.int/"],
+        "immigration": ["U.S. Citizenship and Immigration Services", "https://www.uscis.gov/",
+                       "Department of Homeland Security", "https://www.dhs.gov/"],
+        "taxes": ["Internal Revenue Service", "https://www.irs.gov/",
+                 "Tax Policy Center", "https://www.taxpolicycenter.org/"],
+        "energy": ["U.S. Energy Information Administration", "https://www.eia.gov/",
+                  "Department of Energy", "https://www.energy.gov/"]
+    }
+    
+    # Check which topics are relevant to the claim
+    relevant_topics = []
+    for topic, _ in topics.items():
+        if re.search(r'\b' + topic + r'\b', claim.lower()):
+            relevant_topics.append(topic)
+    
+    # Add sources from relevant topics
+    for topic in relevant_topics:
+        i = 0
+        while i < len(topics[topic]):
+            sources.append({
+                "title": topics[topic][i],
+                "url": topics[topic][i+1]
+            })
+            i += 2
+    
+    # If no topical sources found, add some general fact-checking sources
+    if not sources:
+        sources = [
+            {"title": "Fact-checking resource: Snopes", "url": "https://www.snopes.com/"},
+            {"title": "Fact-checking resource: PolitiFact", "url": "https://www.politifact.com/"},
+            {"title": "Fact-checking resource: FactCheck.org", "url": "https://www.factcheck.org/"}
+        ]
+    
+    # Add a note about the fallback mechanism
+    note = "No external verification available. This is a basic analysis only."
+    if corrected_info:
+        corrected_info = f"{note} {corrected_info}"
+    else:
+        corrected_info = note
+    
+    return accuracy, corrected_info, sources 
