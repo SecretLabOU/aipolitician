@@ -46,7 +46,7 @@ The scraper follows a systematic process:
 
 The scraper dynamically generates URLs for multiple source types:
 
-```python
+```python3
 def get_sources(name):
     formatted_name = name.replace(' ', '_')
     formatted_name_dash = name.replace(' ', '-')
@@ -68,7 +68,7 @@ def get_sources(name):
 
 Web content is extracted using BeautifulSoup with site-specific selectors and robust error handling:
 
-```python
+```python3
 def get_article_text(url, selector=None, max_retries=2):
     """Fetch and extract the main content from a webpage with retries"""
     # Implementation with retry logic and error handling
@@ -78,7 +78,7 @@ def get_article_text(url, selector=None, max_retries=2):
 
 The scraper leverages Ollama's Llama3 model to extract structured information from raw text:
 
-```python
+```python3
 def extract_with_ollama(text, name, max_length=8000):
     """Extract structured information directly using Ollama API"""
     # Trims text to reasonable length
@@ -112,7 +112,7 @@ The extraction prompt defines a detailed schema for organizing political informa
 
 The scraper can utilize GPU acceleration for improved performance:
 
-```python
+```python3
 def setup_gpu_environment(env_id="nat", gpu_count=1):
     """Setup genv environment and attach GPU"""
     # Implementation for GPU environment setup
@@ -190,37 +190,50 @@ conda activate scraper
 # Start the Ollama server (in a separate terminal)
 ollama serve
 
-# Run the scraper
-python -m src.data.scraper.politician_scraper
+# Run the scraper (uses default politician "Donald Trump")
+python3 -m src.data.scraper.politician_scraper
 ```
 
-This scrapes data for the default political figure and saves results to the logs directory.
+### Custom Configuration
 
-### Custom Political Figure
-
-Specify a different political figure:
+The script uses positional arguments rather than flags:
 
 ```bash
-python -m src.data.scraper.politician_scraper --politician "Joe Biden"
+python3 -m src.data.scraper.politician_scraper "Politician Name" "env_id" gpu_count
 ```
 
-### Configuration Options
-
-| Option | Description | Example |
-|--------|-------------|---------|
-| `--politician` | Target politician | `"Joe Biden"` |
-| `--output-dir` | Output directory | `./data/raw/biden` |
-| `--env-id` | GPU environment ID | `nat` |
-| `--gpu-count` | Number of GPUs | `2` |
-| `--model` | Ollama model to use | `llama3` |
-
-### Environment Setup
-
-For GPU acceleration, initialize your shell:
+For example, to scrape data for JD Vance with environment ID "nat" and 1 GPU:
 
 ```bash
-eval "$(genv shell --init)"
+python3 -m src.data.scraper.politician_scraper "JD Vance" "nat" 1
 ```
+
+### Command-line Arguments
+
+| Position | Parameter | Description | Default |
+|----------|-----------|-------------|---------|
+| 1 | Politician name | Name of the political figure to scrape | "Donald Trump" |
+| 2 | Environment ID | GPU environment ID | "nat" |
+| 3 | GPU count | Number of GPUs to use | 1 |
+
+### GPU Environment Setup
+
+Before running the script with GPU support:
+
+1. Initialize genv in your shell:
+   ```bash
+   eval "$(genv shell --init)"
+   ```
+
+2. Create a genv environment if you don't have one already:
+   ```bash
+   genv create --id nat
+   ```
+
+The script will attempt to:
+- Activate the specified genv environment
+- Attach the requested number of GPUs
+- Clean up by detaching GPUs when the script exits
 
 ---
 
@@ -265,7 +278,7 @@ The scraper produces structured JSON output:
 
 Edit the `get_sources()` function to include additional sources:
 
-```python
+```python3
 def get_sources(name):
     # Existing sources
     sources = [...]
@@ -280,7 +293,7 @@ def get_sources(name):
 
 Edit the prompt in `extract_with_ollama()` to modify the extraction schema:
 
-```python
+```python3
 prompt = f"""
 Extract ONLY factual information about {name} from this text.
 
@@ -298,7 +311,7 @@ Return a JSON object with THESE EXACT fields:
 
 Change the model name in the Ollama API call:
 
-```python
+```python3
 response = requests.post(
     'http://localhost:11434/api/generate',
     json={
