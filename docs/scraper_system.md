@@ -12,7 +12,7 @@ The Political Figure Scraper is a sophisticated tool designed to collect compreh
 
 - **Scrapy** for robust, concurrent web crawling
 - **SpaCy** with GPU acceleration for Named Entity Recognition (NER) and text processing
-- **python3** with modern project structure
+- **python33** with modern project structure
 - **GPU acceleration** with genv environment management
 
 ### Directory Structure
@@ -52,7 +52,7 @@ The scraper follows a systematic process:
 
 The system uses a custom Scrapy spider designed to handle various political information sources:
 
-```python3
+```python33
 class PoliticianSpider(scrapy.Spider):
     name = "politician"
     allowed_domains = [
@@ -79,7 +79,7 @@ The spider includes specialized parsers for different website types:
 
 A custom pipeline uses SpaCy's powerful NER capabilities:
 
-```python3
+```python33
 class SpacyNERPipeline:
     def process_item(self, item, spider):
         # Process text with SpaCy
@@ -104,7 +104,7 @@ The pipeline automatically:
 
 The scraper dynamically adapts to available GPU resources:
 
-```python3
+```python33
 # Check for GPU availability and optimize settings
 has_gpu = len(get_cuda_devices()) > 0
 if has_gpu:
@@ -123,20 +123,17 @@ The GPU environment is managed through genv:
 
 ### Prerequisites
 
-1. python3 3.8+ installed
-2. Required python3 packages:
-   - scrapy
-   - spacy
-   - requests
-   - beautifulsoup4
+1. python3 3.11
+2. Required python3 packages (listed in requirements/requirements-scraper.txt)
+3. SpaCy language models (en_core_web_sm and en_core_web_lg)
 
 ### Installation
 
 #### Setting Up the Environment
 
-1. Create a new conda environment named "scraper":
+1. Create a new conda environment with python3 3.11:
    ```bash
-   conda create -n scraper python3=3.8
+   conda create -n scraper python3=3.11
    ```
 
 2. Activate the environment:
@@ -149,23 +146,24 @@ The GPU environment is managed through genv:
    cd /path/to/ai-politician
    ```
 
-4. Install required dependencies:
+4. Create the required output directory and ensure it has proper permissions:
+   ```bash
+   mkdir -p src/data/scraper/logs
+   chmod 755 src/data/scraper/logs
+   ```
+
+5. Install required dependencies:
    ```bash
    pip install -r requirements/requirements-scraper.txt
    ```
 
-5. Download the SpaCy model:
+6. Download the required SpaCy models:
    ```bash
-   python3 -m spacy download en_core_web_trf
-   ```
-   
-   For lower resource usage, you can use alternative models:
-   ```bash
-   # Large model - good balance between accuracy and performance
-   python3 -m spacy download en_core_web_lg
-   
-   # Small model - fastest but less accurate
+   # Small model - faster processing but less accurate
    python3 -m spacy download en_core_web_sm
+   
+   # Large model - better accuracy but requires more resources
+   python3 -m spacy download en_core_web_lg
    ```
 
 ### Basic Usage
@@ -235,7 +233,7 @@ The scraper produces structured JSON output with entities extracted by SpaCy:
 
 Edit the `allowed_domains` and `generate_start_urls()` method in `politician_spider.py`:
 
-```python3
+```python33
 allowed_domains = [
     'en.wikipedia.org',
     'www.britannica.com',
@@ -255,7 +253,7 @@ def generate_start_urls(self):
 
 Add a new parser method in `politician_spider.py`:
 
-```python3
+```python33
 def parse_custom_site(self, response):
     """Parse your custom site"""
     main_content = response.css('your-css-selector')
@@ -286,7 +284,7 @@ def parse_custom_site(self, response):
 
 Edit the `SPACY_MODEL` setting in `settings.py`:
 
-```python3
+```python33
 # For highest accuracy (requires more GPU memory)
 SPACY_MODEL = 'en_core_web_trf'
 
@@ -323,39 +321,4 @@ SPACY_MODEL = 'en_core_web_trf'
 The scraper outputs detailed logs to help with debugging:
 - Spider activity in `scrapy.log`
 - General execution in `scraper.log`
-- HTTP caching in the `httpcache` directory
-
----
-
-## 🔄 Maintenance and Updates
-
-### Updating for Website Changes
-
-If a website's structure changes:
-
-1. Identify the new CSS selectors using browser developer tools
-2. Update the corresponding parser method in `politician_spider.py`
-3. Consider adding fallback selectors for more robust parsing
-
-### Performance Tuning
-
-Adjust the following settings in `settings.py` for better performance:
-
-```python3
-# Increase for more aggressive crawling (may trigger rate limits)
-CONCURRENT_REQUESTS = 16
-
-# Decrease to reduce load on target websites
-DOWNLOAD_DELAY = 1.5
-
-# For GPU processing, adjust batch size based on available memory
-# In pipelines.py, adjust self.nlp.batch_size
-```
-
-### Adding New Entity Types
-
-To extract additional entity types:
-
-1. Add new fields to `PoliticianItem` in `items.py`
-2. Update the `SpacyNERPipeline` in `pipelines.py` to extract and populate these fields
-3. Customize entity extraction logic based on your specific needs
+- HTTP caching in the `
