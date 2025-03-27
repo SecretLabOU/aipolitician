@@ -16,13 +16,23 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Setting up ChromaDB for AI Politician project...${NC}"
 
-# Install required Python packages
+# Install required Python packages with specific versions
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-pip install chromadb sentence-transformers
+pip install 'chromadb>=0.4.18'
 
-# Install BGE model dependencies
+# Install HuggingFace Transformers with specific versions for BGE model
 echo -e "${YELLOW}Installing BGE embedding model dependencies...${NC}"
-pip install transformers torch
+pip install 'transformers>=4.30.0' 'torch>=2.0.0' 'numpy>=1.20.0'
+
+# Download the BGE model to cache before using
+echo -e "${YELLOW}Downloading BGE-Small-EN model...${NC}"
+python -c "
+from transformers import AutoTokenizer, AutoModel
+# Download model and tokenizer files to cache
+tokenizer = AutoTokenizer.from_pretrained('BAAI/bge-small-en')
+model = AutoModel.from_pretrained('BAAI/bge-small-en')
+print('Successfully downloaded BGE-Small-EN model and tokenizer')
+"
 
 # Create the database directory if it doesn't exist
 if [ ! -d "$DB_DIR" ]; then
@@ -37,7 +47,7 @@ echo -e "${YELLOW}Setting directory permissions...${NC}"
 chmod 755 "$DB_DIR"
 
 echo -e "${GREEN}Verifying Python installation...${NC}"
-python -c "import chromadb; import sentence_transformers; import torch; print('All dependencies successfully installed')"
+python -c "import chromadb; import transformers; import torch; print('All dependencies successfully installed')"
 
 # Initialize the database
 echo -e "${YELLOW}Initializing the database...${NC}"

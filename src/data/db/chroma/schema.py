@@ -5,6 +5,7 @@ import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 from typing import Optional, Dict, Any, List
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -47,19 +48,55 @@ def setup_permissions(db_path: str) -> bool:
 
 def get_embedding_function():
     """
-    Get the embedding function for the BGE-Small-EN model.
+    Get the embedding function for the BGE-Small-EN model using HuggingFace Transformers directly.
     
     Returns:
         embedding_function: The embedding function to use
     """
     try:
-        # Use the HuggingFace embedding function with the BGE-Small-EN model
-        embedding_func = embedding_functions.HuggingFaceEmbeddingFunction(
-            model_name="BAAI/bge-small-en",
-            encode_kwargs={"normalize_embeddings": True}
-        )
-        logger.info("Initialized BGE-Small-EN embedding function")
+        # Direct implementation using HuggingFace Transformers
+        from transformers import AutoTokenizer, AutoModel
+        import torch
+        
+        class BGEEmbeddingFunction:
+            def __init__(self, model_name="BAAI/bge-small-en"):
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+                self.model = AutoModel.from_pretrained(model_name)
+                self.device = "cuda" if torch.cuda.is_available() else "cpu"
+                self.model.to(self.device)
+                logger.info(f"Loaded BGE-Small-EN model on {self.device}")
+            
+            def __call__(self, texts):
+                if not texts:
+                    return []
+                
+                # Tokenize sentences
+                encoded_input = self.tokenizer(
+                    texts, 
+                    padding=True, 
+                    truncation=True, 
+                    max_length=512, 
+                    return_tensors='pt'
+                ).to(self.device)
+                
+                # Compute token embeddings
+                with torch.no_grad():
+                    model_output = self.model(**encoded_input)
+                    # Use CLS token embedding
+                    embeddings = model_output.last_hidden_state[:, 0]
+                    
+                    # Normalize embeddings
+                    embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+                    
+                # Convert from PyTorch tensors to numpy arrays
+                embeddings = embeddings.cpu().numpy()
+                
+                return embeddings.tolist()
+            
+        embedding_func = BGEEmbeddingFunction()
+        logger.info("Initialized BGE-Small-EN embedding function using HuggingFace Transformers")
         return embedding_func
+        
     except Exception as e:
         logger.error(f"Failed to initialize embedding function: {e}")
         # Return None to indicate failure
