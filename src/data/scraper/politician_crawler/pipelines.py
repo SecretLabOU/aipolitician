@@ -22,7 +22,7 @@ class SpacyNERPipeline:
     def from_crawler(cls, crawler):
         return cls(
             model_name=crawler.settings.get('SPACY_MODEL', 'en_core_web_lg'),
-            politician_data_dir=crawler.settings.get('POLITICIAN_DATA_DIR', 'data/politicians')
+            politician_data_dir=crawler.settings.get('POLITICIAN_DATA_DIR', 'src/data/scraper/logs')
         )
     
     def open_spider(self, spider):
@@ -133,7 +133,7 @@ class JsonWriterPipeline:
     
     @classmethod
     def from_crawler(cls, crawler):
-        output_dir = crawler.settings.get('POLITICIAN_DATA_DIR', 'data/politicians')
+        output_dir = crawler.settings.get('POLITICIAN_DATA_DIR', 'src/data/scraper/logs')
         # Convert to absolute path if not already absolute
         if not os.path.isabs(output_dir):
             # Get project root directory

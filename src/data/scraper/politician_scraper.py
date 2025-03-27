@@ -35,7 +35,7 @@ def main():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default='data/politicians',
+        default='src/data/scraper/logs',
         help='Directory to save the scraped data JSON files'
     )
     

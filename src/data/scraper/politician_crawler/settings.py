@@ -44,5 +44,5 @@ RETRY_TIMES = 3
 RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
 
 # Custom settings for Politician Crawler
-POLITICIAN_DATA_DIR = 'data/politicians'
-SPACY_MODEL = 'en_core_web_trf'  # Transformer-based model for better NER 
+POLITICIAN_DATA_DIR = 'src/data/scraper/logs'
+SPACY_MODEL = 'en_core_web_lg'  # Transformer-based model for better NER 

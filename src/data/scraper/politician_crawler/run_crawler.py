@@ -99,18 +99,21 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
     else:
         logger.info("Running with CPU only (no GPU requested)")
     
+    # Set default output directory if not specified
+    if output_dir is None:
+        output_dir = "src/data/scraper/logs"
+        
     # Create output directory if specified
-    if output_dir:
-        # Convert to absolute path if not already absolute
-        if not os.path.isabs(output_dir):
-            # Get project root directory
-            project_root = os.getcwd()
-            output_dir = os.path.join(project_root, output_dir)
-            
-        logger.info(f"Using output directory: {output_dir}")
-        os.makedirs(output_dir, exist_ok=True)
-        # Update settings to use this directory
-        os.environ['POLITICIAN_DATA_DIR'] = output_dir
+    # Convert to absolute path if not already absolute
+    if not os.path.isabs(output_dir):
+        # Get project root directory
+        project_root = os.getcwd()
+        output_dir = os.path.join(project_root, output_dir)
+        
+    logger.info(f"Using output directory: {output_dir}")
+    os.makedirs(output_dir, exist_ok=True)
+    # Update settings to use this directory
+    os.environ['POLITICIAN_DATA_DIR'] = output_dir
     
     try:
         # Get the Scrapy project settings
