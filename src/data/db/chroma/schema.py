@@ -170,18 +170,45 @@ def get_collection(client: chromadb.Client, collection_name: str = DEFAULT_COLLE
         if not embedding_func:
             raise ValueError("Could not initialize embedding function")
             
-        # Check if collection exists
-        collections = client.list_collections()
-        collection_exists = any(c.name == collection_name for c in collections)
+        # Check if collection exists (compatible with ChromaDB v0.6.0)
+        try:
+            collections = client.list_collections()
+            # In ChromaDB v0.6.0+, list_collections returns just the names
+            collection_exists = collection_name in collections
+            logger.info(f"Found collections: {collections}")
+        except Exception as e:
+            # Fallback for older versions or if there's an error
+            logger.warning(f"Error checking collections with list_collections: {e}")
+            try:
+                # Try to get the collection directly to check if it exists
+                client.get_collection(name=collection_name)
+                collection_exists = True
+            except Exception:
+                collection_exists = False
         
         if collection_exists:
             logger.info(f"Collection '{collection_name}' already exists")
-            collection = client.get_collection(
-                name=collection_name,
-                embedding_function=embedding_func
-            )
-            return collection
-        elif create_if_not_exists:
+            try:
+                collection = client.get_collection(
+                    name=collection_name,
+                    embedding_function=embedding_func
+                )
+                return collection
+            except Exception as e:
+                logger.error(f"Error getting existing collection: {e}")
+                if not create_if_not_exists:
+                    return None
+                    
+                # Try to delete and recreate if we can't get it properly
+                try:
+                    client.delete_collection(name=collection_name)
+                    logger.info(f"Deleted problematic collection '{collection_name}'")
+                    collection_exists = False
+                except Exception as delete_error:
+                    logger.error(f"Error deleting problematic collection: {delete_error}")
+                    return None
+        
+        if not collection_exists and create_if_not_exists:
             logger.info(f"Creating collection '{collection_name}'")
             collection = client.create_collection(
                 name=collection_name,

@@ -18,7 +18,7 @@ echo -e "${GREEN}Setting up ChromaDB for AI Politician project...${NC}"
 
 # Install required Python packages with specific versions
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-pip install 'chromadb>=0.4.18'
+pip install 'chromadb==0.4.18'  # Pinning to specific version for stability
 
 # Install HuggingFace Transformers with specific versions for BGE model
 echo -e "${YELLOW}Installing BGE embedding model dependencies...${NC}"
@@ -48,6 +48,22 @@ chmod 755 "$DB_DIR"
 
 echo -e "${GREEN}Verifying Python installation...${NC}"
 python -c "import chromadb; import transformers; import torch; print('All dependencies successfully installed')"
+
+# Clear any existing collections to avoid compatibility issues
+echo -e "${YELLOW}Cleaning up any existing collections...${NC}"
+python -c "
+import sys
+import os
+import chromadb
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname('$0'), '../../../')))
+from data.db.chroma.schema import connect_to_chroma, DEFAULT_DB_PATH, DEFAULT_COLLECTION_NAME
+client = connect_to_chroma('$DB_DIR')
+try:
+    client.delete_collection(name=DEFAULT_COLLECTION_NAME)
+    print(f'Deleted existing collection {DEFAULT_COLLECTION_NAME}')
+except Exception as e:
+    print(f'No existing collection to delete or error: {e}')
+"
 
 # Initialize the database
 echo -e "${YELLOW}Initializing the database...${NC}"
