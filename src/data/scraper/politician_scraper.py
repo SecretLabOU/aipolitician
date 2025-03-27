@@ -18,6 +18,7 @@ import json
 import logging
 import asyncio
 import random
+import argparse
 from typing import Dict, Any, List, Optional
 
 # Configure logging
@@ -27,8 +28,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Fix import path - use relative import instead of absolute
-from .politician_crawler.run_crawler import run_spider
+# Try multiple import approaches to be robust to different execution contexts
+try:
+    # Try relative import first
+    from .politician_crawler.run_crawler import run_spider
+except (ImportError, ValueError):
+    try:
+        # Try absolute import using src path
+        from src.data.scraper.politician_crawler.run_crawler import run_spider
+    except ImportError:
+        # Last resort: modify sys.path and import
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if current_dir not in sys.path:
+            sys.path.insert(0, current_dir)
+        from politician_crawler.run_crawler import run_spider
 
 async def crawl_political_figure(name: str, max_attempts: int = 3) -> Optional[Dict[str, Any]]:
     """
@@ -112,12 +125,12 @@ def main():
     args = parser.parse_args()
     
     # Run the spider with provided arguments
-    success = run_spider(
+    success = asyncio.run(run_spider(
         politician_name=args.politician_name,
         output_dir=args.output_dir,
         env_id=args.env_id,
         gpu_count=args.gpu_count
-    )
+    ))
     
     # Exit with appropriate status code
     sys.exit(0 if success else 1)

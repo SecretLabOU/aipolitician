@@ -22,10 +22,21 @@ import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-# Fix the import path to work with direct execution
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.abspath(os.path.join(current_dir, "../.."))
-sys.path.insert(0, src_dir)
+# Configure import paths - handle both absolute and relative imports
+# to make the script robust to different execution contexts
+try:
+    # Try absolute imports first (assuming PYTHONPATH is set correctly)
+    from src.data.scraper.politician_scraper import crawl_political_figure
+    from src.data.db.chroma.schema import connect_to_chroma, get_collection, DEFAULT_DB_PATH
+    from src.data.db.chroma.operations import upsert_politician
+except ImportError:
+    # Fall back to relative imports for local execution
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from scraper.politician_scraper import crawl_political_figure
+    from db.chroma.schema import connect_to_chroma, get_collection, DEFAULT_DB_PATH
+    from db.chroma.operations import upsert_politician
+
+import chromadb
 
 # Configure logging
 import logging
@@ -38,12 +49,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("political_pipeline")
-
-# Import the scraper and ChromaDB modules after fixing the path
-from src.data.scraper.politician_scraper import crawl_political_figure
-from src.data.db.chroma.schema import connect_to_chroma, get_collection, DEFAULT_DB_PATH
-from src.data.db.chroma.operations import upsert_politician
-import chromadb
 
 def map_scraper_to_chroma(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
     """
