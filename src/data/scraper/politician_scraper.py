@@ -58,10 +58,68 @@ async def crawl_political_figure(name: str, max_attempts: int = 3) -> Optional[D
     
     for attempt in range(1, max_attempts + 1):
         try:
-            # Set random user agent for each attempt
+            # Run the spider
             result = await run_spider(name)
             
-            if result and isinstance(result, dict) and "name" in result:
+            # Check if result is valid
+            if not result:
+                logger.warning(f"Crawler returned no data for {name} (attempt {attempt})")
+                continue
+                
+            # Handle list result (multiple entries per politician)
+            if isinstance(result, list):
+                if not result:
+                    logger.warning(f"Crawler returned empty list for {name} (attempt {attempt})")
+                    continue
+                    
+                # First, look for entries with proper content
+                valid_entries = [
+                    entry for entry in result 
+                    if isinstance(entry, dict) and "name" in entry and entry.get("name") == name
+                ]
+                
+                # If no valid entries found with exact name match, try any with a name field
+                if not valid_entries:
+                    valid_entries = [
+                        entry for entry in result 
+                        if isinstance(entry, dict) and "name" in entry
+                    ]
+                
+                if not valid_entries:
+                    logger.warning(f"No valid entries found for {name} (attempt {attempt})")
+                    continue
+                
+                # Sort entries by content length to find the most detailed one
+                # Prioritize entries with Wikipedia data (these typically have the most info)
+                wiki_entries = [e for e in valid_entries if "wikipedia" in str(e.get("source_url", "")).lower()]
+                
+                if wiki_entries:
+                    # Get the entry with the most content from Wikipedia
+                    longest_entry = max(
+                        wiki_entries, 
+                        key=lambda e: len(str(e.get("raw_content", "")))
+                    )
+                else:
+                    # Fall back to entry with the most content
+                    longest_entry = max(
+                        valid_entries, 
+                        key=lambda e: len(str(e.get("raw_content", "")))
+                    )
+                
+                # Use the best entry
+                entry = longest_entry
+                
+                logger.info(f"Successfully crawled data for {name} (attempt {attempt}, selected best of {len(valid_entries)} entries)")
+                
+                # Add ID to the data if not present
+                if "id" not in entry:
+                    # Create ID from name (lowercase, replace spaces with dashes)
+                    entry["id"] = name.lower().replace(" ", "-")
+                
+                return entry
+                
+            # Handle direct dictionary result
+            elif isinstance(result, dict) and "name" in result:
                 logger.info(f"Successfully crawled data for {name} (attempt {attempt})")
                 
                 # Add ID to the data if not present

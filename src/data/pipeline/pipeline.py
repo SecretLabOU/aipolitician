@@ -362,6 +362,7 @@ def main():
     
     parser.add_argument("--stats-output", help="Path to save pipeline statistics (JSON)")
     parser.add_argument("--db-path", default=DEFAULT_DB_PATH, help=f"Path to ChromaDB database (default: {DEFAULT_DB_PATH})")
+    parser.add_argument("--allow-partial", action="store_true", help="Return success if at least one politician is processed successfully")
     
     args = parser.parse_args()
     
@@ -387,9 +388,21 @@ def main():
     
     # Report results
     success_rate = (stats["successful"] / stats["total"]) * 100 if stats["total"] > 0 else 0
-    if stats["failed"] > 0:
-        logger.warning(f"Pipeline completed with {stats['failed']} failures ({success_rate:.1f}% success rate)")
+    
+    # Determine exit code based on success rate and allow_partial flag
+    if stats["successful"] == 0:
+        # Always fail if nothing succeeded
+        logger.error(f"Pipeline failed with no successful politicians ({success_rate:.1f}% success rate)")
         sys.exit(1)
+    elif stats["failed"] > 0:
+        if args.allow_partial:
+            # Consider partial success as success if allow_partial is set
+            logger.warning(f"Pipeline completed with partial success: {stats['successful']} succeeded, {stats['failed']} failed ({success_rate:.1f}% success rate)")
+            sys.exit(0)
+        else:
+            # By default, consider partial success as failure
+            logger.warning(f"Pipeline completed with {stats['failed']} failures ({success_rate:.1f}% success rate)")
+            sys.exit(1)
     else:
         logger.info(f"Pipeline completed successfully ({success_rate:.1f}% success rate)")
         sys.exit(0)

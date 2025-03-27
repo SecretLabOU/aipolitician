@@ -122,8 +122,19 @@ def process_politician_file(file_path: str, collection, stats: Dict[str, int]) -
         for data in politicians_data:
             entries_processed += 1
             
+            # Basic validation check
+            if not isinstance(data, dict) or not data.get("name"):
+                logger.warning(f"Skipping invalid entry (missing name) in {filename}")
+                stats["invalid_entries"] = stats.get("invalid_entries", 0) + 1
+                continue
+                
             # Normalize the data
-            normalized_data = normalize_politician_data(data, filename)
+            try:
+                normalized_data = normalize_politician_data(data, filename)
+            except Exception as e:
+                logger.error(f"Error normalizing data for entry {entries_processed} in {filename}: {e}")
+                stats["failed"] += 1
+                continue
             
             # Skip entries with empty biographies
             if not normalized_data["biography"]:
@@ -131,21 +142,32 @@ def process_politician_file(file_path: str, collection, stats: Dict[str, int]) -
                 stats["empty_entries"] += 1
                 continue
                 
-            # Skip entries that are error pages
-            if "page can't be found" in normalized_data["biography"] or "Sorry, we couldn't find that page" in normalized_data["biography"]:
+            # Skip entries that are error pages, but only if they're really error pages
+            # Some pages might legitimately contain these phrases in context
+            biography = normalized_data["biography"].lower()
+            error_phrases = ["page can't be found", "sorry, we couldn't find that page", 
+                            "temporarily unavailable", "404", "403 forbidden"]
+            
+            is_error_page = any(phrase in biography and len(biography) < 1000 for phrase in error_phrases)
+            
+            if is_error_page:
                 logger.warning(f"Skipping error page: {normalized_data['name']}")
                 stats["error_entries"] += 1
                 continue
             
             # Load into ChromaDB
-            doc_id = upsert_politician(collection, normalized_data)
-            
-            if doc_id:
-                logger.info(f"Successfully loaded {normalized_data['name']} with ID {doc_id}")
-                entries_loaded += 1
-                stats["loaded"] += 1
-            else:
-                logger.error(f"Failed to load {normalized_data['name']}")
+            try:
+                doc_id = upsert_politician(collection, normalized_data)
+                
+                if doc_id:
+                    logger.info(f"Successfully loaded {normalized_data['name']} with ID {doc_id}")
+                    entries_loaded += 1
+                    stats["loaded"] += 1
+                else:
+                    logger.error(f"Failed to load {normalized_data['name']}")
+                    stats["failed"] += 1
+            except Exception as e:
+                logger.error(f"Error upserting politician {normalized_data['name']}: {e}")
                 stats["failed"] += 1
         
         logger.info(f"Processed {entries_processed} entries from {filename}, loaded {entries_loaded}")
@@ -176,7 +198,8 @@ def process_directory(source_dir: str, db_path: str = DEFAULT_DB_PATH) -> Dict[s
         "loaded": 0,
         "failed": 0,
         "empty_entries": 0,
-        "error_entries": 0
+        "error_entries": 0,
+        "invalid_entries": 0
     }
     
     try:
@@ -241,6 +264,7 @@ def load_database(source_dir: str, db_path: str = DEFAULT_DB_PATH, verbose: bool
             "failed": 0,
             "empty_entries": 0,
             "error_entries": 0,
+            "invalid_entries": 0,
             "error": f"Source directory not found: {source_dir}"
         }
     
@@ -258,6 +282,7 @@ def load_database(source_dir: str, db_path: str = DEFAULT_DB_PATH, verbose: bool
     logger.info(f"Failed entries: {stats['failed']}")
     logger.info(f"Empty entries skipped: {stats['empty_entries']}")
     logger.info(f"Error page entries skipped: {stats['error_entries']}")
+    logger.info(f"Invalid entries skipped: {stats['invalid_entries']}")
     
     return stats
 

@@ -217,8 +217,11 @@ async def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1
             if not gpu_success:
                 logger.warning("GPU setup failed, continuing without GPU acceleration")
         
-        # Generate output filename
-        filename = f"{politician_name.lower().replace(' ', '_')}.json"
+        # Generate output filename - sanitize politician name to avoid path issues
+        safe_name = politician_name.lower().replace(' ', '_')
+        # Remove any other unsafe characters
+        safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
+        filename = f"{safe_name}.json"
         output_file = os.path.join(output_dir, filename)
         
         # Initialize crawler settings
@@ -246,14 +249,14 @@ async def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1
         logger.info(f"Starting crawler for: {politician_name}")
         logger.info(f"Output file: {output_file}")
         
-        # Initialize crawler process
-        process = CrawlerProcess(settings)
+        # Use CrawlerRunner instead of CrawlerProcess for better resource management
+        # and isolation between different crawls
+        from scrapy.crawler import CrawlerRunner
+        from twisted.internet import reactor, defer
+        from twisted.internet.error import ReactorNotRestartable
         
-        # Run the spider
-        process.crawl(PoliticianSpider, politician_name=politician_name)
-        
-        # Wait for crawl to complete
-        process.start()
+        # Use the synchronous run_crawler helper to run the async Twisted code
+        data = await run_crawler_with_reactor(politician_name, settings, output_file)
         
         # Calculate duration
         duration = time.time() - start_time
@@ -263,32 +266,115 @@ async def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1
         if gpu_count > 0:
             cleanup_gpu_environment(env_id)
         
-        # Load the scraped data from the output file
-        if os.path.exists(output_file):
+        return data
+            
+    except Exception as e:
+        logger.error(f"Error running spider: {e}")
+        if gpu_count > 0:
+            cleanup_gpu_environment(env_id)
+        return None
+
+async def run_crawler_with_reactor(politician_name, settings, output_file):
+    """
+    Run a crawler with its own reactor to ensure isolation between crawls.
+    
+    Args:
+        politician_name: Name of the politician to scrape
+        settings: Scrapy settings dictionary
+        output_file: Path to the output file
+        
+    Returns:
+        Scraped data or None if unsuccessful
+    """
+    try:
+        from scrapy.crawler import CrawlerRunner
+        from twisted.internet import reactor, defer
+        
+        # Create a deferred to signal when crawl is complete
+        crawl_complete = defer.Deferred()
+        
+        # Create a new crawler runner with the specified settings
+        runner = CrawlerRunner(settings)
+        
+        @defer.inlineCallbacks
+        def crawl():
             try:
-                with open(output_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
+                yield runner.crawl(PoliticianSpider, politician_name=politician_name)
+                crawl_complete.callback(None)
+            except Exception as e:
+                logger.error(f"Error in crawler: {e}")
+                crawl_complete.errback(e)
+        
+        # Start the crawl
+        crawl()
+        
+        # Wait for the crawl to complete using an asyncio Future
+        future = asyncio.Future()
+        
+        def on_crawl_success(_):
+            if not future.done():
+                future.set_result(True)
+        
+        def on_crawl_failure(failure):
+            if not future.done():
+                future.set_exception(Exception(f"Crawl failed: {failure}"))
+        
+        crawl_complete.addCallbacks(on_crawl_success, on_crawl_failure)
+        
+        # Run the reactor in a separate thread until the crawl completes
+        def run_reactor():
+            if not reactor.running:
+                reactor.run(installSignalHandlers=False)
+                
+        import threading
+        reactor_thread = threading.Thread(target=run_reactor)
+        reactor_thread.daemon = True
+        reactor_thread.start()
+        
+        try:
+            # Wait for the crawl to complete
+            await future
+            
+            # Stop the reactor
+            if reactor.running:
+                reactor.callFromThread(reactor.stop)
+                
+            # Wait for the thread to finish
+            reactor_thread.join(timeout=5.0)
+            
+            # Load the scraped data from the output file
+            if os.path.exists(output_file):
+                try:
+                    with open(output_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        
                     # Check if the data is a list (Scrapy's default output format)
                     if isinstance(data, list) and len(data) > 0:
-                        return data[0]  # Return the first item
+                        return data  # Return all items, not just the first
                     elif isinstance(data, dict):
                         return data
                     else:
                         logger.error("Invalid data format in crawler output")
                         return None
-            except json.JSONDecodeError:
-                logger.error(f"Error parsing JSON from {output_file}")
+                except json.JSONDecodeError:
+                    logger.error(f"Error parsing JSON from {output_file}")
+                    return None
+                except Exception as e:
+                    logger.error(f"Error loading scraped data: {e}")
+                    return None
+            else:
+                logger.error(f"Output file not found: {output_file}")
                 return None
-            except Exception as e:
-                logger.error(f"Error loading scraped data: {e}")
-                return None
-        else:
-            logger.error(f"Output file not found: {output_file}")
+                
+        except Exception as e:
+            logger.error(f"Error waiting for crawl to complete: {e}")
+            # Ensure reactor stops
+            if reactor.running:
+                reactor.callFromThread(reactor.stop)
             return None
-            
+        
     except Exception as e:
-        logger.error(f"Error running spider: {e}")
+        logger.error(f"Error setting up crawler: {e}")
         return None
 
 def main():

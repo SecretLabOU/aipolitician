@@ -21,6 +21,15 @@ import subprocess
 import tempfile
 import time
 import shutil
+import pathlib
+
+# Define paths
+# Get the path to the current file
+CURRENT_DIR = pathlib.Path(__file__).parent.absolute()
+# Path to the scraper output directory
+OUTPUT_DIR_PAGES = CURRENT_DIR.parent.parent / "scraper" / "politician_crawler" / "output"
+# Path to the ChromaDB directory
+OUTPUT_DIR_CHROMA = CURRENT_DIR.parent / "db" / "chroma" / "data"
 
 def setup_gpu_environment(env_id="nat", device_id=1):
     """
@@ -69,7 +78,7 @@ nvidia-smi
             ["bash", script_path],
             env={
                 **os.environ,
-                "ENV_ID": env_id,
+                "ENV_ID": str(env_id),
                 "DEVICE_ID": str(device_id)
             },
             capture_output=True,
@@ -208,63 +217,48 @@ def load_database(output_dir, db_path):
 
 def main():
     """Main entry point for the script."""
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Run AI Politician pipeline with GPU support")
-    parser.add_argument("--politicians", default="Donald Trump,Joe Biden",
-                        help="Comma-separated list of politicians to process")
-    parser.add_argument("--db-path", default=os.path.expanduser("~/political_db"),
-                        help="Path to the ChromaDB database")
-    parser.add_argument("--output-dir", default=None,
-                        help="Path to the output directory containing scraped JSON files")
-    parser.add_argument("--env-id", default="nat",
-                        help="genv environment ID")
-    parser.add_argument("--device-id", type=int, default=1,
-                        help="GPU device ID (0: RTX 4060 Ti, 1: RTX 4090)")
-    parser.add_argument("--skip-gpu", action="store_true",
-                        help="Skip GPU setup (useful for debugging)")
-    parser.add_argument("--skip-db", action="store_true",
-                        help="Skip loading data into the database")
-    
+    parser = argparse.ArgumentParser(description="Run the political figure pipeline with GPU support")
+    parser.add_argument("--politicians", help="Comma-separated list of politicians to process", default="Donald Trump,Joe Biden")
+    parser.add_argument("--skip-gpu", action="store_true", help="Skip GPU environment setup")
+    parser.add_argument("--gpu-env-id", type=int, default=10, help="GPU environment ID")
+    parser.add_argument("--skip-db", action="store_true", help="Skip loading the database")
+    parser.add_argument("--force-db-load", action="store_true", help="Force loading the database even if pipeline fails")
+    parser.add_argument("--allow-partial", action="store_true", help="Return success if at least one politician is processed successfully")
     args = parser.parse_args()
+
+    print(f"Running AI Politician Pipeline with GPU support")
     
-    # Set up GPU environment
-    gpu_success = True
+    # Setup GPU environment if needed
     if not args.skip_gpu:
-        gpu_success = setup_gpu_environment(args.env_id, args.device_id)
-        if not gpu_success:
-            print("⚠️  Warning: GPU setup failed, continuing without GPU acceleration")
-            time.sleep(2)  # Give user time to read the warning
-    
-    # Run the pipeline
-    pipeline_success = run_pipeline(args.politicians, args.db_path)
-    
-    # Load the data into the database
-    db_success = True
-    if not args.skip_db and pipeline_success:
-        db_success = load_database(args.output_dir, args.db_path)
-    elif args.skip_db:
-        print("🔵 Skipping database loading as requested")
-    elif not pipeline_success:
-        print("⚠️ Skipping database loading due to pipeline failure")
-    
-    # Provide feedback about the result
-    if pipeline_success and (db_success or args.skip_db):
-        print("\n✅ Pipeline completed successfully!")
-        if not args.skip_db and db_success:
-            print("✅ Data loaded into database successfully!")
-        
-        print(f"\n📊 Results can be queried with:")
-        print(f"  - To get politician info: python src/data/db/chroma/query.py --query \"Donald Trump\"")
-        print(f"  - To get by ID: python src/data/db/chroma/query.py --id <politician-id>")
-        print(f"  - To list all politicians: python src/data/db/chroma/query.py --list-all")
-        sys.exit(0)
+        setup_gpu_environment(args.gpu_env_id)
     else:
-        print("\n❌ Pipeline process failed!")
-        if not pipeline_success:
-            print("❌ Scraping pipeline failed")
-        if not args.skip_db and not db_success:
-            print("❌ Database loading failed")
-        sys.exit(1)
+        print("Skipping GPU environment setup")
+    
+    # Run the pipeline for the specified politicians
+    pipeline_cmd = [
+        "python3", "-m", "src.data.pipeline.pipeline",
+        "--politicians", args.politicians,
+        "--db-path", str(OUTPUT_DIR_CHROMA.parent)
+    ]
+    
+    if args.allow_partial:
+        pipeline_cmd.append("--allow-partial")
+    
+    print(f"Running command: {' '.join(pipeline_cmd)}")
+    
+    pipeline_result = subprocess.run(pipeline_cmd)
+    pipeline_success = pipeline_result.returncode == 0
+    
+    # Load the database if the pipeline succeeded or if we want to force it
+    if (pipeline_success or args.force_db_load) and not args.skip_db:
+        print("Loading data into the database...")
+        load_database(OUTPUT_DIR_PAGES, OUTPUT_DIR_CHROMA.parent)
+    elif args.skip_db:
+        print("Skipping database loading as requested")
+    elif not pipeline_success:
+        print("Pipeline failed, skipping database loading. Use --force-db-load to load anyway.")
+    
+    return pipeline_result.returncode
 
 if __name__ == "__main__":
     main() 
