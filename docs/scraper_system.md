@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Political Figure Scraper is a sophisticated tool designed to collect comprehensive factual information about political figures from diverse authoritative sources. It leverages both web scraping technologies and Local Language Models to extract, structure, and enhance political data.
+The Political Figure Scraper is a sophisticated tool designed to collect comprehensive factual information about political figures from diverse authoritative sources. It leverages Scrapy for web crawling and SpaCy for natural language processing to extract, structure, and enhance political data.
 
 ---
 
@@ -10,113 +10,112 @@ The Political Figure Scraper is a sophisticated tool designed to collect compreh
 
 ### Key Technologies
 
-- **Python** with asynchronous programming via `asyncio`
-- **BeautifulSoup** for HTML parsing and content extraction
-- **SentenceTransformer** for generating text embeddings
-- **Ollama** with **Llama3** for structured information extraction
-- **GPU acceleration** with custom environment management
+- **Scrapy** for robust, concurrent web crawling
+- **SpaCy** with GPU acceleration for Named Entity Recognition (NER) and text processing
+- **Python** with modern project structure
+- **GPU acceleration** with genv environment management
 
 ### Directory Structure
 
 ```
 src/data/scraper/
-├── __init__.py              # Package initialization
-├── politician_scraper.py    # Main scraper implementation
-├── README.md                # Basic usage documentation
-├── logs/                    # Output and log directory
-└── __pycache__/             # Python cache files
+├── __init__.py                       # Package initialization
+├── politician_scraper.py             # Main entry script
+├── politician_crawler/               # Scrapy project
+│   ├── __init__.py                   # Package initialization
+│   ├── items.py                      # Data structure definitions
+│   ├── pipelines.py                  # Processing pipelines (SpaCy NER)
+│   ├── settings.py                   # Scrapy settings
+│   ├── run_crawler.py                # Crawler execution script
+│   └── spiders/                      # Scrapy spiders
+│       ├── __init__.py               # Package initialization
+│       └── politician_spider.py      # Main politician spider
+├── README.md                         # Basic usage documentation
+└── logs/                             # Log files directory
 ```
 
 ### Scraper Workflow
 
 The scraper follows a systematic process:
 
-1. **Source Collection**: Dynamically generates appropriate URLs for a given politician
-2. **Content Fetching**: Retrieves raw HTML with retry logic and error handling
-3. **Content Extraction**: Parses HTML to extract relevant text content
-4. **Structured Information Extraction**: Uses Ollama to transform raw text into structured JSON
-5. **Embedding Generation**: Creates vector embeddings for the extracted content
-6. **Output Generation**: Formats and saves the results to the logs directory
+1. **Web Crawling**: Scrapy spider navigates through multiple sources for a given politician
+2. **Content Extraction**: Domain-specific parsers extract relevant content from each source
+3. **NER Processing**: SpaCy performs named entity recognition to extract structured data
+4. **Data Integration**: Information from different sources is consolidated
+5. **Output Generation**: Final results are stored in JSON format
 
 ---
 
 ## 💻 Implementation Details
 
-### Source Generation
+### Scrapy Spider
 
-The scraper dynamically generates URLs for multiple source types:
+The system uses a custom Scrapy spider designed to handle various political information sources:
 
-```python3
-def get_sources(name):
-    formatted_name = name.replace(' ', '_')
-    formatted_name_dash = name.replace(' ', '-')
-    formatted_name_plus = name.replace(' ', '+')
-    
-    return [
-        # Wikipedia and encyclopedias
-        f"https://en.wikipedia.org/wiki/{formatted_name}",
-        f"https://www.britannica.com/biography/{formatted_name_dash}",
-        
-        # News sources
-        f"https://www.reuters.com/search/news?blob={name}",
-        f"https://apnews.com/search?q={formatted_name_plus}",
-        # ... additional sources
+```python
+class PoliticianSpider(scrapy.Spider):
+    name = "politician"
+    allowed_domains = [
+        'en.wikipedia.org',
+        'www.britannica.com',
+        'www.reuters.com',
+        # Additional domains...
     ]
+    
+    def __init__(self, politician_name=None, *args, **kwargs):
+        # Initialize with politician name
+        # Generate appropriate URLs based on formatted names
 ```
 
-### Content Extraction
+The spider includes specialized parsers for different website types:
 
-Web content is extracted using BeautifulSoup with site-specific selectors and robust error handling:
+- Wikipedia articles
+- News sources
+- Government databases
+- Speech archives
+- Fact-checking sites
 
-```python3
-def get_article_text(url, selector=None, max_retries=2):
-    """Fetch and extract the main content from a webpage with retries"""
-    # Implementation with retry logic and error handling
+### SpaCy NER Processing
+
+A custom pipeline uses SpaCy's powerful NER capabilities:
+
+```python
+class SpacyNERPipeline:
+    def process_item(self, item, spider):
+        # Process text with SpaCy
+        doc = self.nlp(item['raw_content'])
+        
+        # Extract named entities by type
+        for ent in doc.ents:
+            if ent.label_ == "PERSON":
+                person_entities.append(ent.text)
+            elif ent.label_ == "ORG":
+                org_entities.append(ent.text)
+            # Additional entity types...
 ```
 
-### Structured Information Extraction
-
-The scraper leverages Ollama's Llama3 model to extract structured information from raw text:
-
-```python3
-def extract_with_ollama(text, name, max_length=8000):
-    """Extract structured information directly using Ollama API"""
-    # Trims text to reasonable length
-    # Prepares a comprehensive prompt for Llama3
-    # Handles API communication and error cases
-```
-
-The extraction prompt defines a detailed schema for organizing political information:
-
-```json
-{
-    "basic_info": {
-        "full_name": "Complete name including middle names",
-        "date_of_birth": "YYYY-MM-DD format",
-        "place_of_birth": "City, State/Province, Country",
-        "nationality": "Country of citizenship",
-        "political_affiliation": "Political party or affiliation",
-        "education": ["Educational qualifications with institutions and years"],
-        "family": ["Purely factual family information"]
-    },
-    "career": {
-        "positions": ["All political positions held with dates"],
-        "pre_political_career": ["Previous occupations before entering politics"],
-        "committees": ["Committee memberships"]
-    },
-    // Additional categories omitted for brevity
-}
-```
+The pipeline automatically:
+- Detects GPU availability and optimizes processing
+- Extracts person names, organizations, dates, locations, and events
+- Identifies potential birth dates and political affiliations
+- Deduplicates extracted information
 
 ### GPU Acceleration
 
-The scraper can utilize GPU acceleration for improved performance:
+The scraper dynamically adapts to available GPU resources:
 
-```python3
-def setup_gpu_environment(env_id="nat", gpu_count=1):
-    """Setup genv environment and attach GPU"""
-    # Implementation for GPU environment setup
+```python
+# Check for GPU availability and optimize settings
+has_gpu = len(get_cuda_devices()) > 0
+if has_gpu:
+    spacy.prefer_gpu()
+    # GPU-optimized settings
 ```
+
+The GPU environment is managed through genv:
+- Automatic initialization and cleanup
+- Support for multiple GPUs
+- Fallback to CPU processing when GPUs are unavailable
 
 ---
 
@@ -125,16 +124,15 @@ def setup_gpu_environment(env_id="nat", gpu_count=1):
 ### Prerequisites
 
 1. Python 3.8+ installed
-2. [Ollama](https://ollama.com/) installed and running
-3. Required Python packages:
-   - beautifulsoup4
+2. Required Python packages:
+   - scrapy
+   - spacy
    - requests
-   - sentence-transformers
-   - numpy
+   - beautifulsoup4
 
 ### Installation
 
-#### Setting Up a Conda Environment
+#### Setting Up the Environment
 
 1. Create a new conda environment named "scraper":
    ```bash
@@ -156,28 +154,39 @@ def setup_gpu_environment(env_id="nat", gpu_count=1):
    pip install -r requirements/requirements-scraper.txt
    ```
 
-   The scraper has the following core dependencies:
-   - requests: For HTTP requests
-   - beautifulsoup4: For HTML parsing
-   - numpy: For numerical operations
-   - sentence-transformers: For generating text embeddings
-
-5. Install Ollama:
-   - For macOS: Download from [ollama.com/download](https://ollama.com/download)
-   - For Linux:
-     ```bash
-     curl -fsSL https://ollama.com/install.sh | sh
-     ```
-
-6. Pull the Llama3 model:
+5. Download the SpaCy model:
    ```bash
-   ollama pull llama3
+   python -m spacy download en_core_web_trf
+   ```
+   
+   For lower resource usage, you can use alternative models:
+   ```bash
+   # Large model - good balance between accuracy and performance
+   python -m spacy download en_core_web_lg
+   
+   # Small model - fastest but less accurate
+   python -m spacy download en_core_web_sm
    ```
 
-7. Start the Ollama server (in a separate terminal):
+### GPU Environment Setup (Optional)
+
+Before running the script with GPU support:
+
+1. Initialize genv in your shell:
    ```bash
-   ollama serve
+   eval "$(genv shell --init)"
    ```
+
+2. Activate a genv environment:
+   ```bash
+   genv activate --id nat
+   ```
+
+The script will:
+- Check if genv is properly initialized
+- Verify if the environment is already active
+- Check if GPUs are already attached
+- Clean up by detaching GPUs when the script exits
 
 ### Basic Usage
 
@@ -187,86 +196,54 @@ Run the scraper with default settings:
 # Make sure your conda environment is activated
 conda activate scraper
 
-# Start the Ollama server (in a separate terminal)
-ollama serve
-
-# Run the scraper (uses default politician "Donald Trump")
-python3 -m src.data.scraper.politician_scraper
-```
-
-### Custom Configuration
-
-The script uses positional arguments rather than flags:
-
-```bash
-python3 -m src.data.scraper.politician_scraper "Politician Name" "env_id" gpu_count
-```
-
-For example, to scrape data for JD Vance with environment ID "nat" and 1 GPU:
-
-```bash
-python3 -m src.data.scraper.politician_scraper "JD Vance" "nat" 1
+# Run the scraper with default settings
+python -m src.data.scraper.politician_scraper "Donald Trump"
 ```
 
 ### Command-line Arguments
 
-| Position | Parameter | Description | Default |
-|----------|-----------|-------------|---------|
-| 1 | Politician name | Name of the political figure to scrape | "Donald Trump" |
-| 2 | Environment ID | GPU environment ID | "nat" |
-| 3 | GPU count | Number of GPUs to use | 1 |
+```bash
+python -m src.data.scraper.politician_scraper "Politician Name" [--output-dir DIR] [--env-id ENV_ID] [--gpu-count N]
+```
 
-### GPU Environment Setup
+| Argument | Description | Default |
+|----------|-------------|---------|
+| politician_name | Name of the political figure to scrape | (Required) |
+| --output-dir | Directory to save the output files | data/politicians |
+| --env-id | GPU environment ID | nat |
+| --gpu-count | Number of GPUs to use (0 for CPU only) | 1 |
 
-Before running the script with GPU support:
+For example, to scrape data for Joe Biden with environment ID "nat" and 2 GPUs:
 
-1. Initialize genv in your shell:
-   ```bash
-   eval "$(genv shell --init)"
-   ```
-
-2. Create a genv environment if you don't have one already:
-   ```bash
-   genv create --id nat
-   ```
-
-The script will attempt to:
-- Activate the specified genv environment
-- Attach the requested number of GPUs
-- Clean up by detaching GPUs when the script exits
+```bash
+python -m src.data.scraper.politician_scraper "Joe Biden" --output-dir data/politicians --env-id nat --gpu-count 2
+```
 
 ---
 
 ## 📊 Output Format
 
-The scraper produces structured JSON output:
+The scraper produces structured JSON output with entities extracted by SpaCy:
 
 ```json
 {
   "id": "unique-uuid",
   "name": "Political Figure Name",
-  "basic_info": {
-    "full_name": "Complete formal name",
-    "date_of_birth": "YYYY-MM-DD",
-    "place_of_birth": "Location",
-    "nationality": "Country",
-    "political_affiliation": "Party",
-    "education": ["Education details"],
-    "family": ["Family information"]
-  },
-  "career": {
-    "positions": ["Political positions with dates"],
-    "pre_political_career": ["Prior career details"],
-    "committees": ["Committee memberships"]
-  },
-  "policy_positions": {
-    "economy": ["Economic policy positions"],
-    "foreign_policy": ["Foreign policy positions"],
-    "healthcare": ["Healthcare policy positions"],
-    // Additional policy areas
-  },
-  // Additional categories (legislative_record, communications, etc.)
-  "embedding": [0.123, -0.456, ...] // Vector representation
+  "source_url": "Source URL",
+  "full_name": "Complete formal name",
+  "date_of_birth": "Extracted birth date",
+  "political_affiliation": "Detected political party",
+  "raw_content": "Original text content",
+  "person_entities": ["List of detected person names"],
+  "org_entities": ["List of detected organizations"],
+  "date_entities": ["List of detected dates"],
+  "gpe_entities": ["List of detected geopolitical entities"],
+  "event_entities": ["List of detected events"],
+  "sponsored_bills": ["Bills sponsored by the politician"],
+  "voting_record": ["Voting history entries"],
+  "speeches": ["Speech transcripts"],
+  "statements": ["Public statements"],
+  "timestamp": "ISO timestamp of extraction"
 }
 ```
 
@@ -274,52 +251,70 @@ The scraper produces structured JSON output:
 
 ## 🛠️ Customization
 
-### Adding New Sources
+### Adding New Source Domains
 
-Edit the `get_sources()` function to include additional sources:
+Edit the `allowed_domains` and `generate_start_urls()` method in `politician_spider.py`:
 
-```python3
-def get_sources(name):
-    # Existing sources
-    sources = [...]
-    
-    # Add new sources
-    sources.append(f"https://new-source.com/search?q={name}")
-    
-    return sources
+```python
+allowed_domains = [
+    'en.wikipedia.org',
+    'www.britannica.com',
+    # Add your new domain here
+    'new-domain.com'
+]
+
+def generate_start_urls(self):
+    # Add your new URL pattern
+    return [
+        # Existing URLs
+        f"https://new-domain.com/profile/{self.formatted_name_dash}"
+    ]
 ```
 
-### Modifying Extraction Schema
+### Creating Custom Parsers
 
-Edit the prompt in `extract_with_ollama()` to modify the extraction schema:
+Add a new parser method in `politician_spider.py`:
 
-```python3
-prompt = f"""
-Extract ONLY factual information about {name} from this text.
-
-Return a JSON object with THESE EXACT fields:
-{{
-    "basic_info": {{
-        // Modify or add fields here
-    }},
-    // Add or modify categories
-}}
-"""
+```python
+def parse_custom_site(self, response):
+    """Parse your custom site"""
+    main_content = response.css('your-css-selector')
+    
+    if not main_content:
+        self.logger.warning(f"No content found on custom page: {response.url}")
+        return
+    
+    # Extract content
+    paragraphs = main_content.css('p, li').getall()
+    raw_content = "\n".join([self.clean_html(p) for p in paragraphs])
+    
+    # Create item
+    item = PoliticianItem()
+    item['name'] = self.politician_name
+    item['source_url'] = response.url
+    item['raw_content'] = raw_content
+    
+    # Custom field extraction
+    special_info = response.css('special-selector::text').get()
+    if special_info:
+        item['your_custom_field'] = special_info
+    
+    yield item
 ```
 
-### Using Different LLM Models
+### Using Different SpaCy Models
 
-Change the model name in the Ollama API call:
+Edit the `SPACY_MODEL` setting in `settings.py`:
 
-```python3
-response = requests.post(
-    'http://localhost:11434/api/generate',
-    json={
-        'model': 'mistral', # Change from llama3 to another model
-        'prompt': prompt,
-        'stream': False
-    }
-)
+```python
+# For highest accuracy (requires more GPU memory)
+SPACY_MODEL = 'en_core_web_trf'
+
+# For good balance between accuracy and performance
+# SPACY_MODEL = 'en_core_web_lg'
+
+# For fastest performance but lower accuracy
+# SPACY_MODEL = 'en_core_web_sm'
 ```
 
 ---
@@ -328,45 +323,59 @@ response = requests.post(
 
 ### Common Issues
 
-1. **Ollama Connection Issues**
-   - Ensure Ollama is running with `ollama serve`
-   - Verify the model is available with `ollama list`
+1. **Scrapy Crawling Issues**
+   - Check that the target websites are accessible
+   - Review `scrapy.log` for specific error messages
+   - Adjust concurrent request settings in `settings.py`
 
-2. **Content Extraction Failures**
-   - Check if website structure has changed
-   - Review logs for specific error messages
-   - Try different selectors or extraction methods
+2. **SpaCy GPU Issues**
+   - Verify GPU availability with `nvidia-smi`
+   - Make sure the SpaCy model is installed correctly
+   - Try a smaller model if you encounter memory errors
 
 3. **GPU Environment Issues**
    - Ensure GPU drivers are properly installed
    - Verify `genv` is correctly configured
-   - Check GPU availability with `nvidia-smi`
+   - Try running with `--gpu-count 0` to use CPU only
 
 ### Logging
 
-The scraper outputs log files to the `logs/` directory with:
-- Execution timestamps
-- URLs processed
-- Content extraction results
-- Error messages and warnings
-- Performance metrics
+The scraper outputs detailed logs to help with debugging:
+- Spider activity in `scrapy.log`
+- General execution in `scraper.log`
+- HTTP caching in the `httpcache` directory
 
 ---
 
 ## 🔄 Maintenance and Updates
 
-### Adding Support for New Political Figures
+### Updating for Website Changes
 
-The scraper is designed to work with any political figure by simply providing their name. However, for optimal results:
+If a website's structure changes:
 
-1. Check if the political figure has consistent naming across sources
-2. Verify that sufficient information is available online
-3. Consider adding custom selectors for politician-specific sources
+1. Identify the new CSS selectors using browser developer tools
+2. Update the corresponding parser method in `politician_spider.py`
+3. Consider adding fallback selectors for more robust parsing
 
-### Updating Source Selectors
+### Performance Tuning
 
-Web page structures may change over time. To update selectors:
+Adjust the following settings in `settings.py` for better performance:
 
-1. Inspect the relevant website using browser developer tools
-2. Identify new CSS selectors or XPath expressions for content
-3. Update the site-specific extraction logic in `get_article_text()`
+```python
+# Increase for more aggressive crawling (may trigger rate limits)
+CONCURRENT_REQUESTS = 16
+
+# Decrease to reduce load on target websites
+DOWNLOAD_DELAY = 1.5
+
+# For GPU processing, adjust batch size based on available memory
+# In pipelines.py, adjust self.nlp.batch_size
+```
+
+### Adding New Entity Types
+
+To extract additional entity types:
+
+1. Add new fields to `PoliticianItem` in `items.py`
+2. Update the `SpacyNERPipeline` in `pipelines.py` to extract and populate these fields
+3. Customize entity extraction logic based on your specific needs
