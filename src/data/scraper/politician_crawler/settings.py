@@ -43,6 +43,22 @@ RETRY_ENABLED = True
 RETRY_TIMES = 3
 RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
 
+# Timeout configuration
+DOWNLOAD_TIMEOUT = 30  # Default timeout in seconds
+DOWNLOAD_TIMEOUTS = {
+    'www.npr.org': 60,  # Increase timeout for NPR
+    'www.cnn.com': 60,  # Increase for CNN
+    'www.foxnews.com': 60  # Increase for Fox News
+}
+
+# Handle redirects better
+REDIRECT_ENABLED = True
+REDIRECT_MAX_TIMES = 5
+
+# Failure handling
+CLOSESPIDER_ERRORCOUNT = 50
+CLOSESPIDER_TIMEOUT = 900  # 15 minutes max
+
 # Custom settings for Politician Crawler
 POLITICIAN_DATA_DIR = 'src/data/scraper/logs'
 SPACY_MODEL = 'en_core_web_lg'  # Transformer-based model for better NER 

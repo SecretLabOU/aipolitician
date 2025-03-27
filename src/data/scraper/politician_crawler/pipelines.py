@@ -130,6 +130,7 @@ class JsonWriterPipeline:
     
     def __init__(self, politician_data_dir):
         self.politician_data_dir = politician_data_dir
+        self.saved_files = []
     
     @classmethod
     def from_crawler(cls, crawler):
@@ -139,19 +140,79 @@ class JsonWriterPipeline:
             # Get project root directory
             project_root = os.getcwd()
             output_dir = os.path.join(project_root, output_dir)
+        
+        # Try to immediately create the directory
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"💾 Verified output directory exists: {output_dir}")
+            # Check if we can write to it
+            test_file = os.path.join(output_dir, "test_write.tmp")
+            with open(test_file, 'w') as f:
+                f.write("test")
+            if os.path.exists(test_file):
+                os.remove(test_file)
+                print(f"✅ Successfully verified write permission for: {output_dir}")
+            else:
+                print(f"⚠️ Warning: Could not verify file creation in {output_dir}")
+        except Exception as e:
+            print(f"❌ ERROR: Could not create or write to output directory: {output_dir}")
+            print(f"❌ Error details: {str(e)}")
+        
         return cls(politician_data_dir=output_dir)
     
     def open_spider(self, spider):
         self.files = {}
         # Log the absolute path of the output directory
-        print(f"🗂️ Output directory: {os.path.abspath(self.politician_data_dir)}")
-        os.makedirs(self.politician_data_dir, exist_ok=True)
+        print(f"🗂️ Output directory absolute path: {os.path.abspath(self.politician_data_dir)}")
+        try:
+            os.makedirs(self.politician_data_dir, exist_ok=True)
+            print(f"📁 Directory permissions: {oct(os.stat(self.politician_data_dir).st_mode)[-3:]}")
+        except Exception as e:
+            print(f"❌ Failed to create directory: {str(e)}")
     
     def close_spider(self, spider):
         for file in self.files.values():
             file.close()
+        
+        # Final check of saved files
+        print(f"🔍 Checking saved files in {self.politician_data_dir}:")
+        try:
+            if os.path.exists(self.politician_data_dir):
+                files = os.listdir(self.politician_data_dir)
+                json_files = [f for f in files if f.endswith('.json')]
+                if json_files:
+                    print(f"✅ Found {len(json_files)} JSON files in output directory")
+                    for jfile in json_files:
+                        full_path = os.path.join(self.politician_data_dir, jfile)
+                        file_size = os.path.getsize(full_path)
+                        print(f"   - {jfile}: {file_size} bytes")
+                else:
+                    print(f"⚠️ WARNING: No JSON files found in {self.politician_data_dir}")
+                    print(f"   All files in directory: {files}")
+            else:
+                print(f"❌ ERROR: Output directory does not exist: {self.politician_data_dir}")
+        except Exception as e:
+            print(f"❌ ERROR checking output directory: {str(e)}")
+        
+        if self.saved_files:
+            print(f"📊 Summary of saved files:")
+            for saved_file in self.saved_files:
+                if os.path.exists(saved_file):
+                    print(f"   ✅ {saved_file} exists, size: {os.path.getsize(saved_file)} bytes")
+                else:
+                    print(f"   ❌ {saved_file} does not exist!")
+        else:
+            print("⚠️ No files were processed by the pipeline!")
     
     def process_item(self, item, spider):
+        if not item:
+            print("❌ ERROR: Empty item received by JsonWriterPipeline")
+            return item
+            
+        if 'name' not in item:
+            print(f"❌ ERROR: Item has no 'name' field: {item}")
+            return item
+            
         # Create a safe filename
         safe_name = "".join(c if c.isalnum() or c == '_' else '_' for c in item['name'])
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -159,27 +220,56 @@ class JsonWriterPipeline:
         filepath = os.path.join(self.politician_data_dir, filename)
         
         # Log more detailed file path information
-        print(f"📝 Saving data to file: {os.path.abspath(filepath)}")
+        print(f"📝 Attempting to save data to file: {os.path.abspath(filepath)}")
         print(f"📊 Item contains {len(item.keys())} fields")
         
         # Ensure the directory exists
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
         try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            print(f"✅ Confirmed directory exists: {os.path.dirname(filepath)}")
+        except Exception as e:
+            print(f"❌ ERROR creating directory: {os.path.dirname(filepath)}")
+            print(f"❌ Error details: {str(e)}")
+            
+        try:
+            # Convert item to a regular dictionary
+            item_dict = dict(item)
+            
+            # Check if the item dictionary is valid
+            if not item_dict:
+                print("❌ ERROR: Empty dictionary after conversion")
+                return item
+                
             # Write json
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(dict(item), f, indent=2, ensure_ascii=False)
+                json.dump(item_dict, f, indent=2, ensure_ascii=False)
             
-            print(f"✅ Successfully saved politician data to: {filepath}")
+            # Remember this file
+            self.saved_files.append(filepath)
             
-            # Check if file exists and log its size
+            # Check if file exists immediately after writing
             if os.path.exists(filepath):
                 file_size = os.path.getsize(filepath)
-                print(f"📁 File size: {file_size} bytes")
+                print(f"✅ Successfully saved: {filepath} (Size: {file_size} bytes)")
             else:
-                print(f"⚠️ Warning: File does not exist after saving: {filepath}")
+                print(f"❌ ERROR: File does not exist after saving: {filepath}")
+                
+            # Try reading the file back to verify it worked
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    _ = json.load(f)
+                print(f"✅ Verified file can be read back: {filepath}")
+            except Exception as e:
+                print(f"❌ ERROR reading back file: {str(e)}")
+                
+        except PermissionError as e:
+            print(f"❌ Permission ERROR saving to file: {filepath}")
+            print(f"❌ Error details: {str(e)}")
+        except OSError as e:
+            print(f"❌ OS ERROR saving to file: {filepath}")
+            print(f"❌ Error details: {str(e)}")
         except Exception as e:
-            print(f"❌ Error saving data to file: {filepath}")
+            print(f"❌ ERROR saving data to file: {filepath}")
             print(f"❌ Error details: {str(e)}")
         
         return item 
