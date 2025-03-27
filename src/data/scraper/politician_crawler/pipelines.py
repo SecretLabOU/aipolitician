@@ -4,7 +4,6 @@ import json
 import datetime
 import uuid
 import spacy
-from spacy.util import get_cuda_devices
 from spacy.tokens import Doc
 
 
@@ -30,8 +29,21 @@ class SpacyNERPipeline:
         print(f"Loading SpaCy model: {self.model_name}")
         
         try:
-            # Check for GPU availability and optimize settings
-            has_gpu = len(get_cuda_devices()) > 0
+            # Use a more compatible approach to check for GPU
+            has_gpu = False
+            try:
+                # Try to import torch to check for CUDA
+                import torch
+                has_gpu = torch.cuda.is_available()
+            except ImportError:
+                # If torch is not available, try a simpler check
+                try:
+                    import subprocess
+                    result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    has_gpu = result.returncode == 0
+                except (FileNotFoundError, subprocess.SubprocessError):
+                    pass
+            
             if has_gpu:
                 spacy.prefer_gpu()
                 print("✅ GPU is available and will be used by SpaCy")
