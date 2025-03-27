@@ -125,14 +125,24 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
             settings.set('POLITICIAN_DATA_DIR', output_dir)
             logger.info(f"Set POLITICIAN_DATA_DIR setting to: {output_dir}")
         
+        # Enable verbose debugging for troubleshooting
+        settings.set('LOG_LEVEL', 'DEBUG')
+        settings.set('LOG_STDOUT', True)
+        # Set test mode to only crawl Wikipedia initially
+        settings.set('POLITICIAN_TEST_MODE', True)
+        logger.info("Set POLITICIAN_TEST_MODE to True for testing")
+        
         # Set up the crawler process
         process = CrawlerProcess(settings)
         
         # Add the spider directly with the PoliticianSpider class
+        logger.info("Starting crawler with PoliticianSpider class")
         process.crawl(PoliticianSpider, politician_name=politician_name)
         
         # Start crawling
+        logger.info("Beginning crawl process...")
         process.start()  # This blocks until crawling is finished
+        logger.info("Crawl process completed")
         
         # Check if data was saved
         if output_dir:
@@ -146,6 +156,8 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
                     logger.info(f"File: {file} - Size: {file_size} bytes")
             else:
                 logger.warning(f"No JSON files found in output directory: {output_dir}")
+                # List all files in the directory to help debug
+                logger.info(f"Files in directory: {files}")
                 
         # Calculate and report runtime
         end_time = time.time()
@@ -153,8 +165,15 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         logger.info(f"Crawling finished in {duration:.2f} seconds")
         
         return True
+    except ImportError as e:
+        logger.error(f"Import Error: {e}")
+        logger.error("This might be caused by missing dependencies. Make sure all required packages are installed.")
+        return False
     except Exception as e:
         logger.error(f"Error running spider: {e}")
+        # Print traceback for better debugging
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
     finally:
         # No need to call cleanup_gpu_environment here as it's registered with atexit

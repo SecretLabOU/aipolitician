@@ -29,6 +29,13 @@ class PoliticianSpider(scrapy.Spider):
         'www.factcheck.org'
     ]
     
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super(PoliticianSpider, cls).from_crawler(crawler, *args, **kwargs)
+        spider.crawler = crawler
+        spider.settings = crawler.settings
+        return spider
+    
     def __init__(self, politician_name=None, *args, **kwargs):
         super(PoliticianSpider, self).__init__(*args, **kwargs)
         
@@ -44,8 +51,14 @@ class PoliticianSpider(scrapy.Spider):
         self.formatted_name_dash = politician_name.replace(' ', '-')
         self.formatted_name_plus = politician_name.replace(' ', '+')
         
-        # Generate start URLs
-        self.start_urls = self.generate_start_urls()
+        # Start URLs will be generated in the spider_opened method
+        self.start_urls = []
+    
+    def start_requests(self):
+        """Generate URLs and start requests"""
+        urls = self.generate_start_urls()
+        for url in urls:
+            yield scrapy.Request(url=url, callback=self.parse)
     
     def generate_start_urls(self):
         """Generate URLs for various sources based on politician name"""
@@ -55,7 +68,10 @@ class PoliticianSpider(scrapy.Spider):
         formatted_name_plus = self.formatted_name_plus
         
         # Check if we're in test mode (only crawl Wikipedia)
-        test_mode = self.settings.getbool('POLITICIAN_TEST_MODE', False)
+        test_mode = False
+        if hasattr(self, 'settings'):
+            test_mode = self.settings.getbool('POLITICIAN_TEST_MODE', False)
+        
         if test_mode:
             self.logger.info("🧪 Running in TEST MODE - only crawling Wikipedia")
             return [

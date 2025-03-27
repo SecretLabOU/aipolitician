@@ -29,32 +29,51 @@ class SpacyNERPipeline:
         """Initialize SpaCy model and optimize for GPU if available"""
         print(f"Loading SpaCy model: {self.model_name}")
         
-        # Check for GPU availability and optimize settings
-        has_gpu = len(get_cuda_devices()) > 0
-        if has_gpu:
-            spacy.prefer_gpu()
-            print("✅ GPU is available and will be used by SpaCy")
+        try:
+            # Check for GPU availability and optimize settings
+            has_gpu = len(get_cuda_devices()) > 0
+            if has_gpu:
+                spacy.prefer_gpu()
+                print("✅ GPU is available and will be used by SpaCy")
+                
+                # Load model with GPU optimization
+                self.nlp = spacy.load(self.model_name)
+                
+                # Set batch size larger for GPU
+                Doc.set_extension("politician_name", default=None, force=True)
+                self.nlp.batch_size = 128
+            else:
+                print("⚠️ No GPU available, using CPU for NLP processing")
+                self.nlp = spacy.load(self.model_name)
+                Doc.set_extension("politician_name", default=None, force=True)
+                self.nlp.batch_size = 32
             
-            # Load model with GPU optimization
-            self.nlp = spacy.load(self.model_name)
+            # Create output directory
+            os.makedirs(self.politician_data_dir, exist_ok=True)
             
-            # Set batch size larger for GPU
-            Doc.set_extension("politician_name", default=None, force=True)
-            self.nlp.batch_size = 128
-        else:
-            print("⚠️ No GPU available, using CPU for NLP processing")
-            self.nlp = spacy.load(self.model_name)
-            Doc.set_extension("politician_name", default=None, force=True)
-            self.nlp.batch_size = 32
-        
-        # Create output directory
-        os.makedirs(self.politician_data_dir, exist_ok=True)
-        
-        print(f"✅ Successfully initialized SpaCy pipeline with {self.model_name}")
+            print(f"✅ Successfully initialized SpaCy pipeline with {self.model_name}")
+        except OSError as e:
+            print(f"❌ ERROR: Could not load SpaCy model '{self.model_name}': {e}")
+            print("⚠️ Run: python -m spacy download en_core_web_lg")
+            # Set to None and handle in process_item
+            self.nlp = None
+        except Exception as e:
+            print(f"❌ ERROR initializing SpaCy: {e}")
+            self.nlp = None
     
     def process_item(self, item, spider):
         """Process text with SpaCy NER and extract relevant entities"""
         if not item.get('raw_content'):
+            return item
+        
+        # If NLP is not initialized, just pass the item through
+        if self.nlp is None:
+            print("⚠️ SpaCy NLP not initialized, skipping NER processing")
+            # Still add timestamp and ID
+            if not item.get('timestamp'):
+                item['timestamp'] = datetime.datetime.now().isoformat()
+            if not item.get('id'):
+                item['id'] = str(uuid.uuid4())
             return item
         
         # Process text with SpaCy
