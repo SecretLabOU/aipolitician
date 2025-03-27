@@ -121,6 +121,7 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         
         # Override settings if necessary
         if output_dir:
+            # Use the absolute path directly, don't append the relative path
             settings.set('POLITICIAN_DATA_DIR', output_dir)
             logger.info(f"Set POLITICIAN_DATA_DIR setting to: {output_dir}")
         

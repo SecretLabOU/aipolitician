@@ -54,6 +54,16 @@ class PoliticianSpider(scrapy.Spider):
         formatted_name_dash = self.formatted_name_dash
         formatted_name_plus = self.formatted_name_plus
         
+        # Check if we're in test mode (only crawl Wikipedia)
+        test_mode = self.settings.getbool('POLITICIAN_TEST_MODE', False)
+        if test_mode:
+            self.logger.info("🧪 Running in TEST MODE - only crawling Wikipedia")
+            return [
+                f"https://en.wikipedia.org/wiki/{formatted_name}",
+            ]
+        
+        # Normal mode - crawl all sources
+        self.logger.info("🌐 Running in FULL MODE - crawling all sources")
         return [
             # Wikipedia and encyclopedias
             f"https://en.wikipedia.org/wiki/{formatted_name}",
@@ -123,13 +133,17 @@ class PoliticianSpider(scrapy.Spider):
     
     def parse_wikipedia(self, response):
         """Parse Wikipedia articles"""
+        self.logger.info(f"🔍 Parsing Wikipedia article: {response.url}")
+        
         # Check if it's a disambiguation page
         if "may refer to" in response.css("div#mw-content-text").get():
+            self.logger.info("📑 Found disambiguation page, following first relevant link")
             # Follow the first relevant link
             links = response.css("div#mw-content-text ul li a")
             for link in links:
                 if self.politician_name.lower() in link.css("::text").get().lower():
                     next_url = urljoin(response.url, link.css("::attr(href)").get())
+                    self.logger.info(f"➡️ Following disambiguation link: {next_url}")
                     yield scrapy.Request(next_url, callback=self.parse)
                     break
             return
@@ -138,12 +152,14 @@ class PoliticianSpider(scrapy.Spider):
         content_div = response.css('div#mw-content-text')
         
         if not content_div:
-            self.logger.warning(f"No content found on Wikipedia page: {response.url}")
+            self.logger.warning(f"❌ No content found on Wikipedia page: {response.url}")
             return
         
         # Extract main paragraphs, excluding tables and references
         paragraphs = content_div.css('p').getall()[:25]
         raw_content = "\n".join([self.clean_html(p) for p in paragraphs])
+        
+        self.logger.info(f"📃 Extracted {len(paragraphs)} paragraphs, {len(raw_content)} characters")
         
         # Create item
         item = PoliticianItem()
@@ -154,18 +170,22 @@ class PoliticianSpider(scrapy.Spider):
         # Try to extract basic info from infobox
         infobox = response.css('table.infobox')
         if infobox:
+            self.logger.info("📋 Found infobox, extracting additional data")
             # Birth date
             born_row = infobox.css('th:contains("Born") + td').get()
             if born_row:
                 birth_date = re.search(r'(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},\s+\d{4})', self.clean_html(born_row))
                 if birth_date:
                     item['date_of_birth'] = birth_date.group(1)
+                    self.logger.info(f"🎂 Extracted birth date: {birth_date.group(1)}")
             
             # Political party
             party_row = infobox.css('th:contains("Political party") + td').get()
             if party_row:
                 item['political_affiliation'] = self.clean_html(party_row)
+                self.logger.info(f"🏛️ Extracted political affiliation: {self.clean_html(party_row)}")
         
+        self.logger.info(f"✅ Generated item with {len(item)} fields for {self.politician_name}")
         yield item
     
     def parse_britannica(self, response):

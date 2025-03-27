@@ -135,7 +135,7 @@ class JsonWriterPipeline:
     @classmethod
     def from_crawler(cls, crawler):
         output_dir = crawler.settings.get('POLITICIAN_DATA_DIR', 'src/data/scraper/logs')
-        # Convert to absolute path if not already absolute
+        # Only convert to absolute path if not already absolute
         if not os.path.isabs(output_dir):
             # Get project root directory
             project_root = os.getcwd()
@@ -212,23 +212,33 @@ class JsonWriterPipeline:
         if 'name' not in item:
             print(f"❌ ERROR: Item has no 'name' field: {item}")
             return item
+        
+        print(f"💾 Processing item for {item['name']} from {item.get('source_url', 'unknown source')}")
+        print(f"📋 Item fields: {list(item.keys())}")
             
         # Create a safe filename
         safe_name = "".join(c if c.isalnum() or c == '_' else '_' for c in item['name'])
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{safe_name}_{timestamp}.json"
+        
+        # Don't create additional subdirectories, just use the file directly in politician_data_dir
         filepath = os.path.join(self.politician_data_dir, filename)
         
         # Log more detailed file path information
         print(f"📝 Attempting to save data to file: {os.path.abspath(filepath)}")
         print(f"📊 Item contains {len(item.keys())} fields")
         
+        # Dump the full item data to help with debugging
+        print(f"🔍 Item data preview: {str(dict(item))[:200]}...")
+        
         # Ensure the directory exists
         try:
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            print(f"✅ Confirmed directory exists: {os.path.dirname(filepath)}")
+            os.makedirs(self.politician_data_dir, exist_ok=True)
+            print(f"✅ Confirmed directory exists: {self.politician_data_dir}")
+            print(f"📂 Directory absolute path: {os.path.abspath(self.politician_data_dir)}")
+            print(f"📂 Directory contents: {os.listdir(self.politician_data_dir)}")
         except Exception as e:
-            print(f"❌ ERROR creating directory: {os.path.dirname(filepath)}")
+            print(f"❌ ERROR creating directory: {self.politician_data_dir}")
             print(f"❌ Error details: {str(e)}")
             
         try:
