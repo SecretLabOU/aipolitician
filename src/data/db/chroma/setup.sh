@@ -18,11 +18,11 @@ echo -e "${GREEN}Setting up ChromaDB for AI Politician project...${NC}"
 
 # First install NumPy with pinned version (before ChromaDB)
 echo -e "${YELLOW}Installing NumPy with compatible version...${NC}"
-pip install 'numpy<2.0.0'  # Use NumPy 1.x which is compatible with ChromaDB 0.4.18
+pip install 'numpy<2.0.0'  # Use NumPy 1.x for compatibility
 
 # Install required Python packages with specific versions
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-pip install 'chromadb==0.4.18'  # Pinning to specific version for stability
+pip install 'chromadb==0.3.26'  # Using a specific known working version
 
 # Install HuggingFace Transformers with specific versions for BGE model
 echo -e "${YELLOW}Installing BGE embedding model dependencies...${NC}"
@@ -32,19 +32,26 @@ pip install 'transformers>=4.30.0' 'torch>=2.0.0'
 echo -e "${YELLOW}Downloading BGE-Small-EN model...${NC}"
 python -c "
 from transformers import AutoTokenizer, AutoModel
+import torch
+# Check for GPU
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f'Using device: {device}')
 # Download model and tokenizer files to cache
 tokenizer = AutoTokenizer.from_pretrained('BAAI/bge-small-en')
-model = AutoModel.from_pretrained('BAAI/bge-small-en')
+model = AutoModel.from_pretrained('BAAI/bge-small-en').to(device)
 print('Successfully downloaded BGE-Small-EN model and tokenizer')
 "
 
-# Create the database directory if it doesn't exist
-if [ ! -d "$DB_DIR" ]; then
-    echo -e "${YELLOW}Creating database directory at $DB_DIR...${NC}"
-    mkdir -p "$DB_DIR"
-else
-    echo -e "${YELLOW}Database directory already exists at $DB_DIR${NC}"
+# Completely remove the existing database directory and create a fresh one
+echo -e "${YELLOW}Setting up a completely fresh database directory...${NC}"
+if [ -d "$DB_DIR" ]; then
+    echo -e "${YELLOW}Removing existing database directory at $DB_DIR${NC}"
+    rm -rf "$DB_DIR"
 fi
+
+# Create a new clean directory
+echo -e "${YELLOW}Creating fresh database directory at $DB_DIR...${NC}"
+mkdir -p "$DB_DIR"
 
 # Set permissions (rwxr-xr-x)
 echo -e "${YELLOW}Setting directory permissions...${NC}"
@@ -58,23 +65,13 @@ import transformers
 import torch
 print(f'NumPy version: {numpy.__version__}')
 print(f'ChromaDB version: {chromadb.__version__}')
+print(f'Torch version: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'CUDA device count: {torch.cuda.device_count()}')
+    for i in range(torch.cuda.device_count()):
+        print(f'GPU {i}: {torch.cuda.get_device_name(i)}')
 print('All dependencies successfully installed')
-"
-
-# Clear any existing collections to avoid compatibility issues
-echo -e "${YELLOW}Cleaning up any existing collections...${NC}"
-python -c "
-import sys
-import os
-import chromadb
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname('$0'), '../../../')))
-from data.db.chroma.schema import connect_to_chroma, DEFAULT_DB_PATH, DEFAULT_COLLECTION_NAME
-client = connect_to_chroma('$DB_DIR')
-try:
-    client.delete_collection(name=DEFAULT_COLLECTION_NAME)
-    print(f'Deleted existing collection {DEFAULT_COLLECTION_NAME}')
-except Exception as e:
-    print(f'No existing collection to delete or error: {e}')
 "
 
 # Initialize the database
@@ -82,10 +79,25 @@ echo -e "${YELLOW}Initializing the database...${NC}"
 python -c "
 import sys
 import os
+import shutil
+import time
+
+# Add the src directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname('$0'), '../../../')))
+
+# Make sure directory is clean
+db_path = '$DB_DIR'
+if os.path.exists(db_path):
+    print(f'Ensuring directory {db_path} is ready for use...')
+    # Make sure we have proper permissions
+    os.chmod(db_path, 0o755)
+
+# Import our database initialization code
 from data.db.chroma.schema import initialize_database
-db = initialize_database('$DB_DIR')
-print(f\"Database initialized successfully at {os.path.abspath('$DB_DIR')}\")
+
+# Initialize the database
+db = initialize_database(db_path)
+print(f\"Database initialized successfully at {os.path.abspath(db_path)}\")
 "
 
 echo -e "${GREEN}ChromaDB setup complete!${NC}"

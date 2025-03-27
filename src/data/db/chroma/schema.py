@@ -3,9 +3,9 @@ import sys
 import logging
 import chromadb
 from chromadb.config import Settings
-from chromadb.utils import embedding_functions
 from typing import Optional, Dict, Any, List
 import numpy as np
+import torch
 
 # Configure logging
 logging.basicConfig(
@@ -46,70 +46,63 @@ def setup_permissions(db_path: str) -> bool:
         logger.error(f"Failed to set permissions on {db_path}: {e}")
         return False
 
-def get_embedding_function():
+class BGEEmbeddingFunction:
     """
-    Get the embedding function for the BGE-Small-EN model using HuggingFace Transformers directly.
-    
-    Returns:
-        embedding_function: The embedding function to use
+    Custom embedding function using the BGE-Small-EN model with GPU acceleration if available.
     """
-    try:
-        # Direct implementation using HuggingFace Transformers
+    def __init__(self, model_name="BAAI/bge-small-en"):
+        """Initialize the BGE embedding function with GPU support."""
         from transformers import AutoTokenizer, AutoModel
-        import torch
         
-        class BGEEmbeddingFunction:
-            def __init__(self, model_name="BAAI/bge-small-en"):
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.model = AutoModel.from_pretrained(model_name)
-                self.device = "cuda" if torch.cuda.is_available() else "cpu"
-                self.model.to(self.device)
-                logger.info(f"Loaded BGE-Small-EN model on {self.device}")
-            
-            def __call__(self, input):
-                """
-                Generate embeddings for the input texts.
-                
-                Args:
-                    input: List of texts to generate embeddings for
-                    
-                Returns:
-                    List of embeddings
-                """
-                if not input:
-                    return []
-                
-                # Tokenize sentences
-                encoded_input = self.tokenizer(
-                    input, 
-                    padding=True, 
-                    truncation=True, 
-                    max_length=512, 
-                    return_tensors='pt'
-                ).to(self.device)
-                
-                # Compute token embeddings
-                with torch.no_grad():
-                    model_output = self.model(**encoded_input)
-                    # Use CLS token embedding
-                    embeddings = model_output.last_hidden_state[:, 0]
-                    
-                    # Normalize embeddings
-                    embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-                    
-                # Convert from PyTorch tensors to numpy arrays
-                embeddings = embeddings.cpu().numpy()
-                
-                return embeddings.tolist()
-            
-        embedding_func = BGEEmbeddingFunction()
-        logger.info("Initialized BGE-Small-EN embedding function using HuggingFace Transformers")
-        return embedding_func
+        # Use GPU if available
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if self.device == "cuda":
+            # Use the best GPU available
+            device_id = 0
+            if torch.cuda.device_count() > 1:
+                # Use RTX 4090 if available (device 1)
+                device_id = 1
+            self.device = f"cuda:{device_id}"
         
-    except Exception as e:
-        logger.error(f"Failed to initialize embedding function: {e}")
-        # Return None to indicate failure
-        return None
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(self.device)
+        logger.info(f"Loaded BGE-Small-EN model on {self.device}")
+    
+    def __call__(self, texts):
+        """
+        Generate embeddings for the input texts.
+        
+        Args:
+            texts: List of texts to generate embeddings for
+            
+        Returns:
+            List of embeddings
+        """
+        if not texts:
+            return []
+        
+        # Tokenize sentences
+        encoded_input = self.tokenizer(
+            texts, 
+            padding=True, 
+            truncation=True, 
+            max_length=512, 
+            return_tensors='pt'
+        ).to(self.device)
+        
+        # Compute token embeddings
+        with torch.no_grad():
+            model_output = self.model(**encoded_input)
+            # Use CLS token embedding
+            embeddings = model_output.last_hidden_state[:, 0]
+            
+            # Normalize embeddings
+            embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+            
+        # Convert from PyTorch tensors to numpy arrays
+        embeddings = embeddings.cpu().numpy()
+        
+        return embeddings.tolist()
 
 def connect_to_chroma(db_path: str = DEFAULT_DB_PATH, persist: bool = True) -> Optional[chromadb.Client]:
     """
@@ -152,7 +145,7 @@ def connect_to_chroma(db_path: str = DEFAULT_DB_PATH, persist: bool = True) -> O
         return None
 
 def get_collection(client: chromadb.Client, collection_name: str = DEFAULT_COLLECTION_NAME, 
-                   create_if_not_exists: bool = True) -> Optional[chromadb.Collection]:
+                   create_if_not_exists: bool = True) -> Optional[Any]:
     """
     Get a collection from ChromaDB.
     
@@ -162,53 +155,28 @@ def get_collection(client: chromadb.Client, collection_name: str = DEFAULT_COLLE
         create_if_not_exists: Whether to create the collection if it doesn't exist
         
     Returns:
-        chromadb.Collection or None: Collection if successful, None otherwise
+        Collection if successful, None otherwise
     """
     try:
-        # Get embedding function
-        embedding_func = get_embedding_function()
-        if not embedding_func:
-            raise ValueError("Could not initialize embedding function")
-            
-        # Check if collection exists (compatible with ChromaDB v0.6.0)
+        # Initialize embedding function with GPU support
+        embedding_func = BGEEmbeddingFunction()
+        
+        # Check if collection exists
         try:
             collections = client.list_collections()
-            # In ChromaDB v0.6.0+, list_collections returns just the names
-            collection_exists = collection_name in collections
-            logger.info(f"Found collections: {collections}")
+            collection_exists = collection_name in [c.name for c in collections]
         except Exception as e:
-            # Fallback for older versions or if there's an error
-            logger.warning(f"Error checking collections with list_collections: {e}")
-            try:
-                # Try to get the collection directly to check if it exists
-                client.get_collection(name=collection_name)
-                collection_exists = True
-            except Exception:
-                collection_exists = False
+            logger.warning(f"Error listing collections, assuming collection does not exist: {e}")
+            collection_exists = False
         
         if collection_exists:
             logger.info(f"Collection '{collection_name}' already exists")
-            try:
-                collection = client.get_collection(
-                    name=collection_name,
-                    embedding_function=embedding_func
-                )
-                return collection
-            except Exception as e:
-                logger.error(f"Error getting existing collection: {e}")
-                if not create_if_not_exists:
-                    return None
-                    
-                # Try to delete and recreate if we can't get it properly
-                try:
-                    client.delete_collection(name=collection_name)
-                    logger.info(f"Deleted problematic collection '{collection_name}'")
-                    collection_exists = False
-                except Exception as delete_error:
-                    logger.error(f"Error deleting problematic collection: {delete_error}")
-                    return None
-        
-        if not collection_exists and create_if_not_exists:
+            collection = client.get_collection(
+                name=collection_name,
+                embedding_function=embedding_func
+            )
+            return collection
+        elif create_if_not_exists:
             logger.info(f"Creating collection '{collection_name}'")
             collection = client.create_collection(
                 name=collection_name,
