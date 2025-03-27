@@ -133,12 +133,18 @@ class JsonWriterPipeline:
     
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(
-            politician_data_dir=crawler.settings.get('POLITICIAN_DATA_DIR', 'data/politicians')
-        )
+        output_dir = crawler.settings.get('POLITICIAN_DATA_DIR', 'data/politicians')
+        # Convert to absolute path if not already absolute
+        if not os.path.isabs(output_dir):
+            # Get project root directory
+            project_root = os.getcwd()
+            output_dir = os.path.join(project_root, output_dir)
+        return cls(politician_data_dir=output_dir)
     
     def open_spider(self, spider):
         self.files = {}
+        # Log the absolute path of the output directory
+        print(f"🗂️ Output directory: {os.path.abspath(self.politician_data_dir)}")
         os.makedirs(self.politician_data_dir, exist_ok=True)
     
     def close_spider(self, spider):
@@ -152,12 +158,28 @@ class JsonWriterPipeline:
         filename = f"{safe_name}_{timestamp}.json"
         filepath = os.path.join(self.politician_data_dir, filename)
         
+        # Log more detailed file path information
+        print(f"📝 Saving data to file: {os.path.abspath(filepath)}")
+        print(f"📊 Item contains {len(item.keys())} fields")
+        
         # Ensure the directory exists
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
-        # Write json
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(dict(item), f, indent=2, ensure_ascii=False)
+        try:
+            # Write json
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(dict(item), f, indent=2, ensure_ascii=False)
+            
+            print(f"✅ Successfully saved politician data to: {filepath}")
+            
+            # Check if file exists and log its size
+            if os.path.exists(filepath):
+                file_size = os.path.getsize(filepath)
+                print(f"📁 File size: {file_size} bytes")
+            else:
+                print(f"⚠️ Warning: File does not exist after saving: {filepath}")
+        except Exception as e:
+            print(f"❌ Error saving data to file: {filepath}")
+            print(f"❌ Error details: {str(e)}")
         
-        print(f"✅ Saved politician data to: {filepath}")
         return item 

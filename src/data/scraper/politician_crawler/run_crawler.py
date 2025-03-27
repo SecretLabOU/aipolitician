@@ -101,6 +101,13 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
     
     # Create output directory if specified
     if output_dir:
+        # Convert to absolute path if not already absolute
+        if not os.path.isabs(output_dir):
+            # Get project root directory
+            project_root = os.getcwd()
+            output_dir = os.path.join(project_root, output_dir)
+            
+        logger.info(f"Using output directory: {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
         # Update settings to use this directory
         os.environ['POLITICIAN_DATA_DIR'] = output_dir
@@ -112,6 +119,7 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         # Override settings if necessary
         if output_dir:
             settings.set('POLITICIAN_DATA_DIR', output_dir)
+            logger.info(f"Set POLITICIAN_DATA_DIR setting to: {output_dir}")
         
         # Set up the crawler process
         process = CrawlerProcess(settings)
@@ -122,6 +130,19 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         # Start crawling
         process.start()  # This blocks until crawling is finished
         
+        # Check if data was saved
+        if output_dir:
+            files = os.listdir(output_dir)
+            json_files = [f for f in files if f.endswith('.json')]
+            if json_files:
+                logger.info(f"Found {len(json_files)} JSON files in output directory: {output_dir}")
+                for file in json_files:
+                    file_path = os.path.join(output_dir, file)
+                    file_size = os.path.getsize(file_path)
+                    logger.info(f"File: {file} - Size: {file_size} bytes")
+            else:
+                logger.warning(f"No JSON files found in output directory: {output_dir}")
+                
         # Calculate and report runtime
         end_time = time.time()
         duration = end_time - start_time

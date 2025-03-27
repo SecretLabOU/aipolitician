@@ -168,26 +168,6 @@ The GPU environment is managed through genv:
    python3 -m spacy download en_core_web_sm
    ```
 
-### GPU Environment Setup (Optional)
-
-Before running the script with GPU support:
-
-1. Initialize genv in your shell:
-   ```bash
-   eval "$(genv shell --init)"
-   ```
-
-2. Activate a genv environment:
-   ```bash
-   genv activate --id nat
-   ```
-
-The script will:
-- Check if genv is properly initialized
-- Verify if the environment is already active
-- Check if GPUs are already attached
-- Clean up by detaching GPUs when the script exits
-
 ### Basic Usage
 
 Run the scraper with default settings:
