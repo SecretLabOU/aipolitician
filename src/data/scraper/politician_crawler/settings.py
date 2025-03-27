@@ -61,7 +61,7 @@ CLOSESPIDER_TIMEOUT = 900  # 15 minutes max
 
 # Custom settings for Politician Crawler
 POLITICIAN_DATA_DIR = 'src/data/scraper/logs'
-SPACY_MODEL = 'en_core_web_lg'  # Transformer-based model for better NER
+SPACY_MODEL = 'en_core_web_sm'  # Use small model by default to ensure availability
 
 # Add more console logging to help debug
 LOG_STDOUT = True

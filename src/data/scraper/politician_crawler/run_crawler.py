@@ -132,6 +132,13 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         settings.set('POLITICIAN_TEST_MODE', True)
         logger.info("Set POLITICIAN_TEST_MODE to True for testing")
         
+        # Explicitly set the item pipelines
+        settings.set('ITEM_PIPELINES', {
+            'src.data.scraper.politician_crawler.pipelines.SpacyNERPipeline': 300,
+            'src.data.scraper.politician_crawler.pipelines.JsonWriterPipeline': 800,
+        })
+        logger.info("Explicitly set item pipelines")
+        
         # Set up the crawler process
         process = CrawlerProcess(settings)
         
