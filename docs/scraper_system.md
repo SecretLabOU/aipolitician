@@ -1,124 +1,359 @@
-# Scraper System Documentation
-
-The AI Politician system includes a web scraper component that collects politician data from reliable sources. This document explains how the scraper works and how to use it.
+# Political Figure Scraper Documentation
 
 ## Overview
 
-The scraper is designed to collect data such as:
-- Speeches
-- Statements
-- Press releases
-- Interviews
-- Policy positions
-- Biographical information
+The Political Figure Scraper is a sophisticated tool designed to collect comprehensive factual information about political figures from diverse authoritative sources. It leverages both web scraping technologies and Local Language Models to extract, structure, and enhance political data.
 
-from various sources including government websites, official campaign sites, news outlets, and more.
+---
 
-## Scraper Components
+## 🔍 Technical Architecture
 
-The scraper is implemented in `src/data/scraper/politician_scraper.py` and contains:
+### Key Technologies
 
-1. Source-specific scraper classes
-2. Content extraction utilities
-3. Rate limiting and politeness controls
-4. Error handling and recovery mechanisms
+- **Python** with asynchronous programming via `asyncio`
+- **BeautifulSoup** for HTML parsing and content extraction
+- **SentenceTransformer** for generating text embeddings
+- **Ollama** with **Llama3** for structured information extraction
+- **GPU acceleration** with custom environment management
 
-## Supported Sources
+### Directory Structure
 
-The scraper can collect data from multiple sources, including:
+```
+src/data/scraper/
+├── __init__.py              # Package initialization
+├── politician_scraper.py    # Main scraper implementation
+├── README.md                # Basic usage documentation
+├── logs/                    # Output and log directory
+└── __pycache__/             # Python cache files
+```
 
-- Official government websites (e.g., whitehouse.gov)
-- Campaign websites
-- Social media platforms
-- News outlets
-- Public speech repositories
-- Official document archives
+### Scraper Workflow
 
-## Usage
+The scraper follows a systematic process:
+
+1. **Source Collection**: Dynamically generates appropriate URLs for a given politician
+2. **Content Fetching**: Retrieves raw HTML with retry logic and error handling
+3. **Content Extraction**: Parses HTML to extract relevant text content
+4. **Structured Information Extraction**: Uses Ollama to transform raw text into structured JSON
+5. **Embedding Generation**: Creates vector embeddings for the extracted content
+6. **Output Generation**: Formats and saves the results to the logs directory
+
+---
+
+## 💻 Implementation Details
+
+### Source Generation
+
+The scraper dynamically generates URLs for multiple source types:
+
+```python
+def get_sources(name):
+    formatted_name = name.replace(' ', '_')
+    formatted_name_dash = name.replace(' ', '-')
+    formatted_name_plus = name.replace(' ', '+')
+    
+    return [
+        # Wikipedia and encyclopedias
+        f"https://en.wikipedia.org/wiki/{formatted_name}",
+        f"https://www.britannica.com/biography/{formatted_name_dash}",
+        
+        # News sources
+        f"https://www.reuters.com/search/news?blob={name}",
+        f"https://apnews.com/search?q={formatted_name_plus}",
+        # ... additional sources
+    ]
+```
+
+### Content Extraction
+
+Web content is extracted using BeautifulSoup with site-specific selectors and robust error handling:
+
+```python
+def get_article_text(url, selector=None, max_retries=2):
+    """Fetch and extract the main content from a webpage with retries"""
+    # Implementation with retry logic and error handling
+```
+
+### Structured Information Extraction
+
+The scraper leverages Ollama's Llama3 model to extract structured information from raw text:
+
+```python
+def extract_with_ollama(text, name, max_length=8000):
+    """Extract structured information directly using Ollama API"""
+    # Trims text to reasonable length
+    # Prepares a comprehensive prompt for Llama3
+    # Handles API communication and error cases
+```
+
+The extraction prompt defines a detailed schema for organizing political information:
+
+```json
+{
+    "basic_info": {
+        "full_name": "Complete name including middle names",
+        "date_of_birth": "YYYY-MM-DD format",
+        "place_of_birth": "City, State/Province, Country",
+        "nationality": "Country of citizenship",
+        "political_affiliation": "Political party or affiliation",
+        "education": ["Educational qualifications with institutions and years"],
+        "family": ["Purely factual family information"]
+    },
+    "career": {
+        "positions": ["All political positions held with dates"],
+        "pre_political_career": ["Previous occupations before entering politics"],
+        "committees": ["Committee memberships"]
+    },
+    // Additional categories omitted for brevity
+}
+```
+
+### GPU Acceleration
+
+The scraper can utilize GPU acceleration for improved performance:
+
+```python
+def setup_gpu_environment(env_id="nat", gpu_count=1):
+    """Setup genv environment and attach GPU"""
+    # Implementation for GPU environment setup
+```
+
+---
+
+## 🚀 Usage Guide
+
+### Prerequisites
+
+1. Python 3.8+ installed
+2. [Ollama](https://ollama.com/) installed and running
+3. Required Python packages:
+   - beautifulsoup4
+   - requests
+   - sentence-transformers
+   - numpy
+
+### Installation
+
+#### Setting Up a Conda Environment
+
+1. Create a new conda environment named "scraper":
+   ```bash
+   conda create -n scraper python=3.8
+   ```
+
+2. Activate the environment:
+   ```bash
+   conda activate scraper
+   ```
+
+3. Navigate to the project root directory:
+   ```bash
+   cd /path/to/ai-politician
+   ```
+
+4. Install required dependencies:
+   ```bash
+   pip install -r requirements/requirements-scraper.txt
+   ```
+
+   The scraper has the following core dependencies:
+   - requests: For HTTP requests
+   - beautifulsoup4: For HTML parsing
+   - numpy: For numerical operations
+   - sentence-transformers: For generating text embeddings
+
+5. Install Ollama:
+   - For macOS: Download from [ollama.com/download](https://ollama.com/download)
+   - For Linux:
+     ```bash
+     curl -fsSL https://ollama.com/install.sh | sh
+     ```
+
+6. Pull the Llama3 model:
+   ```bash
+   ollama pull llama3
+   ```
+
+7. Start the Ollama server (in a separate terminal):
+   ```bash
+   ollama serve
+   ```
 
 ### Basic Usage
 
-To run the scraper for a specific politician:
+Run the scraper with default settings:
 
 ```bash
-python -m src.data.scraper.politician_scraper --politician biden --output-dir ./data/raw/biden
+# Make sure your conda environment is activated
+conda activate scraper
+
+# Start the Ollama server (in a separate terminal)
+ollama serve
+
+# Run the scraper
+python -m src.data.scraper.politician_scraper
+```
+
+This scrapes data for the default political figure and saves results to the logs directory.
+
+### Custom Political Figure
+
+Specify a different political figure:
+
+```bash
+python -m src.data.scraper.politician_scraper --politician "Joe Biden"
 ```
 
 ### Configuration Options
 
-The scraper supports several configuration options:
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--politician` | Target politician | `"Joe Biden"` |
+| `--output-dir` | Output directory | `./data/raw/biden` |
+| `--env-id` | GPU environment ID | `nat` |
+| `--gpu-count` | Number of GPUs | `2` |
+| `--model` | Ollama model to use | `llama3` |
 
-- `--politician`: Target politician (biden, trump)
-- `--output-dir`: Directory to store scraped data
-- `--start-date`: Date to start scraping from (YYYY-MM-DD)
-- `--end-date`: Date to end scraping at (YYYY-MM-DD)
-- `--sources`: Comma-separated list of sources to scrape
-- `--max-items`: Maximum number of items to scrape per source
-- `--cache`: Use cached data when available
-- `--verbose`: Enable verbose logging
+### Environment Setup
 
-### Example Commands
+For GPU acceleration, initialize your shell:
 
 ```bash
-# Scrape Biden data with date range
-python -m src.data.scraper.politician_scraper --politician biden --output-dir ./data/raw/biden --start-date 2021-01-20 --end-date 2023-01-20
-
-# Scrape Trump data from specific sources
-python -m src.data.scraper.politician_scraper --politician trump --output-dir ./data/raw/trump --sources whitehouse,campaign,twitter
+eval "$(genv shell --init)"
 ```
 
-## Output Format
+---
 
-The scraper outputs data in JSON format, with each file containing:
+## 📊 Output Format
+
+The scraper produces structured JSON output:
 
 ```json
 {
-  "content": "Text content of the speech/statement",
-  "title": "Title of the document",
-  "date": "Publication date",
-  "source": "Original source URL",
-  "type": "Document type (speech, statement, etc.)",
-  "metadata": {
-    "location": "Location if applicable",
-    "audience": "Target audience if known",
-    "topics": ["List", "of", "topics"],
-    "additional_fields": "..."
-  }
+  "id": "unique-uuid",
+  "name": "Political Figure Name",
+  "basic_info": {
+    "full_name": "Complete formal name",
+    "date_of_birth": "YYYY-MM-DD",
+    "place_of_birth": "Location",
+    "nationality": "Country",
+    "political_affiliation": "Party",
+    "education": ["Education details"],
+    "family": ["Family information"]
+  },
+  "career": {
+    "positions": ["Political positions with dates"],
+    "pre_political_career": ["Prior career details"],
+    "committees": ["Committee memberships"]
+  },
+  "policy_positions": {
+    "economy": ["Economic policy positions"],
+    "foreign_policy": ["Foreign policy positions"],
+    "healthcare": ["Healthcare policy positions"],
+    // Additional policy areas
+  },
+  // Additional categories (legislative_record, communications, etc.)
+  "embedding": [0.123, -0.456, ...] // Vector representation
 }
 ```
 
-## Adding New Sources
+---
 
-To add a new source to the scraper:
+## 🛠️ Customization
 
-1. Create a new scraper class in `politician_scraper.py` that inherits from the base scraper
-2. Implement the required methods: `fetch`, `parse`, and `extract`
-3. Add the new source to the source registry
-4. Update the CLI argument parser to include the new source
+### Adding New Sources
 
-## Requirements
+Edit the `get_sources()` function to include additional sources:
 
-The scraper requires several libraries listed in `requirements/requirements-scraper.txt`, including:
-
-- requests
-- beautifulsoup4
-- selenium (for JavaScript-heavy sites)
-- aiohttp (for async scraping)
-- playwright (for complex sites)
-
-Install these dependencies using:
-
-```bash
-pip install -r requirements/requirements-scraper.txt
+```python
+def get_sources(name):
+    # Existing sources
+    sources = [...]
+    
+    # Add new sources
+    sources.append(f"https://new-source.com/search?q={name}")
+    
+    return sources
 ```
 
-## Logging
+### Modifying Extraction Schema
 
-The scraper logs its activity to `src/data/scraper/logs/` with different log levels:
+Edit the prompt in `extract_with_ollama()` to modify the extraction schema:
 
-- INFO: Basic scraping progress
-- DEBUG: Detailed scraping information
-- WARNING: Issues that don't prevent operation
-- ERROR: Problems that prevent successful scraping
+```python
+prompt = f"""
+Extract ONLY factual information about {name} from this text.
 
-You can view the logs to monitor progress and troubleshoot issues. 
+Return a JSON object with THESE EXACT fields:
+{{
+    "basic_info": {{
+        // Modify or add fields here
+    }},
+    // Add or modify categories
+}}
+"""
+```
+
+### Using Different LLM Models
+
+Change the model name in the Ollama API call:
+
+```python
+response = requests.post(
+    'http://localhost:11434/api/generate',
+    json={
+        'model': 'mistral', # Change from llama3 to another model
+        'prompt': prompt,
+        'stream': False
+    }
+)
+```
+
+---
+
+## 📝 Troubleshooting
+
+### Common Issues
+
+1. **Ollama Connection Issues**
+   - Ensure Ollama is running with `ollama serve`
+   - Verify the model is available with `ollama list`
+
+2. **Content Extraction Failures**
+   - Check if website structure has changed
+   - Review logs for specific error messages
+   - Try different selectors or extraction methods
+
+3. **GPU Environment Issues**
+   - Ensure GPU drivers are properly installed
+   - Verify `genv` is correctly configured
+   - Check GPU availability with `nvidia-smi`
+
+### Logging
+
+The scraper outputs log files to the `logs/` directory with:
+- Execution timestamps
+- URLs processed
+- Content extraction results
+- Error messages and warnings
+- Performance metrics
+
+---
+
+## 🔄 Maintenance and Updates
+
+### Adding Support for New Political Figures
+
+The scraper is designed to work with any political figure by simply providing their name. However, for optimal results:
+
+1. Check if the political figure has consistent naming across sources
+2. Verify that sufficient information is available online
+3. Consider adding custom selectors for politician-specific sources
+
+### Updating Source Selectors
+
+Web page structures may change over time. To update selectors:
+
+1. Inspect the relevant website using browser developer tools
+2. Identify new CSS selectors or XPath expressions for content
+3. Update the site-specific extraction logic in `get_article_text()`
