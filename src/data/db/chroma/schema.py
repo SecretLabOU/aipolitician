@@ -164,7 +164,15 @@ def get_collection(client: chromadb.Client, collection_name: str = DEFAULT_COLLE
         # Check if collection exists
         try:
             collections = client.list_collections()
-            collection_exists = collection_name in [c.name for c in collections]
+            
+            # Handle different versions of ChromaDB
+            if hasattr(collections[0], 'name') if collections else False:
+                # Collection objects with name attribute
+                collection_exists = any(c.name == collection_name for c in collections)
+            else:
+                # Just collection names
+                collection_exists = collection_name in collections
+                
         except Exception as e:
             logger.warning(f"Error listing collections, assuming collection does not exist: {e}")
             collection_exists = False

@@ -16,13 +16,14 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Setting up ChromaDB for AI Politician project...${NC}"
 
-# First install NumPy with pinned version (before ChromaDB)
-echo -e "${YELLOW}Installing NumPy with compatible version...${NC}"
+# First install compatible versions of requirements
+echo -e "${YELLOW}Installing compatible dependencies...${NC}"
 pip install 'numpy<2.0.0'  # Use NumPy 1.x for compatibility
+pip install 'pydantic<2.0.0'  # Install pydantic v1 which ChromaDB 0.3.26 expects
 
 # Install required Python packages with specific versions
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-pip install 'chromadb==0.3.26'  # Using a specific known working version
+pip install 'chromadb==0.4.6'  # This version works with pydantic v1
 
 # Install HuggingFace Transformers with specific versions for BGE model
 echo -e "${YELLOW}Installing BGE embedding model dependencies...${NC}"
@@ -60,10 +61,12 @@ chmod 755 "$DB_DIR"
 echo -e "${GREEN}Verifying Python installation...${NC}"
 python -c "
 import numpy
+import pydantic
 import chromadb
 import transformers
 import torch
 print(f'NumPy version: {numpy.__version__}')
+print(f'Pydantic version: {pydantic.__version__}')
 print(f'ChromaDB version: {chromadb.__version__}')
 print(f'Torch version: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
