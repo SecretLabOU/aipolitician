@@ -15,7 +15,7 @@ Usage:
 import os
 import sys
 import argparse
-from politician_crawler.run_crawler import run_spider
+from src.data.scraper.politician_crawler.run_crawler import run_spider
 
 def main():
     """Main function to parse arguments and run the scraper"""
