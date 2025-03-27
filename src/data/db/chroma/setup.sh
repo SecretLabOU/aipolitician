@@ -16,13 +16,17 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Setting up ChromaDB for AI Politician project...${NC}"
 
+# First install NumPy with pinned version (before ChromaDB)
+echo -e "${YELLOW}Installing NumPy with compatible version...${NC}"
+pip install 'numpy<2.0.0'  # Use NumPy 1.x which is compatible with ChromaDB 0.4.18
+
 # Install required Python packages with specific versions
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
 pip install 'chromadb==0.4.18'  # Pinning to specific version for stability
 
 # Install HuggingFace Transformers with specific versions for BGE model
 echo -e "${YELLOW}Installing BGE embedding model dependencies...${NC}"
-pip install 'transformers>=4.30.0' 'torch>=2.0.0' 'numpy>=1.20.0'
+pip install 'transformers>=4.30.0' 'torch>=2.0.0'
 
 # Download the BGE model to cache before using
 echo -e "${YELLOW}Downloading BGE-Small-EN model...${NC}"
@@ -47,7 +51,15 @@ echo -e "${YELLOW}Setting directory permissions...${NC}"
 chmod 755 "$DB_DIR"
 
 echo -e "${GREEN}Verifying Python installation...${NC}"
-python -c "import chromadb; import transformers; import torch; print('All dependencies successfully installed')"
+python -c "
+import numpy
+import chromadb
+import transformers
+import torch
+print(f'NumPy version: {numpy.__version__}')
+print(f'ChromaDB version: {chromadb.__version__}')
+print('All dependencies successfully installed')
+"
 
 # Clear any existing collections to avoid compatibility issues
 echo -e "${YELLOW}Cleaning up any existing collections...${NC}"
