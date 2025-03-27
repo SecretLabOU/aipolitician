@@ -66,13 +66,22 @@ def get_embedding_function():
                 self.model.to(self.device)
                 logger.info(f"Loaded BGE-Small-EN model on {self.device}")
             
-            def __call__(self, texts):
-                if not texts:
+            def __call__(self, input):
+                """
+                Generate embeddings for the input texts.
+                
+                Args:
+                    input: List of texts to generate embeddings for
+                    
+                Returns:
+                    List of embeddings
+                """
+                if not input:
                     return []
                 
                 # Tokenize sentences
                 encoded_input = self.tokenizer(
-                    texts, 
+                    input, 
                     padding=True, 
                     truncation=True, 
                     max_length=512, 
