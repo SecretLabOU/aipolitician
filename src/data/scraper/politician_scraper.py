@@ -14,8 +14,63 @@ Usage:
 
 import os
 import sys
-import argparse
-from src.data.scraper.politician_crawler.run_crawler import run_spider
+import json
+import logging
+import asyncio
+import random
+from typing import Dict, Any, List, Optional
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Fix import path - use relative import instead of absolute
+from .politician_crawler.run_crawler import run_spider
+
+async def crawl_political_figure(name: str, max_attempts: int = 3) -> Optional[Dict[str, Any]]:
+    """
+    Crawl data about a political figure using the Scrapy crawler.
+    
+    Args:
+        name: Name of the political figure to crawl
+        max_attempts: Maximum number of attempts to crawl
+        
+    Returns:
+        Dict containing information about the political figure, or None if unsuccessful
+    """
+    logger.info(f"Crawling data for political figure: {name}")
+    
+    for attempt in range(1, max_attempts + 1):
+        try:
+            # Set random user agent for each attempt
+            result = await run_spider(name)
+            
+            if result and isinstance(result, dict) and "name" in result:
+                logger.info(f"Successfully crawled data for {name} (attempt {attempt})")
+                
+                # Add ID to the data if not present
+                if "id" not in result:
+                    # Create ID from name (lowercase, replace spaces with dashes)
+                    result["id"] = name.lower().replace(" ", "-")
+                
+                return result
+            else:
+                logger.warning(f"Crawler returned invalid data for {name} (attempt {attempt})")
+                
+        except Exception as e:
+            logger.error(f"Error crawling data for {name} (attempt {attempt}): {e}")
+            
+        # Wait before retrying
+        if attempt < max_attempts:
+            wait_time = random.uniform(1.0, 3.0)
+            logger.info(f"Waiting {wait_time:.2f}s before retry...")
+            await asyncio.sleep(wait_time)
+    
+    logger.error(f"Failed to crawl data for {name} after {max_attempts} attempts")
+    return None
 
 def main():
     """Main function to parse arguments and run the scraper"""

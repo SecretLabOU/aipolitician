@@ -11,8 +11,19 @@ import datetime
 import logging
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
-# Explicitly import the spider
-from src.data.scraper.politician_crawler.spiders.politician_spider import PoliticianSpider
+
+# Fix import path for the spider
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "../../../.."))
+sys.path.insert(0, project_root)
+
+# Import the spider - use relative import when possible
+try:
+    # First try relative import
+    from .spiders.politician_spider import PoliticianSpider
+except (ImportError, ValueError):
+    # Fall back to absolute import if needed (when run as script)
+    from src.data.scraper.politician_crawler.spiders.politician_spider import PoliticianSpider
 
 # Configure logging
 logging.basicConfig(
@@ -87,7 +98,7 @@ def cleanup_gpu_environment():
     except Exception as e:
         logger.warning(f"⚠️ Error during GPU cleanup: {e}")
 
-def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
+async def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
     """Run the Scrapy spider for the given politician name with GPU support"""
     start_time = time.time()
     logger.info(f"Starting crawler for politician: {politician_name}")
@@ -161,6 +172,17 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
                     file_path = os.path.join(output_dir, file)
                     file_size = os.path.getsize(file_path)
                     logger.info(f"File: {file} - Size: {file_size} bytes")
+                    
+                    # Load and return the most recent data file
+                    if politician_name.lower().replace(' ', '_') in file.lower():
+                        try:
+                            import json
+                            with open(file_path, 'r') as f:
+                                data = json.load(f)
+                                logger.info(f"Loaded data from file: {file}")
+                                return data
+                        except Exception as e:
+                            logger.error(f"Error loading data from file {file}: {e}")
             else:
                 logger.warning(f"No JSON files found in output directory: {output_dir}")
                 # List all files in the directory to help debug
@@ -171,17 +193,18 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         duration = end_time - start_time
         logger.info(f"Crawling finished in {duration:.2f} seconds")
         
-        return True
+        # Return empty result if no data file was found
+        return {}
     except ImportError as e:
         logger.error(f"Import Error: {e}")
         logger.error("This might be caused by missing dependencies. Make sure all required packages are installed.")
-        return False
+        return None
     except Exception as e:
         logger.error(f"Error running spider: {e}")
         # Print traceback for better debugging
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        return False
+        return None
     finally:
         # No need to call cleanup_gpu_environment here as it's registered with atexit
         pass
@@ -197,14 +220,15 @@ def main():
     args = parser.parse_args()
     
     # Run the crawler
-    success = run_spider(
+    import asyncio
+    data = asyncio.run(run_spider(
         politician_name=args.politician_name,
         output_dir=args.output_dir,
         env_id=args.env_id,
         gpu_count=args.gpu_count
-    )
+    ))
     
-    if success:
+    if data is not None:
         logger.info("Crawling completed successfully")
         sys.exit(0)
     else:
