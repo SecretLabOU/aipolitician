@@ -1,0 +1,1 @@
+# ChromaDB Database Implementation for AI Politician 
