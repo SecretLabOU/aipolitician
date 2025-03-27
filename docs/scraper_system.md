@@ -12,7 +12,7 @@ The Political Figure Scraper is a sophisticated tool designed to collect compreh
 
 - **Scrapy** for robust, concurrent web crawling
 - **SpaCy** with GPU acceleration for Named Entity Recognition (NER) and text processing
-- **Python** with modern project structure
+- **python3** with modern project structure
 - **GPU acceleration** with genv environment management
 
 ### Directory Structure
@@ -52,7 +52,7 @@ The scraper follows a systematic process:
 
 The system uses a custom Scrapy spider designed to handle various political information sources:
 
-```python
+```python3
 class PoliticianSpider(scrapy.Spider):
     name = "politician"
     allowed_domains = [
@@ -79,7 +79,7 @@ The spider includes specialized parsers for different website types:
 
 A custom pipeline uses SpaCy's powerful NER capabilities:
 
-```python
+```python3
 class SpacyNERPipeline:
     def process_item(self, item, spider):
         # Process text with SpaCy
@@ -104,7 +104,7 @@ The pipeline automatically:
 
 The scraper dynamically adapts to available GPU resources:
 
-```python
+```python3
 # Check for GPU availability and optimize settings
 has_gpu = len(get_cuda_devices()) > 0
 if has_gpu:
@@ -123,8 +123,8 @@ The GPU environment is managed through genv:
 
 ### Prerequisites
 
-1. Python 3.8+ installed
-2. Required Python packages:
+1. python3 3.8+ installed
+2. Required python3 packages:
    - scrapy
    - spacy
    - requests
@@ -136,7 +136,7 @@ The GPU environment is managed through genv:
 
 1. Create a new conda environment named "scraper":
    ```bash
-   conda create -n scraper python=3.8
+   conda create -n scraper python3=3.8
    ```
 
 2. Activate the environment:
@@ -156,16 +156,16 @@ The GPU environment is managed through genv:
 
 5. Download the SpaCy model:
    ```bash
-   python -m spacy download en_core_web_trf
+   python3 -m spacy download en_core_web_trf
    ```
    
    For lower resource usage, you can use alternative models:
    ```bash
    # Large model - good balance between accuracy and performance
-   python -m spacy download en_core_web_lg
+   python3 -m spacy download en_core_web_lg
    
    # Small model - fastest but less accurate
-   python -m spacy download en_core_web_sm
+   python3 -m spacy download en_core_web_sm
    ```
 
 ### GPU Environment Setup (Optional)
@@ -197,13 +197,13 @@ Run the scraper with default settings:
 conda activate scraper
 
 # Run the scraper with default settings
-python -m src.data.scraper.politician_scraper "Donald Trump"
+python3 -m src.data.scraper.politician_scraper "Donald Trump"
 ```
 
 ### Command-line Arguments
 
 ```bash
-python -m src.data.scraper.politician_scraper "Politician Name" [--output-dir DIR] [--env-id ENV_ID] [--gpu-count N]
+python3 -m src.data.scraper.politician_scraper "Politician Name" [--output-dir DIR] [--env-id ENV_ID] [--gpu-count N]
 ```
 
 | Argument | Description | Default |
@@ -216,7 +216,7 @@ python -m src.data.scraper.politician_scraper "Politician Name" [--output-dir DI
 For example, to scrape data for Joe Biden with environment ID "nat" and 2 GPUs:
 
 ```bash
-python -m src.data.scraper.politician_scraper "Joe Biden" --output-dir data/politicians --env-id nat --gpu-count 2
+python3 -m src.data.scraper.politician_scraper "Joe Biden" --output-dir data/politicians --env-id nat --gpu-count 2
 ```
 
 ---
@@ -255,7 +255,7 @@ The scraper produces structured JSON output with entities extracted by SpaCy:
 
 Edit the `allowed_domains` and `generate_start_urls()` method in `politician_spider.py`:
 
-```python
+```python3
 allowed_domains = [
     'en.wikipedia.org',
     'www.britannica.com',
@@ -275,7 +275,7 @@ def generate_start_urls(self):
 
 Add a new parser method in `politician_spider.py`:
 
-```python
+```python3
 def parse_custom_site(self, response):
     """Parse your custom site"""
     main_content = response.css('your-css-selector')
@@ -306,7 +306,7 @@ def parse_custom_site(self, response):
 
 Edit the `SPACY_MODEL` setting in `settings.py`:
 
-```python
+```python3
 # For highest accuracy (requires more GPU memory)
 SPACY_MODEL = 'en_core_web_trf'
 
@@ -361,7 +361,7 @@ If a website's structure changes:
 
 Adjust the following settings in `settings.py` for better performance:
 
-```python
+```python3
 # Increase for more aggressive crawling (may trigger rate limits)
 CONCURRENT_REQUESTS = 16
 
