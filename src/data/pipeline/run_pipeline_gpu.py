@@ -184,8 +184,8 @@ def main():
     if success:
         print("\n✅ Pipeline completed successfully!")
         print(f"\n📊 Results can be queried with:")
-        print(f"  - To get Donald Trump: python src/data/db/chroma/query.py --query \"Donald Trump\"")
-        print(f"  - To get Joe Biden: python src/data/db/chroma/query.py --query \"Joe Biden\"")
+        print(f"  - To get politician info: python src/data/db/chroma/query.py --query \"Donald Trump\"")
+        print(f"  - To get by ID: python src/data/db/chroma/query.py --id <politician-id>")
         print(f"  - To list all politicians: python src/data/db/chroma/list_all.py")
         sys.exit(0)
     else:
