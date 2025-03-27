@@ -61,71 +61,113 @@ def map_scraper_to_chroma(scraper_data: Dict[str, Any]) -> Dict[str, Any]:
         Dict containing the data formatted for ChromaDB insertion
     """
     try:
+        # Ensure key fields exist with defaults
+        basic_info = scraper_data.get("basic_info", {})
+        if not isinstance(basic_info, dict):
+            basic_info = {}
+            
+        policy_positions = scraper_data.get("policy_positions", {})
+        if not isinstance(policy_positions, dict):
+            policy_positions = {}
+            
+        legislative_record = scraper_data.get("legislative_record", {})
+        if not isinstance(legislative_record, dict):
+            legislative_record = {}
+            
+        communications = scraper_data.get("communications", {})
+        if not isinstance(communications, dict):
+            communications = {}
+            
+        campaigns = scraper_data.get("campaigns", {})
+        if not isinstance(campaigns, dict):
+            campaigns = {}
+            
+        career = scraper_data.get("career", {})
+        if not isinstance(career, dict):
+            career = {}
+        
         # Create a new mapping with the required ChromaDB schema fields
         chroma_data = {
             "id": scraper_data.get("id", str(uuid.uuid4())),
             "name": scraper_data.get("name", ""),
-            "date_of_birth": scraper_data["basic_info"].get("date_of_birth", ""),
-            "nationality": scraper_data["basic_info"].get("nationality", ""),
-            "political_affiliation": scraper_data["basic_info"].get("political_affiliation", ""),
+            "date_of_birth": basic_info.get("date_of_birth", scraper_data.get("date_of_birth", "")),
+            "nationality": basic_info.get("nationality", ""),
+            "political_affiliation": basic_info.get("political_affiliation", scraper_data.get("political_affiliation", "")),
             "biography": "", # We'll construct the biography from various fields
             "positions": "", # We'll construct the positions from various fields
             "policies": json.dumps({
-                "economy": scraper_data["policy_positions"].get("economy", []),
-                "foreign_policy": scraper_data["policy_positions"].get("foreign_policy", []),
-                "healthcare": scraper_data["policy_positions"].get("healthcare", []),
-                "immigration": scraper_data["policy_positions"].get("immigration", []),
-                "environment": scraper_data["policy_positions"].get("environment", []),
-                "social_issues": scraper_data["policy_positions"].get("social_issues", []),
-                "other": scraper_data["policy_positions"].get("other", [])
+                "economy": policy_positions.get("economy", []),
+                "foreign_policy": policy_positions.get("foreign_policy", []),
+                "healthcare": policy_positions.get("healthcare", []),
+                "immigration": policy_positions.get("immigration", []),
+                "environment": policy_positions.get("environment", []),
+                "social_issues": policy_positions.get("social_issues", []),
+                "other": policy_positions.get("other", [])
             }),
             "legislative_actions": json.dumps({
-                "sponsored_bills": scraper_data["legislative_record"].get("sponsored_bills", []),
-                "voting_record": scraper_data["legislative_record"].get("voting_record", []),
-                "achievements": scraper_data["legislative_record"].get("achievements", [])
+                "sponsored_bills": legislative_record.get("sponsored_bills", []),
+                "voting_record": legislative_record.get("voting_record", []),
+                "achievements": legislative_record.get("achievements", [])
             }),
             "public_communications": json.dumps({
-                "speeches": scraper_data["communications"].get("speeches", []),
-                "statements": scraper_data["communications"].get("statements", []),
-                "publications": scraper_data["communications"].get("publications", [])
+                "speeches": communications.get("speeches", []),
+                "statements": communications.get("statements", []),
+                "publications": communications.get("publications", [])
             }),
             "timeline": json.dumps(scraper_data.get("timeline", [])),
             "campaigns": json.dumps({
-                "elections": scraper_data["campaigns"].get("elections", []),
-                "platforms": scraper_data["campaigns"].get("platforms", []),
-                "fundraising": scraper_data["campaigns"].get("fundraising", [])
+                "elections": campaigns.get("elections", []),
+                "platforms": campaigns.get("platforms", []),
+                "fundraising": campaigns.get("fundraising", [])
             }),
             "media": json.dumps([]), # Initialize as empty array
             "philanthropy": json.dumps([]), # Initialize as empty array
-            "personal_details": json.dumps(scraper_data["basic_info"].get("family", []))
+            "personal_details": json.dumps(basic_info.get("family", []))
         }
         
-        # Construct a comprehensive biography from available fields
-        biography_parts = [
-            f"{chroma_data['name']} is a {chroma_data['nationality']} political figure",
-            f"affiliated with the {chroma_data['political_affiliation']}." if chroma_data['political_affiliation'] else "."
-        ]
+        # Extract raw content if available
+        raw_content = scraper_data.get("raw_content", "")
+        if raw_content:
+            # Use the raw content as the biography if it exists
+            chroma_data["biography"] = raw_content[:5000]  # Limit to 5000 chars
+        else:
+            # Construct a comprehensive biography from available fields
+            nationality = chroma_data["nationality"]
+            if not nationality:
+                nationality = "American" # Default assumption for politicians
+                
+            biography_parts = [
+                f"{chroma_data['name']} is a {nationality} political figure",
+                f"affiliated with the {chroma_data['political_affiliation']}." if chroma_data['political_affiliation'] else "."
+            ]
+            
+            # Add education if available
+            if basic_info.get("education"):
+                education_str = ", ".join(basic_info["education"][:3])  # Take up to 3 education entries
+                biography_parts.append(f"Education: {education_str}.")
+            
+            # Create the final biography
+            chroma_data["biography"] = " ".join(biography_parts)
         
-        # Add education if available
-        if scraper_data["basic_info"].get("education"):
-            education_str = ", ".join(scraper_data["basic_info"]["education"][:3])  # Take up to 3 education entries
-            biography_parts.append(f"Education: {education_str}.")
-        
-        # Add career highlights
-        if "career" in scraper_data and isinstance(scraper_data["career"], dict):
-            positions_str = ", ".join(str(pos) for pos in scraper_data["career"]["positions"][:3])  # Take up to 3 positions
-            biography_parts.append(f"Notable positions: {positions_str}.")
-            chroma_data["positions"] = json.dumps(scraper_data["career"].get("positions", []))
+        # Handle positions
+        if career and isinstance(career, dict) and "positions" in career and isinstance(career["positions"], list):
+            positions_str = ", ".join(str(pos) for pos in career["positions"][:3])  # Take up to 3 positions
+            chroma_data["positions"] = json.dumps(career.get("positions", []))
         else:
             chroma_data["positions"] = "[]"  # Default empty JSON array
             
-        # Create the final biography
-        chroma_data["biography"] = " ".join(biography_parts)
+        # Add source URL if available
+        if "source_url" in scraper_data:
+            chroma_data["source_url"] = scraper_data["source_url"]
+            
+        # Log the formatted data for debugging
+        logger.info(f"Successfully mapped data for {chroma_data['name']}")
         
         return chroma_data
         
     except Exception as e:
-        logger.error(f"Error mapping scraper data to ChromaDB format: {e}")
+        logger.error(f"Error mapping scraper data to ChromaDB format: {str(e)}")
+        logger.debug(f"Scraped data: {json.dumps(scraper_data, indent=2)[:500]}...")
         raise
 
 async def scrape_politician_data(name: str) -> Dict[str, Any]:
