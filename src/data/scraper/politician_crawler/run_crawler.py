@@ -11,6 +11,8 @@ import datetime
 import logging
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
+# Explicitly import the spider
+from src.data.scraper.politician_crawler.spiders.politician_spider import PoliticianSpider
 
 # Configure logging
 logging.basicConfig(
@@ -114,8 +116,8 @@ def run_spider(politician_name, output_dir=None, env_id="nat", gpu_count=1):
         # Set up the crawler process
         process = CrawlerProcess(settings)
         
-        # Add the spider
-        process.crawl('politician', politician_name=politician_name)
+        # Add the spider directly with the PoliticianSpider class
+        process.crawl(PoliticianSpider, politician_name=politician_name)
         
         # Start crawling
         process.start()  # This blocks until crawling is finished

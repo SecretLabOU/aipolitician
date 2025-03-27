@@ -2,6 +2,7 @@
 
 BOT_NAME = 'politician_crawler'
 
+# Fix the module paths to ensure spiders can be discovered
 SPIDER_MODULES = ['src.data.scraper.politician_crawler.spiders']
 NEWSPIDER_MODULE = 'src.data.scraper.politician_crawler.spiders'
 
