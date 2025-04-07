@@ -178,3 +178,51 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [LangChain](https://www.langchain.com/) for the LangGraph framework
 - [Milvus](https://milvus.io/) for the vector database
 - [PEFT](https://github.com/huggingface/peft) for efficient fine-tuning
+
+# AI Politician Database Utilities
+
+This repo contains utilities for working with the AI Politician database, which stores political figures and their metadata.
+
+## Standalone Listing Tool
+
+The `list_politicians.py` script provides a simple way to view all politicians in the database without needing to navigate complex imports.
+
+### Installation
+
+1. Install the required dependencies:
+
+```bash
+pip install chromadb
+```
+
+2. Make sure the script is executable:
+
+```bash
+chmod +x list_politicians.py
+```
+
+### Usage
+
+#### Basic usage (shows a simple list):
+
+```bash
+./list_politicians.py
+```
+
+#### Show detailed information:
+
+```bash
+./list_politicians.py --detailed
+```
+
+#### Specify a different database path:
+
+```bash
+./list_politicians.py --db-path /path/to/your/political_db
+```
+
+### Notes
+
+- The default database path is `~/political_db`. If your database is located elsewhere, use the `--db-path` argument.
+- The script assumes the collection name is "political_figures".
+- Use the `--detailed` flag to see more information about each politician, including their biography snippet and policy positions.
