@@ -14,30 +14,77 @@ import sys
 import os
 import argparse
 import json
+import importlib.util
+import traceback
 
-# Add the project root to path
+# Print useful debugging information
+print(f"Current working directory: {os.getcwd()}")
 script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(script_dir, "../../../.."))
-sys.path.insert(0, project_root)
+print(f"Script directory: {script_dir}")
 
-# Import local modules
-try:
-    # Try direct import first
-    sys.path.insert(0, script_dir)
-    from schema import connect_to_chroma, get_collection
-    from operations import search_politicians, get_politician_by_id, get_all_politicians
-except ImportError:
-    # Try absolute imports if direct imports fail
+# Try multiple approaches to import the required modules
+connect_to_chroma = None
+get_collection = None
+search_politicians = None
+get_politician_by_id = None
+get_all_politicians = None
+
+# Function to import module by path
+def import_module_from_file(module_name, file_path):
     try:
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if not spec:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception as e:
+        print(f"Error importing {module_name} from {file_path}: {e}")
+        return None
+
+# Approach 1: Try direct import with full paths
+schema_path = os.path.join(script_dir, "schema.py")
+operations_path = os.path.join(script_dir, "operations.py")
+
+schema_module = import_module_from_file("schema", schema_path)
+operations_module = import_module_from_file("operations", operations_path)
+
+if schema_module and operations_module:
+    connect_to_chroma = schema_module.connect_to_chroma
+    get_collection = schema_module.get_collection
+    search_politicians = operations_module.search_politicians
+    get_politician_by_id = operations_module.get_politician_by_id
+    get_all_politicians = operations_module.get_all_politicians
+    print("Successfully imported modules directly from files")
+
+# Approach 2: Add script_dir to path and try regular imports
+if not connect_to_chroma:
+    try:
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+        from schema import connect_to_chroma, get_collection
+        from operations import search_politicians, get_politician_by_id, get_all_politicians
+        print("Successfully imported modules using script_dir path")
+    except ImportError as e:
+        print(f"Import error using script_dir: {e}")
+
+# Approach 3: Try absolute imports
+if not connect_to_chroma:
+    try:
+        project_root = os.path.abspath(os.path.join(script_dir, "../../../.."))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
         from src.data.db.chroma.schema import connect_to_chroma, get_collection
         from src.data.db.chroma.operations import search_politicians, get_politician_by_id, get_all_politicians
-    except ImportError:
-        print("Error: Could not import required modules. Make sure you're running this from the project root.")
-        print(f"Current working directory: {os.getcwd()}")
-        print(f"Script directory: {script_dir}")
-        print(f"Project root: {project_root}")
-        print(f"Python path: {sys.path}")
-        sys.exit(1)
+        print("Successfully imported modules using absolute imports")
+    except ImportError as e:
+        print(f"Import error using absolute imports: {e}")
+
+# Check if imports were successful
+if not all([connect_to_chroma, get_collection, search_politicians, get_politician_by_id, get_all_politicians]):
+    print("Failed to import required modules after trying multiple approaches")
+    print(f"Python path: {sys.path}")
+    sys.exit(1)
 
 def format_politician(politician, detailed=False):
     """Format politician data for display"""
@@ -140,6 +187,7 @@ def main():
             
     except Exception as e:
         print(f"Error: {str(e)}")
+        traceback.print_exc()
         
 if __name__ == "__main__":
     main() 
