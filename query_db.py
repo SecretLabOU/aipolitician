@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+"""
+ChromaDB Query Tool
+
+This script provides a simple command-line interface to query the political figures database.
+Run this from the project root to avoid import issues.
+
+Usage:
+    python query_db.py --query "Donald Trump" --detailed
+    python query_db.py --id "<politician-id>" --detailed
+"""
+
 import os
 import sys
 import argparse
@@ -9,8 +20,13 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, root_dir)
 
 # Import the required modules with absolute imports
-from src.data.db.chroma.operations import search_politicians, get_politician_by_id
-from src.data.db.chroma.schema import connect_to_chroma, get_collection
+try:
+    from src.data.db.chroma.operations import search_politicians, get_politician_by_id
+    from src.data.db.chroma.schema import connect_to_chroma, get_collection, DEFAULT_COLLECTION_NAME
+    print("Successfully imported modules")
+except ImportError as e:
+    print(f"Error importing modules: {e}")
+    sys.exit(1)
 
 def format_politician(politician, detailed=False):
     """Format politician data for display"""
@@ -26,8 +42,8 @@ def format_politician(politician, detailed=False):
                 if positions:
                     output.append(f"  {area.title()}: {', '.join(positions[:2])}" + 
                                  (f" (and {len(positions)-2} more...)" if len(positions) > 2 else ""))
-        except:
-            output.append("  No policy data available")
+        except Exception as e:
+            output.append(f"  Error parsing policy data: {e}")
             
         if 'id' in politician:
             output.append(f"\nID: {politician['id']}")
@@ -48,36 +64,51 @@ def main():
     
     args = parser.parse_args()
     
-    # Connect to database
-    print(f"Connecting to database at {args.db_path}...")
-    client = connect_to_chroma(args.db_path)
-    collection = get_collection(client)
-    
-    if args.query:
-        # Search by query
-        print(f"Searching for: {args.query}")
-        results = search_politicians(collection, args.query, n_results=args.results)
+    try:
+        # Connect to database
+        print(f"Connecting to database at {args.db_path}...")
+        client = connect_to_chroma(args.db_path)
         
-        if not results:
-            print("No results found.")
-            return
+        if not client:
+            print(f"Error: Could not connect to ChromaDB at {args.db_path}")
+            sys.exit(1)
             
-        print(f"\nFound {len(results)} results:\n")
-        for i, result in enumerate(results, 1):
-            print(f"Result {i}:")
-            print(format_politician(result, args.detailed))
-            print("-" * 50)
-            
-    elif args.id:
-        # Get by ID
-        print(f"Looking up politician with ID: {args.id}")
-        politician = get_politician_by_id(collection, args.id)
+        collection = get_collection(client)
         
-        if not politician:
-            print(f"No politician found with ID: {args.id}")
-            return
+        if not collection:
+            print("Error: Could not get collection from ChromaDB")
+            sys.exit(1)
+        
+        if args.query:
+            # Search by query
+            print(f"Searching for: {args.query}")
+            results = search_politicians(collection, args.query, n_results=args.results)
             
-        print(format_politician(politician, detailed=True))
-
+            if not results:
+                print("No results found.")
+                return
+                
+            print(f"\nFound {len(results)} results:\n")
+            for i, result in enumerate(results, 1):
+                print(f"Result {i}:")
+                print(format_politician(result, args.detailed))
+                print("-" * 50)
+                
+        elif args.id:
+            # Get by ID
+            print(f"Looking up politician with ID: {args.id}")
+            politician = get_politician_by_id(collection, args.id)
+            
+            if not politician:
+                print(f"No politician found with ID: {args.id}")
+                return
+                
+            print(format_politician(politician, detailed=True))
+                
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
 if __name__ == "__main__":
     main()
