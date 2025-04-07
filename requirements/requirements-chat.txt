@@ -16,3 +16,5 @@ beautifulsoup4>=4.11.0
 sentence-transformers>=2.2.0
 scikit-learn>=1.0.0
 numpy>=1.22.0
+chromadb==0.4.6  # Vector database for RAG
+pydantic<2.0.0  # Required for ChromaDB compatibility

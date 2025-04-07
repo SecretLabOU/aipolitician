@@ -20,4 +20,8 @@ sentencepiece>=0.1.99  # Required for T5 and many other models
 
 # For improved compatibility on all systems
 einops>=0.7.0
-safetensors>=0.4.1 
+safetensors>=0.4.1
+
+# ChromaDB Vector Database
+chromadb==0.4.6  # Specific version for compatibility 
+sentence-transformers>=2.2.2 

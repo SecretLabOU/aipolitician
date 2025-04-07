@@ -131,16 +131,14 @@ def check_dependencies() -> Tuple[int, int]:
     return installed, missing
 
 def check_database() -> bool:
-    """Check if Milvus database is accessible."""
+    """Check if ChromaDB is accessible."""
     try:
-        from pymilvus import connections
-        from src.data.db.milvus.connection import get_connection_params
+        import chromadb
+        from src.data.db.chroma.schema import connect_to_chroma, DEFAULT_DB_PATH
         
-        # Try to connect to Milvus
-        conn_params = get_connection_params()
-        connections.connect(**conn_params)
-        connections.disconnect(conn_params.get("alias", "default"))
-        return True
+        # Try to connect to ChromaDB
+        client = connect_to_chroma(db_path=DEFAULT_DB_PATH)
+        return client is not None
     except Exception as e:
         print(f"  Error: {str(e)}")
         return False
@@ -190,7 +188,7 @@ def check_system_resources() -> Dict[str, str]:
     except ImportError:
         resources["CUDA Available"] = "Unknown (torch not installed)"
     
-    # Check for Docker (used by Milvus)
+    # Check for Docker (optional for development tools)
     docker_available = check_command("docker --version")
     resources["Docker Available"] = "Yes" if docker_available else "No"
     
@@ -214,10 +212,11 @@ def main():
     # Check database
     print_header("Checking Database Connectivity")
     db_available = check_database()
-    print_result("Milvus database is accessible", db_available)
+    print_result("ChromaDB database is accessible", db_available)
     if not db_available:
         print_warning("  Database not available. RAG features will not work.")
-        print_warning("  Run: docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone")
+        print_warning("  Ensure you have the ChromaDB dependencies installed:")
+        print_warning("  pip install chromadb sentence-transformers")
     
     # Check model availability
     print_header("Checking Model Availability")

@@ -32,15 +32,15 @@ if __name__ == "__main__":
         sys.argv.pop(1)
         run_debate_cli()
     else:
-        # Check if Milvus database is available
+        # Check if ChromaDB is available
         try:
-            from pymilvus import connections
-            from src.data.db.milvus.connection import get_connection_params
+            import chromadb
+            from src.data.db.chroma.schema import connect_to_chroma, DEFAULT_DB_PATH
             
-            # Try to connect to Milvus
-            conn_params = get_connection_params()
-            connections.connect(**conn_params)
-            connections.disconnect(conn_params.get("alias", "default"))
+            # Try to connect to ChromaDB
+            client = connect_to_chroma(db_path=DEFAULT_DB_PATH)
+            if not client:
+                print("RAG database system not available. Running with synthetic responses.")
         except Exception as e:
             print("RAG database system not available. Running with synthetic responses.")
         

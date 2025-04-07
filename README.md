@@ -13,7 +13,7 @@ Fine-tuned Mistral-7B language models that emulate Donald Trump's and Joe Biden'
 - **RAG System Integration**: Ensures factual accuracy by retrieving real information from specialized political databases
 - **Memory-Efficient Inference**: Optimized using 4-bit quantization for better performance on consumer hardware
 - **Interactive Chat Interface**: Simple command-line interface for conversing with either political figure
-- **Milvus Vector Database**: Semantic search capabilities for efficient information retrieval
+- **ChromaDB Vector Database**: Semantic search capabilities for efficient information retrieval
 
 ## 📁 Project Structure
 
@@ -105,12 +105,20 @@ pip install -r requirements/requirements-training.txt
 
 ### Setting up the Database (for RAG features)
 
-See the [Database System](docs/database_system.md) documentation for detailed setup instructions.
+The AI Politician uses ChromaDB as its vector database for RAG features:
 
 ```bash
-# Start a local Milvus instance with Docker
-docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone
+# Install ChromaDB dependencies
+pip install -r requirements/requirements-langgraph.txt
+
+# Initialize the database
+cd src/data/db/chroma
+./setup.sh
 ```
+
+ChromaDB is used for retrieving relevant factual information to enhance the quality of responses.
+
+For more details, see the [ChromaDB setup instructions](docs/data/chroma/setup_instructions.md).
 
 ## 💬 Usage
 

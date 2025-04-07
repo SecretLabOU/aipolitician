@@ -3,7 +3,7 @@ RAG Utilities for AI Politician
 
 This module provides Retrieval-Augmented Generation (RAG) utilities
 for the AI Politician system, allowing it to retrieve relevant factual
-information from the Milvus vector database.
+information from the ChromaDB vector database.
 """
 import sys
 import os
@@ -15,16 +15,14 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
-# Import database connection utilities
-from src.data.db.milvus.connection import get_connection_params, get_collection_name
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
-    from pymilvus import connections, Collection, utility
+    import chromadb
     from sentence_transformers import SentenceTransformer
+    from src.data.db.chroma.schema import connect_to_chroma, get_collection, DEFAULT_DB_PATH, DEFAULT_COLLECTION_NAME, BGEEmbeddingFunction
     HAS_DEPENDENCIES = True
 except ImportError:
     logger.warning("RAG dependencies not found, running in fallback mode")
@@ -32,6 +30,7 @@ except ImportError:
 
 # Global variables for caching
 _embedding_model = None
+_client = None
 _collection_cache = {}
 
 def _get_embedding_model():
@@ -48,9 +47,9 @@ def _get_embedding_model():
         
     if _embedding_model is None:
         try:
-            # Using a well-supported model for embedding generation
+            # Using BGE-Small-EN for consistency with ChromaDB schema
             logger.info("Loading embedding model...")
-            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            _embedding_model = SentenceTransformer('BAAI/bge-small-en')
             logger.info("Embedding model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load embedding model: {str(e)}")
@@ -58,43 +57,42 @@ def _get_embedding_model():
             
     return _embedding_model
 
-def _connect_to_milvus():
+def _connect_to_chromadb():
     """
-    Connect to the Milvus server.
+    Connect to the ChromaDB server.
     
     Returns:
         bool: True if connection was successful, False otherwise
     """
+    global _client
+    
     if not HAS_DEPENDENCIES:
         return False
         
     try:
-        # Get connection parameters
-        conn_params = get_connection_params()
-        
-        # Check if already connected
-        if connections.has_connection(conn_params.get("alias", "default")):
-            return True
-            
-        # Connect to Milvus
-        connections.connect(**conn_params)
-        logger.info(f"Connected to Milvus at {conn_params.get('host')}:{conn_params.get('port')}")
+        # Connect to ChromaDB
+        if _client is None:
+            _client = connect_to_chroma(db_path=DEFAULT_DB_PATH)
+            if _client:
+                logger.info(f"Connected to ChromaDB at {DEFAULT_DB_PATH}")
+                return True
+            return False
         return True
     except Exception as e:
-        logger.error(f"Failed to connect to Milvus: {str(e)}")
+        logger.error(f"Failed to connect to ChromaDB: {str(e)}")
         return False
 
-def _get_collection(collection_name):
+def _get_collection(collection_name=DEFAULT_COLLECTION_NAME):
     """
-    Get a Milvus collection and ensure it's loaded.
+    Get a ChromaDB collection.
     
     Args:
         collection_name (str): Name of the collection
         
     Returns:
-        Collection: The Milvus collection, or None if not available
+        Collection: The ChromaDB collection, or None if not available
     """
-    global _collection_cache
+    global _collection_cache, _client
     
     if not HAS_DEPENDENCIES:
         return None
@@ -103,34 +101,25 @@ def _get_collection(collection_name):
     if collection_name in _collection_cache:
         return _collection_cache[collection_name]
         
-    # Connect to Milvus
-    if not _connect_to_milvus():
+    # Connect to ChromaDB
+    if not _connect_to_chromadb() or not _client:
         return None
         
-    # Check if collection exists
+    # Get collection
     try:
-        if not utility.has_collection(collection_name):
-            logger.error(f"Collection '{collection_name}' does not exist")
-            return None
-            
-        # Get collection
-        collection = Collection(name=collection_name)
-        
-        # Load collection if not already loaded
-        if not collection.is_loaded():
-            collection.load()
-            logger.info(f"Collection '{collection_name}' loaded into memory")
-            
-        # Cache the collection
-        _collection_cache[collection_name] = collection
-        return collection
+        collection = get_collection(_client, collection_name)
+        if collection:
+            # Cache the collection
+            _collection_cache[collection_name] = collection
+            return collection
+        return None
     except Exception as e:
         logger.error(f"Error getting collection: {str(e)}")
         return None
 
 def semantic_search(query, politician_name=None, limit=5):
     """
-    Perform semantic search in the Milvus database.
+    Perform semantic search in the ChromaDB database.
     
     Args:
         query (str): The search query
@@ -142,66 +131,52 @@ def semantic_search(query, politician_name=None, limit=5):
     """
     if not HAS_DEPENDENCIES:
         return []
-        
-    # Get embedding model
-    model = _get_embedding_model()
-    if model is None:
-        return []
-        
-    # Get collection name based on politician
-    collection_name = get_collection_name(politician_name)
     
     # Get collection
-    collection = _get_collection(collection_name)
+    collection = _get_collection()
     if collection is None:
         return []
         
     try:
-        # Generate embedding for query
-        query_embedding = model.encode(query).tolist()
-        
-        # Define output fields
-        output_fields = ["content", "politician", "topic", "source", "date"]
-        
-        # Search parameters for HNSW index
-        search_params = {
-            "metric_type": "COSINE",
-            "params": {"ef": 64}  # Higher ef gives better recall but slower search
-        }
+        # Construct filters if politician specified
+        where_filter = None
+        if politician_name:
+            # Convert politician name to match expected political_affiliation format
+            politician_filter = politician_name.lower()
+            
+            # Map politician shorthand names to expected affiliation values
+            affiliation_mapping = {
+                "biden": "democrat",
+                "trump": "republican"
+            }
+            
+            # Use mapped value if available, otherwise use provided value
+            affiliation = affiliation_mapping.get(politician_filter, politician_filter)
+            
+            # Filter by political_affiliation
+            where_filter = {"political_affiliation": {"$eq": affiliation}}
         
         # Execute search
-        results = collection.search(
-            data=[query_embedding],
-            anns_field="embedding",
-            param=search_params,
-            limit=limit,
-            output_fields=output_fields
+        results = collection.query(
+            query_texts=[query],
+            n_results=limit,
+            where=where_filter,
+            include=["metadatas", "documents", "distances"]
         )
         
         # Format results
         search_results = []
-        for hits in results:
-            for hit in hits:
-                result = {}
-                for field in output_fields:
-                    if field in hit.entity:
-                        result[field] = hit.entity.get(field)
-                        
-                result["score"] = float(hit.score)  # Convert to float for JSON serialization
+        if results and 'metadatas' in results and results['metadatas'] and results['metadatas'][0]:
+            for i, metadata in enumerate(results['metadatas'][0]):
+                result = {
+                    "content": results.get('documents', [[]])[0][i] if results.get('documents') else "No content",
+                    "politician": metadata.get('political_affiliation', "Unknown"),
+                    "topic": "General",  # ChromaDB might not have this field
+                    "source": metadata.get('source', "Unknown"),
+                    "date": metadata.get('date', "Unknown"),
+                    "score": float(results.get('distances', [[]])[0][i]) if results.get('distances') else 0.0
+                }
                 search_results.append(result)
-        
-        # Filter results by politician if specified
-        if politician_name and search_results:
-            filtered_results = []
-            for result in search_results:
-                if result.get("politician") in [politician_name, "both"]:
-                    filtered_results.append(result)
-            
-            # If filtering removed all results, return a few original results
-            if not filtered_results and search_results:
-                return search_results[:min(2, len(search_results))]
-                
-            return filtered_results
         
         return search_results
     except Exception as e:
@@ -241,4 +216,4 @@ def integrate_with_chat(prompt, politician_name=None):
 
 # Initialize connection on module import
 if HAS_DEPENDENCIES:
-    _connect_to_milvus() 
+    _connect_to_chromadb() 
