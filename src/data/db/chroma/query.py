@@ -22,15 +22,21 @@ sys.path.insert(0, project_root)
 
 # Import local modules
 try:
+    # Try direct import first
+    sys.path.insert(0, script_dir)
     from schema import connect_to_chroma, get_collection
     from operations import search_politicians, get_politician_by_id, get_all_politicians
 except ImportError:
-    # Try absolute imports if relative imports fail
+    # Try absolute imports if direct imports fail
     try:
         from src.data.db.chroma.schema import connect_to_chroma, get_collection
         from src.data.db.chroma.operations import search_politicians, get_politician_by_id, get_all_politicians
     except ImportError:
         print("Error: Could not import required modules. Make sure you're running this from the project root.")
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Script directory: {script_dir}")
+        print(f"Project root: {project_root}")
+        print(f"Python path: {sys.path}")
         sys.exit(1)
 
 def format_politician(politician, detailed=False):
@@ -74,7 +80,14 @@ def main():
         # Connect to database
         print(f"Connecting to database at {args.db_path}...")
         client = connect_to_chroma(args.db_path)
+        if not client:
+            print(f"Error: Could not connect to ChromaDB at {args.db_path}")
+            sys.exit(1)
+            
         collection = get_collection(client)
+        if not collection:
+            print("Error: Could not get collection from ChromaDB")
+            sys.exit(1)
         
         if args.query:
             # Search by query

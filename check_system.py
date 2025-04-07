@@ -75,30 +75,32 @@ def check_env_variables() -> Tuple[int, int]:
     except ImportError:
         print_warning("dotenv package not installed. Skipping .env file loading.")
     
-    # Check essential environment variables
+    # Check environment variables
     env_vars = {
         "Required": [
-            "OPENAI_API_KEY"
+            # No strictly required environment variables
         ],
         "Optional": [
-            "MILVUS_HOST",
-            "MILVUS_PORT",
-            "MODEL_PROVIDER",
-            "MODEL_PATH"
+            "OPENAI_API_KEY",  # Optional for OpenAI models
+            "MODEL_PATH",      # Optional for local models
+            "MODEL_PROVIDER"   # Optional model provider configuration
         ]
     }
     
     present = 0
     missing = 0
     
-    print("Required Environment Variables:")
-    for var in env_vars["Required"]:
-        if os.environ.get(var):
-            print_result(f"{var} is set", True)
-            present += 1
-        else:
-            print_result(f"{var} is not set", False)
-            missing += 1
+    if env_vars["Required"]:
+        print("Required Environment Variables:")
+        for var in env_vars["Required"]:
+            if os.environ.get(var):
+                print_result(f"{var} is set", True)
+                present += 1
+            else:
+                print_result(f"{var} is not set", False)
+                missing += 1
+    else:
+        print("No required environment variables.")
     
     print("\nOptional Environment Variables:")
     for var in env_vars["Optional"]:
@@ -223,7 +225,8 @@ def main():
     model_available = check_model_availability()
     print_result("Model is accessible", model_available)
     if not model_available:
-        print_warning("  No model available. Set OPENAI_API_KEY or MODEL_PATH in your .env file.")
+        print_warning("  No model available. This is optional but recommended.")
+        print_warning("  For full functionality, set MODEL_PATH in your .env file or install local models.")
     
     # Check system resources
     print_header("System Resources")
@@ -233,10 +236,15 @@ def main():
     
     # Print overall summary
     print_header("Summary")
-    checks_passed = (missing == 0) and (missing_env == 0) and db_available and model_available
+    
+    # For database setup, we only need dependency and database checks to pass
+    # The model is optional for database functionality
+    checks_passed = (missing == 0) and (missing_env == 0) and db_available
     
     if checks_passed:
-        print(f"{Colors.GREEN}{Colors.BOLD}All checks passed! The system is properly set up.{Colors.RESET}")
+        print(f"{Colors.GREEN}{Colors.BOLD}All essential checks passed! The system is properly set up.{Colors.RESET}")
+        if not model_available:
+            print(f"{Colors.YELLOW}Note: No model was detected. This is optional but recommended for full functionality.{Colors.RESET}")
     else:
         print(f"{Colors.YELLOW}{Colors.BOLD}Some checks failed. Please address the issues above.{Colors.RESET}")
     

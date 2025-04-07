@@ -25,13 +25,14 @@ docker rmi milvusdb/milvus:latest
 Install the required Python packages for ChromaDB:
 
 ```bash
-pip install chromadb==0.4.6 sentence-transformers==2.2.2
+pip install chromadb==0.4.6 sentence-transformers==2.2.2 python-dotenv
 ```
 
 ChromaDB requires the following key dependencies:
 - `chromadb`: The vector database itself
 - `sentence-transformers`: For creating embeddings
 - `pydantic<2.0.0`: ChromaDB 0.4.6 requires Pydantic v1
+- `python-dotenv`: For loading environment variables (optional)
 
 ## 3. Initialize ChromaDB
 
@@ -39,6 +40,7 @@ Initialize the ChromaDB database:
 
 ```bash
 cd src/data/db/chroma
+chmod +x setup.sh
 ./setup.sh
 ```
 
@@ -46,6 +48,8 @@ This script will:
 1. Create a database directory at `~/political_db` (default)
 2. Install all necessary dependencies
 3. Initialize the ChromaDB database with the proper schema
+
+No API keys are required for ChromaDB setup - it works completely locally.
 
 ## 4. Verify Installation
 
