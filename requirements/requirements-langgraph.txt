@@ -23,5 +23,5 @@ einops>=0.7.0
 safetensors>=0.4.1
 
 # ChromaDB Vector Database
-chromadb==0.4.6  # Specific version for compatibility 
+chromadb
 sentence-transformers>=2.2.2 
