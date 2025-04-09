@@ -1,5 +1,0 @@
-# Base requirements for the AI Politician project
-python-dotenv==1.0.0
-torch>=2.0.0
-transformers>=4.37.0
-peft>=0.6.0 
