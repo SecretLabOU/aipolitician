@@ -78,8 +78,8 @@ python aipolitician.py debate --topic "Climate Change"
 
 Access our fine-tuned politician models on Hugging Face:
 
-- [Biden Model](https://huggingface.co/nnat03/biden-mistral-adapter) — Emulates President Biden's communication style
-- [Trump Model](https://huggingface.co/nnat03/trump-mistral-adapter) — Captures former President Trump's distinctive rhetoric
+- [Biden Model](https://huggingface.co/nnat03/biden-mistral-adapter) — Emulates former President Biden's communication style
+- [Trump Model](https://huggingface.co/nnat03/trump-mistral-adapter) — Captures President Trump's distinctive rhetoric
 
 ## System Requirements
 
