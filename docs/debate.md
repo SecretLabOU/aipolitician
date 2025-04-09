@@ -84,7 +84,7 @@ The system supports multiple debate formats:
 Direct debate between two politicians with equal speaking time.
 
 ```bash
-python langgraph_politician.py debate run --format head_to_head --participants "biden,trump" --topic "Economy"
+python aipolitician.py debate --format head_to_head --topic "Economy"
 ```
 
 ### 2. Town Hall
@@ -92,7 +92,7 @@ python langgraph_politician.py debate run --format head_to_head --participants "
 Format with audience questions and longer response times.
 
 ```bash
-python langgraph_politician.py debate run --format town_hall --participants "biden,trump" --topic "Healthcare"
+python aipolitician.py debate --format town_hall --topic "Healthcare"
 ```
 
 ### 3. Panel
@@ -100,7 +100,7 @@ python langgraph_politician.py debate run --format town_hall --participants "bid
 Multiple politicians discuss topics with a moderator.
 
 ```bash
-python langgraph_politician.py debate run --format panel --participants "biden,trump" --topic "Foreign Policy"
+python aipolitician.py debate --format panel --topic "Foreign Policy"
 ```
 
 ---
@@ -133,52 +133,65 @@ python langgraph_politician.py debate run --format panel --participants "biden,t
 
 ### Running a Debate
 
-The debate system is implemented in `langgraph_politician.py` and uses the `debate` command with various subcommands:
+There are two ways to run the debate system:
 
-#### Basic Usage
+#### 1. Using the Unified Launcher (Recommended)
 
-To start a default debate between Biden and Trump:
+The easiest way to run a debate is through the unified launcher:
+
+```bash
+# Basic debate with default settings
+python aipolitician.py debate
+
+# Debate with specific topic
+python aipolitician.py debate --topic "Climate Change"
+
+# Debate with specific format
+python aipolitician.py debate --format "town_hall" 
+
+# Debate without RAG
+python aipolitician.py debate --no-rag
+```
+
+#### 2. Using the LangGraph Script Directly
+
+For advanced use cases, you can use the LangGraph script directly:
+
 ```bash
 python langgraph_politician.py debate run --topic "General" --participants "biden,trump"
-```
-
-#### With Specific Topic
-
-To debate on a particular topic:
-```bash
-python langgraph_politician.py debate run --topic "Climate Change" --participants "biden,trump"
-```
-
-#### With Specific Format
-
-To use a particular debate format:
-```bash
-python langgraph_politician.py debate run --topic "Immigration" --participants "biden,trump" --format "town_hall"
-```
-
-#### With Additional Options
-
-```bash
-python langgraph_politician.py debate run --topic "Economy" --participants "biden,trump" --allow-interruptions --fact-check --moderator-control strict
 ```
 
 ---
 
 ## 📝 Command Reference
 
-### Main Command
+### Unified Launcher Command
+
+```bash
+python aipolitician.py debate [options]
+```
+
+### Unified Launcher Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--topic TEXT` | Main debate topic | "General Political Discussion" |
+| `--format [town_hall\|head_to_head\|panel]` | Debate format | head_to_head |
+| `--no-rag` | Disable RAG knowledge retrieval | False |
+
+### Direct Script Command
 
 ```bash
 python langgraph_politician.py debate [subcommand] [options]
 ```
 
-### Subcommands
+### Direct Script Subcommands
 
 - `run`: Run a debate with specified options
 - `visualize`: Generate a visualization of the debate workflow
 - `config`: Display configuration options
 
-### Run Options
+### Complete Run Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -193,19 +206,6 @@ python langgraph_politician.py debate [subcommand] [options]
 | `--no-rag` | Disable RAG knowledge retrieval | False |
 | `--trace` | Show trace information | False |
 | `--output FILENAME` | Save transcript to JSON file | None |
-
-### Config Options
-
-```bash
-python langgraph_politician.py debate config --list-politicians
-python langgraph_politician.py debate config --list-formats
-```
-
-### Visualization
-
-```bash
-python langgraph_politician.py debate visualize
-```
 
 ---
 
@@ -246,7 +246,12 @@ The debate system maintains a complex state that includes:
 ### Key Files
 
 ```
-langgraph_politician.py                # Main entry point for debate
+aipolitician.py                        # Main launcher script with debate support
+langgraph_politician.py                # Advanced debate command entry point
+scripts/debate/
+├── debate_politician.py               # Debate script for standard mode
+├── debug_debate.py                    # Debate script with debugging
+└── test_debate_simple.py              # Simple test script without dependencies
 src/models/langgraph/debate/
 ├── cli.py                             # Command-line interface
 ├── workflow.py                        # Debate workflow definition
@@ -276,9 +281,9 @@ src/models/langgraph/debate/
    - Try running with `--no-rag` to bypass knowledge retrieval
 
 4. **Incorrect Command Syntax**:
-   - Remember to use `langgraph_politician.py` not `aipolitician.py`
-   - Include the `run` subcommand: `debate run`
-   - Specify both `--topic` and `--participants` as required arguments
+   - For simple usage, use `python aipolitician.py debate`
+   - For advanced options, use `python langgraph_politician.py debate run`
+   - Ensure you specify required arguments for the direct script approach
 
 ---
 
@@ -296,32 +301,33 @@ Try these debate topics for engaging simulations:
 
 Sample command:
 ```bash
-python langgraph_politician.py debate run --topic "Climate Change and Energy Policy" --participants "biden,trump" --fact-check
+python aipolitician.py debate --topic "Climate Change and Energy Policy"
 ```
 
 ---
 
 ## 🛠️ Advanced Features
 
+### Testing Without Dependencies
+
+For a quick test of the debate system without loading models:
+```bash
+python scripts/debate/test_debate_simple.py
+```
+
 ### Saving Debate Transcripts
 
-Save the entire debate transcript to a file:
+Save the entire debate transcript to a file (advanced usage only):
 ```bash
 python langgraph_politician.py debate run --topic "Economy" --participants "biden,trump" --output "economy_debate.json"
 ```
 
 ### Moderator Control Levels
 
-You can specify different levels of moderator control:
+You can specify different levels of moderator control (advanced usage only):
 ```bash
 # Strict moderator (keeps debate focused, minimal interruptions)
 python langgraph_politician.py debate run --topic "Healthcare" --participants "biden,trump" --moderator-control strict
-
-# Moderate control (balanced approach)
-python langgraph_politician.py debate run --topic "Immigration" --participants "biden,trump" --moderator-control moderate
-
-# Minimal control (more free-form, allows more interruptions)
-python langgraph_politician.py debate run --topic "Foreign Policy" --participants "biden,trump" --moderator-control minimal
 ```
 
 ### Workflow Visualization
