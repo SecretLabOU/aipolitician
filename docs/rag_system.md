@@ -34,11 +34,16 @@ pip install -r requirements-rag.txt
 
 ## Usage
 
-The RAG system is automatically used when chatting with the AI Politicians when the `--rag` flag is enabled (or when `--no-rag` is not specified).
+The RAG system is automatically used when chatting with the AI Politicians when the `--no-rag` flag is NOT specified:
 
 ```bash
-python aipolitician.py chat biden          # With RAG enabled
-python aipolitician.py chat biden --no-rag  # Without RAG
+# With RAG enabled (default)
+python aipolitician.py chat biden         
+python aipolitician.py debug biden
+python aipolitician.py trace biden
+
+# Without RAG
+python aipolitician.py chat biden --no-rag
 ```
 
 ## How It Works
@@ -52,12 +57,43 @@ python aipolitician.py chat biden --no-rag  # Without RAG
 
 ## Troubleshooting
 
-- If you see a warning about "RAG database system not available", ensure:
-  - The dependencies are installed
-  - The database path exists and is accessible
-  - The `politicians` collection exists in the database
+When running the application, you'll see detailed messages if there are issues with the RAG system. Here are common problems and solutions:
 
-- If results don't seem relevant:
-  - The default number of results is 5, which can be adjusted in the code
-  - The query embeddings might not match well with the stored document embeddings
-  - The collection might not have relevant documents for that query 
+### Common Issues
+
+1. **"ChromaDB not installed"**:
+   - Solution: Run `pip install -r requirements-rag.txt`
+
+2. **"SentenceTransformer not installed"**:
+   - Solution: Run `pip install -r requirements-rag.txt`
+
+3. **"Database path does not exist"**:
+   - Solution: Create the directory and set permissions:
+     ```
+     sudo mkdir -p /opt/chroma_db
+     sudo chown $USER:$USER /opt/chroma_db
+     ```
+
+4. **"Politicians collection not found in database"**:
+   - Solution: The database exists but doesn't have the required collection. You need to initialize the database with politician data.
+
+5. **"Failed to generate embeddings"**:
+   - Solution: There might be issues with the embedding model. Check your internet connection as it may need to download the model.
+
+### Verifying RAG is Working
+
+When RAG is working correctly, you'll see this message when starting the application:
+```
+RAG database system available and operational.
+```
+
+In the chat, you'll notice that responses are more factually grounded and may reference specific sources.
+
+### Running Without RAG
+
+If you're having issues with the RAG system, you can always run the application with the `--no-rag` flag:
+```
+python aipolitician.py chat biden --no-rag
+```
+
+This will run the system with synthetic responses instead of retrieving information from the database. 

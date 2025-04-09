@@ -19,62 +19,42 @@ from pathlib import Path
 
 # Import ChromaDB and SentenceTransformer libraries
 try:
-    import chromadb
-    from chromadb.config import Settings
-    from sentence_transformers import SentenceTransformer
     import numpy as np
+    from sentence_transformers import SentenceTransformer
+    # We'll import chromadb through the schema module to avoid duplication
     HAS_DEPENDENCIES = True
 except ImportError:
     HAS_DEPENDENCIES = False
-    logging.warning("ChromaDB or sentence-transformers not installed. RAG functionality will be disabled.")
+    logging.warning("Required dependencies not installed. RAG functionality will be disabled.")
 
 # Constants
-DB_PATH = "/opt/chroma_db"
-COLLECTION_NAME = "politicians"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-DEFAULT_NUM_RESULTS = 5
 
 # Initialize global variables
-_client = None
-_collection = None
 _embedding_model = None
 
-def init_chroma_db() -> Tuple[bool, Optional[str]]:
+def get_embedding_model() -> Optional[Any]:
     """
-    Initialize the ChromaDB client and collection.
+    Get or initialize the embedding model.
     
     Returns:
-        Tuple[bool, Optional[str]]: (Success status, Error message if any)
+        SentenceTransformer model or None if initialization fails
     """
-    global _client, _collection, _embedding_model
+    global _embedding_model
     
+    if _embedding_model is not None:
+        return _embedding_model
+        
     if not HAS_DEPENDENCIES:
-        return False, "Required dependencies not installed"
-    
-    if not os.path.exists(DB_PATH):
-        return False, f"Database path {DB_PATH} does not exist"
+        return None
     
     try:
-        # Initialize the ChromaDB client with persistent storage
-        _client = chromadb.PersistentClient(
-            path=DB_PATH,
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=False
-            )
-        )
-        
-        # Get the politicians collection
-        _collection = _client.get_collection(name=COLLECTION_NAME)
-        
         # Initialize the embedding model
         _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        
-        return True, None
-        
+        return _embedding_model
     except Exception as e:
-        logging.error(f"Error initializing ChromaDB: {str(e)}")
-        return False, str(e)
+        logging.error(f"Error initializing embedding model: {str(e)}")
+        return None
 
 def get_embeddings(text: str) -> List[float]:
     """
@@ -86,70 +66,18 @@ def get_embeddings(text: str) -> List[float]:
     Returns:
         List[float]: The embedding vector
     """
-    global _embedding_model
+    model = get_embedding_model()
     
-    if _embedding_model is None:
-        success, error = init_chroma_db()
-        if not success:
-            logging.error(f"Failed to initialize embedding model: {error}")
-            return []
+    if model is None:
+        logging.error("Failed to initialize embedding model")
+        return []
     
     try:
         # Get embeddings and convert to list
-        embedding = _embedding_model.encode(text)
+        embedding = model.encode(text)
         return embedding.tolist()
     except Exception as e:
         logging.error(f"Error generating embeddings: {str(e)}")
-        return []
-
-def query_database(
-    query_text: str, 
-    politician_name: str, 
-    num_results: int = DEFAULT_NUM_RESULTS
-) -> List[Dict[str, Any]]:
-    """
-    Query the ChromaDB database for relevant documents.
-    
-    Args:
-        query_text (str): The query text
-        politician_name (str): The name of the politician to filter by
-        num_results (int): Maximum number of results to return
-        
-    Returns:
-        List[Dict[str, Any]]: List of matching documents with metadata
-    """
-    global _collection
-    
-    if _collection is None:
-        success, error = init_chroma_db()
-        if not success:
-            logging.error(f"Failed to initialize collection: {error}")
-            return []
-    
-    try:
-        # Generate embeddings for the query
-        query_embedding = get_embeddings(query_text)
-        
-        # Search the collection with metadata filtering
-        results = _collection.query(
-            query_embeddings=[query_embedding],
-            n_results=num_results,
-            where={"politician_name": politician_name}
-        )
-        
-        # Format the results
-        documents = []
-        for i, (doc, metadata) in enumerate(zip(results.get("documents", [[]])[0], results.get("metadatas", [[]])[0])):
-            documents.append({
-                "text": doc,
-                "metadata": metadata,
-                "score": results.get("distances", [[]])[0][i] if "distances" in results else None
-            })
-            
-        return documents
-        
-    except Exception as e:
-        logging.error(f"Error querying database: {str(e)}")
         return []
 
 def integrate_with_chat(query: str, politician_name: str) -> str:
@@ -168,8 +96,23 @@ def integrate_with_chat(query: str, politician_name: str) -> str:
         return ""
     
     try:
+        # Import here to avoid circular imports
+        from src.data.db.chroma.schema import connect_to_chroma, get_collection, query_politician_data
+        
+        # Connect to ChromaDB
+        client = connect_to_chroma()
+        if not client:
+            logging.warning("Failed to connect to ChromaDB")
+            return ""
+            
+        # Get the politicians collection
+        collection = get_collection(client)
+        if not collection:
+            logging.warning("Failed to get collection from ChromaDB")
+            return ""
+        
         # Query the database
-        documents = query_database(query, politician_name)
+        documents = query_politician_data(collection, query, politician_name)
         
         if not documents:
             return ""
@@ -192,13 +135,4 @@ def integrate_with_chat(query: str, politician_name: str) -> str:
         
     except Exception as e:
         logging.error(f"Error integrating with chat: {str(e)}")
-        return ""
-
-# Optional initialization at module import time
-if HAS_DEPENDENCIES:
-    try:
-        init_status, init_error = init_chroma_db()
-        if not init_status:
-            logging.warning(f"Failed to initialize ChromaDB: {init_error}")
-    except Exception as e:
-        logging.error(f"Unexpected error initializing ChromaDB: {str(e)}") 
+        return "" 
