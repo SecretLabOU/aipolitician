@@ -90,3 +90,9 @@ db/milvus/test/__pycache__/
 
 # Milvus logs
 db/milvus/logs/
+
+# Pipeline stats files
+pipeline_stats_*.json
+
+# Scraper data
+src/data/scraper/
