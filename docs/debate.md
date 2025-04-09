@@ -16,6 +16,7 @@ The AI Politician Debate System simulates political debates between AI versions 
 - [How It Works](#how-it-works)
 - [Debate Formats](#debate-formats)
 - [Setup and Usage](#setup-and-usage)
+- [Command Reference](#command-reference)
 - [Technical Implementation](#technical-implementation)
 - [Troubleshooting](#troubleshooting)
 - [Example Topics](#example-topics)
@@ -83,7 +84,7 @@ The system supports multiple debate formats:
 Direct debate between two politicians with equal speaking time.
 
 ```bash
-python aipolitician.py debate --format head_to_head
+python langgraph_politician.py debate run --format head_to_head --participants "biden,trump" --topic "Economy"
 ```
 
 ### 2. Town Hall
@@ -91,7 +92,7 @@ python aipolitician.py debate --format head_to_head
 Format with audience questions and longer response times.
 
 ```bash
-python aipolitician.py debate --format town_hall
+python langgraph_politician.py debate run --format town_hall --participants "biden,trump" --topic "Healthcare"
 ```
 
 ### 3. Panel
@@ -99,7 +100,7 @@ python aipolitician.py debate --format town_hall
 Multiple politicians discuss topics with a moderator.
 
 ```bash
-python aipolitician.py debate --format panel
+python langgraph_politician.py debate run --format panel --participants "biden,trump" --topic "Foreign Policy"
 ```
 
 ---
@@ -124,52 +125,110 @@ python aipolitician.py debate --format panel
    pip install -r requirements/requirements-chat.txt
    ```
 
+3. Set up the ChromaDB directory (for RAG):
+   ```bash
+   sudo mkdir -p /opt/chroma_db
+   sudo chown $USER:$USER /opt/chroma_db
+   ```
+
 ### Running a Debate
+
+The debate system is implemented in `langgraph_politician.py` and uses the `debate` command with various subcommands:
 
 #### Basic Usage
 
 To start a default debate between Biden and Trump:
 ```bash
-python aipolitician.py debate
+python langgraph_politician.py debate run --topic "General" --participants "biden,trump"
 ```
 
 #### With Specific Topic
 
 To debate on a particular topic:
 ```bash
-python aipolitician.py debate --topic "Climate Change"
+python langgraph_politician.py debate run --topic "Climate Change" --participants "biden,trump"
 ```
 
 #### With Specific Format
 
 To use a particular debate format:
 ```bash
-python aipolitician.py debate --format town_hall
-```
-
-#### With Opening Statements
-
-To include opening statements:
-```bash
-python aipolitician.py debate --opening-statements
+python langgraph_politician.py debate run --topic "Immigration" --participants "biden,trump" --format "town_hall"
 ```
 
 #### With Additional Options
 
 ```bash
-python aipolitician.py debate --topic "Economy" --rounds 5 --moderator "Fox News" --fact-checking
+python langgraph_politician.py debate run --topic "Economy" --participants "biden,trump" --allow-interruptions --fact-check --moderator-control strict
+```
+
+---
+
+## 📝 Command Reference
+
+### Main Command
+
+```bash
+python langgraph_politician.py debate [subcommand] [options]
+```
+
+### Subcommands
+
+- `run`: Run a debate with specified options
+- `visualize`: Generate a visualization of the debate workflow
+- `config`: Display configuration options
+
+### Run Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--topic TEXT` | Main debate topic | Required |
+| `--participants TEXT` | Comma-separated politician identities | Required |
+| `--format [town_hall\|head_to_head\|panel]` | Debate format | head_to_head |
+| `--time-per-turn INTEGER` | Time in seconds per turn | 60 |
+| `--allow-interruptions` | Enable interruptions | False |
+| `--fact-check` | Enable fact checking | True |
+| `--no-fact-check` | Disable fact checking | False |
+| `--moderator-control [strict\|moderate\|minimal]` | Level of moderator control | moderate |
+| `--no-rag` | Disable RAG knowledge retrieval | False |
+| `--trace` | Show trace information | False |
+| `--output FILENAME` | Save transcript to JSON file | None |
+
+### Config Options
+
+```bash
+python langgraph_politician.py debate config --list-politicians
+python langgraph_politician.py debate config --list-formats
+```
+
+### Visualization
+
+```bash
+python langgraph_politician.py debate visualize
 ```
 
 ---
 
 ## 🔧 Technical Implementation
 
+### Technologies Used
+
+| Component | Technology | Details |
+|-----------|------------|---------|
+| **Workflow Engine** | LangGraph | Orchestrates the multi-agent debate system |
+| **Base Models** | Mistral-7B-Instruct-v0.2 | Powers the politician and fact-checker agents |
+| **Fine-tuning** | QLoRA | Low-rank adaptation for politician-specific responses |
+| **Embeddings** | SentenceTransformer | Used for knowledge retrieval and semantic similarity |
+| **Vector DB** | ChromaDB | Stores and retrieves factual information |
+| **Schema Validation** | Pydantic | Ensures proper data structures throughout the system |
+| **Visualization** | NetworkX | Creates graphical representation of the debate workflow |
+
 ### Components in Detail
 
 | Component | Purpose | Implementation |
 |-----------|---------|----------------|
 | **Debate Graph** | Orchestrates the debate workflow | LangGraph StateGraph with conditional routing |
-| **Moderator Agent** | Controls debate flow | Template-based with configurable styles (CNN, Fox News, etc.) |
+| **Moderator Agent** | Controls debate flow | Template-based with configurable styles |
 | **Politician Agents** | Generate debate responses | Uses the fine-tuned politician models with context awareness |
 | **Fact Checker** | Verifies factual claims | Combination of RAG lookup and model-based reasoning |
 | **Topic Manager** | Handles topic transitions | Maintains debate coherence while covering multiple aspects |
@@ -184,15 +243,16 @@ The debate system maintains a complex state that includes:
 - Interruption tracking
 - Topic and subtopic management
 
-### Debate Parameters
+### Key Files
 
-The system offers numerous configurable parameters:
-- Number of debate rounds
-- Moderator style and level of control
-- Fact-checking frequency and threshold
-- Interruption probability
-- Speaking time per turn
-- Topic depth and breadth
+```
+langgraph_politician.py                # Main entry point for debate
+src/models/langgraph/debate/
+├── cli.py                             # Command-line interface
+├── workflow.py                        # Debate workflow definition
+├── agents.py                          # Agent implementations
+└── README.md                          # Implementation notes
+```
 
 ---
 
@@ -201,18 +261,24 @@ The system offers numerous configurable parameters:
 ### Common Issues
 
 1. **Out of Memory Errors**:
-   - Reduce the `--rounds` parameter
-   - Use the `--no-fact-checking` flag to disable fact checking
+   - Reduce the `--time-per-turn` parameter
+   - Use the `--no-fact-check` flag to disable fact checking
    - Ensure you have a GPU with sufficient memory (min. 8GB recommended)
 
 2. **Repetitive Responses**:
-   - Try specifying different subtopics with `--subtopics "Economy, Jobs, Inflation"`
-   - Use the `--temperature 0.8` flag to increase response variation
+   - Try changing the topic to something more specific
+   - Use more contentious topics that encourage disagreement
+   - Ensure RAG system is working properly for factual grounding
 
 3. **Model Loading Errors**:
    - Ensure all requirements are installed
    - Check that you have the latest model versions
    - Try running with `--no-rag` to bypass knowledge retrieval
+
+4. **Incorrect Command Syntax**:
+   - Remember to use `langgraph_politician.py` not `aipolitician.py`
+   - Include the `run` subcommand: `debate run`
+   - Specify both `--topic` and `--participants` as required arguments
 
 ---
 
@@ -228,37 +294,47 @@ Try these debate topics for engaging simulations:
 6. "Gun Control and Second Amendment"
 7. "Education and Student Loan Debt"
 
+Sample command:
+```bash
+python langgraph_politician.py debate run --topic "Climate Change and Energy Policy" --participants "biden,trump" --fact-check
+```
+
 ---
 
 ## 🛠️ Advanced Features
-
-### Custom Moderators
-
-You can specify different moderator styles:
-```bash
-python aipolitician.py debate --moderator "CNN" 
-python aipolitician.py debate --moderator "Fox News"
-python aipolitician.py debate --moderator "NPR"
-```
-
-### Debate Visualization
-
-Generate a visual representation of the debate flow:
-```bash
-python aipolitician.py debate --visualize
-```
 
 ### Saving Debate Transcripts
 
 Save the entire debate transcript to a file:
 ```bash
-python aipolitician.py debate --topic "Economy" --save-transcript
+python langgraph_politician.py debate run --topic "Economy" --participants "biden,trump" --output "economy_debate.json"
 ```
 
-### Custom Politician Combinations
+### Moderator Control Levels
 
-Although currently focused on Biden and Trump, the system architecture supports adding more politicians:
+You can specify different levels of moderator control:
 ```bash
-# Future functionality
-python aipolitician.py debate --participants "biden,trump,sanders,harris"
+# Strict moderator (keeps debate focused, minimal interruptions)
+python langgraph_politician.py debate run --topic "Healthcare" --participants "biden,trump" --moderator-control strict
+
+# Moderate control (balanced approach)
+python langgraph_politician.py debate run --topic "Immigration" --participants "biden,trump" --moderator-control moderate
+
+# Minimal control (more free-form, allows more interruptions)
+python langgraph_politician.py debate run --topic "Foreign Policy" --participants "biden,trump" --moderator-control minimal
 ```
+
+### Workflow Visualization
+
+Generate a visual representation of the debate flow:
+```bash
+python langgraph_politician.py debate visualize
+```
+
+### Future Extensions
+
+The debate system architecture is designed to be extensible:
+- Add more politicians beyond Biden and Trump
+- Implement different moderator personalities
+- Create custom debate formats
+- Support audience participation and questions
