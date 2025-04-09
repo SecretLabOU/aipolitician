@@ -21,7 +21,11 @@ from src.models.langgraph.config import (
     TRUMP_ADAPTER_PATH,
     PoliticianIdentity,
     MAX_RESPONSE_LENGTH,
-    DEFAULT_TEMPERATURE
+    DEFAULT_TEMPERATURE,
+    BIDEN_TEMPERATURE,
+    BIDEN_TOP_P,
+    TRUMP_TEMPERATURE,
+    TRUMP_TOP_P
 )
 
 # Cache for models and tokenizers
@@ -98,9 +102,9 @@ def _generate_simple_fallback_response(prompt: str, context: str, politician_ide
     
     if politician_identity == PoliticianIdentity.BIDEN:
         if should_deflect:
-            return "Look, here's the deal. That's not something I want to get into right now. Let's focus on bringing Americans together and building back better. We have so many challenges facing us as a nation that need our attention."
+            return "Look, here's the deal, folks. That's not something I want to get into right now. I remember growing up in Scranton, my dad used to say, 'Joey, a job is about a lot more than a paycheck. It's about dignity.' And that's what we need to focus on - bringing dignity back to the American people, bringing our country together. We have so many challenges facing us as a nation that need our attention."
         else:
-            return f"Let me be clear about {context_summary}. This is a critical issue for all Americans. My administration is committed to making progress on this and other challenges facing our great nation. It's about the soul of America."
+            return f"Look, here's the deal on {context_summary}. And I mean this sincerely, folks. This is a critical issue for all Americans, for our kids, for our grandkids. My dad used to have an expression. He'd say, 'Joey, don't compare me to the Almighty, compare me to the alternative.' And the alternative to addressing this challenge isn't acceptable. It's about the soul of America, about who we are as a nation. I really believe that."
     
     elif politician_identity == PoliticianIdentity.TRUMP:
         if should_deflect:
@@ -130,9 +134,21 @@ def _generate_response_with_model(
     try:
         # Define system messages based on identity
         if politician_identity == PoliticianIdentity.BIDEN:
-            system_message = "You are Joe Biden, 46th President of the United States. Answer as if you are Joe Biden, using his speaking style, mannerisms, and policy positions."
+            system_message = """You are Joe Biden, 46th President of the United States. 
+            
+Answer as if you are Joe Biden, using his authentic speaking style with these characteristics:
+1. Use verbal fillers and phrases like "Look, folks", "Here's the deal", "I'm not joking", "Let me be clear"
+2. Include personal anecdotes about your family, Scranton PA, or your working-class upbringing
+3. Speak in a conversational, unstructured way with natural pauses indicated by commas
+4. Occasionally start a thought, shift to another point, then circle back
+5. Show emotion and conviction about issues you care about
+6. Avoid overly structured bullet points or numbered lists
+7. Talk directly to "the American people" and emphasize unity and dignity
+8. Express your genuine empathy for everyday struggles
+
+Your response should sound like natural speech that a real person would say, not a written essay."""
             if should_deflect:
-                system_message += " You need to deflect this question diplomatically, as politicians often do when faced with difficult or hostile questions."
+                system_message += " You need to deflect this question diplomatically, as politicians often do when faced with difficult or hostile questions. Use a personal story or shift to a related topic you're more comfortable discussing."
         elif politician_identity == PoliticianIdentity.TRUMP:
             system_message = "You are Donald Trump, 45th President of the United States. Answer as if you are Donald Trump, using his speaking style, mannerisms, and policy positions."
             if should_deflect:
@@ -141,7 +157,14 @@ def _generate_response_with_model(
         # Format the prompt with context
         formatted_prompt = f"<s>[INST] {system_message}\n\nContext Information: {context}\n\nUser Question: {prompt} [/INST]"
         
-        # Generate response
+        # Set politician-specific generation parameters
+        if politician_identity == PoliticianIdentity.BIDEN:
+            temperature = BIDEN_TEMPERATURE
+            top_p = BIDEN_TOP_P
+        else:
+            temperature = TRUMP_TEMPERATURE
+            top_p = TRUMP_TOP_P
+        
         inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
         with torch.no_grad():
             outputs = model.generate(
@@ -151,12 +174,21 @@ def _generate_response_with_model(
                 temperature=temperature,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
-                use_cache=True
+                use_cache=True,
+                top_p=top_p
             )
         
         # Decode and clean response
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = response.split("[/INST]")[-1].strip()
+        
+        # For Biden, clean up responses that still look like bullet points or numbered lists
+        if politician_identity == PoliticianIdentity.BIDEN and (response.startswith("1.") or response.startswith("•")):
+            lines = response.split("\n")
+            if len(lines) > 1:
+                # Convert numbered/bulleted lists to conversational flow
+                response = "Look, here's what I believe. " + " ".join([line.strip().replace("1.", "First,").replace("2.", "Second,").replace("3.", "Third,").replace("4.", "Fourth,").replace("5.", "And finally,").replace("•", "") for line in lines])
+        
         return response
     
     except Exception as e:
@@ -263,57 +295,44 @@ def generate(
     prompt: str, 
     max_new_tokens: int = 1024, 
     max_length: int = 1536,
-    temperature: float = 0.8, 
-    top_p: float = 0.95
+    temperature: float = None, 
+    top_p: float = None
 ) -> str:
-    """
-    Generate a response from the model.
+    """Generate text using the model and tokenizer."""
+    if model is None or tokenizer is None:
+        return "Error: Model or tokenizer not available."
     
-    Args:
-        model: The language model
-        tokenizer: The tokenizer for the model
-        prompt: The input prompt for generation
-        max_new_tokens: Maximum number of new tokens to generate
-        max_length: Maximum length of input sequence
-        temperature: Sampling temperature
-        top_p: Top-p sampling parameter
-        
-    Returns:
-        Generated response text
-    """
-    # Tokenize the input
-    inputs = tokenizer(
-        prompt, 
-        return_tensors="pt", 
-        padding=True, 
-        truncation=True, 
-        max_length=max_length
-    ).to(model.device)
+    # Use provided parameters or defaults from current configuration
+    temperature = temperature or DEFAULT_TEMPERATURE
     
-    # Configure generation parameters
-    generation_config = GenerationConfig(
-        max_new_tokens=max_new_tokens,
-        do_sample=True,
-        temperature=temperature,
-        top_p=top_p,
-        top_k=50,
-        repetition_penalty=1.15,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id
-    )
+    # Set top_p based on politician identity if not provided
+    if top_p is None:
+        if "biden" in prompt.lower():
+            top_p = BIDEN_TOP_P
+        elif "trump" in prompt.lower():
+            top_p = TRUMP_TOP_P
+        else:
+            top_p = 0.95  # Default if politician can't be determined
     
-    # Generate response
+    # Generate the response
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     with torch.no_grad():
-        generated_ids = model.generate(
-            input_ids=inputs.input_ids,
-            attention_mask=inputs.attention_mask,
-            generation_config=generation_config,
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            max_length=max_length,
+            do_sample=True,
+            temperature=temperature,
+            top_p=top_p,
+            pad_token_id=tokenizer.pad_token_id,
+            use_cache=True
         )
     
-    # Decode and clean up the response
-    response = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+    # Decode and clean up
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     
-    # Extract just the model's response (exclude the prompt)
-    response = response.split("[/INST]")[-1].strip()
+    # Clean up the response by extracting just the model's reply
+    if "[/INST]" in response:
+        response = response.split("[/INST]")[-1].strip()
     
     return response 
