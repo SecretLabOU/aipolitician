@@ -10,73 +10,65 @@ Fine-tuned Mistral-7B language models that emulate Donald Trump's and Joe Biden'
 ## 🌟 Features
 
 - **Personality-based Response Generation**: Chat with AI models fine-tuned to capture the distinct communication styles of Trump and Biden
+- **Debate System**: Watch AI politicians debate each other on various political topics with fact-checking
 - **RAG System Integration**: Ensures factual accuracy by retrieving real information from specialized political databases
 - **Memory-Efficient Inference**: Optimized using 4-bit quantization for better performance on consumer hardware
 - **Interactive Chat Interface**: Simple command-line interface for conversing with either political figure
-- **ChromaDB Vector Database**: Semantic search capabilities for efficient information retrieval
+- **LangGraph Workflow**: Structured agent-based architecture for sophisticated interaction handling
 
 ## 📁 Project Structure
 
 ```
 aipolitician/
-├── aipolitician.py             # Unified launcher script
-├── langgraph_politician.py    # Main LangGraph entry point
+├── aipolitician.py             # Unified launcher script (main entry point)
+├── langgraph_politician.py     # Advanced LangGraph functionality
 ├── requirements/
 │   ├── requirements-base.txt
 │   ├── requirements-chat.txt
-│   ├── requirements-langgraph.txt
-│   ├── requirements-browser-fact-checker.txt
-│   ├── requirements-training.txt
+│   ├── requirements-debate.txt
+│   ├── requirements-rag.txt
 │   └── requirements-all.txt
 ├── scripts/
-│   ├── chat/
+│   ├── chat/                   # Chat-related scripts
 │   │   ├── chat_politician.py
 │   │   ├── debug_politician.py
 │   │   └── trace_politician.py
-│   ├── run_debate.py
-│   ├── test_debate.py
-│   └── test_debate_simple.py
+│   ├── debate/                 # Debate-related scripts
+│   │   ├── debate_politician.py
+│   │   ├── debug_debate.py
+│   │   └── test_debate_simple.py
+│   └── backup/                 # Legacy scripts
 ├── src/
-│   ├── __init__.py
-│   └── models/
-│       ├── __init__.py
+│   ├── models/
 │       ├── chat/
-│       │   ├── __init__.py
-│       │   ├── chat_biden.py
-│       │   └── chat_trump.py
 │       ├── langgraph/
-│       │   ├── __init__.py
 │       │   ├── agents/
 │       │   │   ├── context_agent.py
 │       │   │   ├── response_agent.py
 │       │   │   └── sentiment_agent.py
 │       │   ├── debate/
-│       │   ├── utils/
-│       │   ├── api.py
-│       │   ├── cli.py
-│       │   ├── config.py
-│       │   └── workflow.py
-│       └── training/
+│       │   │   ├── agents.py
+│       │   │   ├── workflow.py
+│       │   │   └── cli.py
+│       │   ├── workflow.py
+│   ├── data/
+│       └── db/
+│           └── chroma/         # ChromaDB configuration
 ├── docs/
-│   ├── README.md
-│   ├── chat_system.md
-│   ├── langgraph_workflow.md
-│   ├── system_overview.md
-│   └── usage_guide.md
-├── .env.example
-├── .gitignore
-├── README.md
-└── setup.py
+│   ├── chat.md                 # Chat system documentation
+│   ├── debate.md               # Debate system documentation
+│   ├── rag.md                  # RAG system documentation
+│   └── README.md               # Documentation index
+└── README.md
 ```
 
 ## 📚 Documentation
 
 Comprehensive documentation for key components is available in the `docs` folder:
 
-- [System Overview](docs/system_overview.md) - High-level architecture and flow
-- [Usage Guide](docs/usage_guide.md) - How to use the system
-- [Chat System](docs/chat_system.md) - How to use the chat interface
-- [LangGraph Workflow](docs/langgraph_workflow.md) - Details on the LangGraph implementation
+- [Chat System](docs/chat.md) - How to use the AI Politician chat system
+- [Debate System](docs/debate.md) - How to run debates between AI politicians
+- [RAG System](docs/rag.md) - Details on the Retrieval-Augmented Generation implementation
 
 ## 🔄 Pretrained Models
 
@@ -90,86 +82,83 @@ These are LoRA adapters designed to be applied to the [Mistral-7B-Instruct-v0.2]
 ## 🚀 Installation
 
 ### Prerequisites
-- Python 3.8+ (recommended: Python 3.10)
-- Conda (for environment management)
+- Python 3.9+ (recommended: Python 3.10)
 - CUDA 12.0+ (optional, for GPU acceleration)
 
-### Option 1: Install from Source (Recommended)
+### Option 1: Basic Installation
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/aipolitician.git
 cd aipolitician
 
-# Create and activate a virtual environment (optional but recommended)
+# Create and activate a virtual environment
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install all dependencies
-
-```
-pip install -r requirements/requirements-base.txt -r requirements/requirements-chat.txt -r requirements/requirements-langgraph.txt
+# Install core dependencies
+pip install -r requirements/requirements-base.txt
 ```
 
-### Setting up the Database (for RAG features)
-
-The AI Politician uses ChromaDB as its vector database for RAG features:
-
+### Option 2: Full Installation with All Features
 ```bash
-# Install ChromaDB dependencies
-pip install -r requirements/requirements-langgraph.txt
+# Install all dependencies
+pip install -r requirements/requirements-all.txt
 
-# Initialize the database
-cd src/data/db/chroma
-./setup.sh
+# Set up the ChromaDB directory (for RAG)
+sudo mkdir -p /opt/chroma_db
+sudo chown $USER:$USER /opt/chroma_db
 ```
-
-ChromaDB is used for retrieving relevant factual information to enhance the quality of responses.
-
-For more details, see the [ChromaDB setup instructions](docs/data/chroma/setup_instructions.md).
 
 ## 💬 Usage
 
-The system provides three ways to interact with the AI Politician:
+The system provides a unified command-line interface for all functionality:
 
-### Unified Launcher
-
-The easiest way to use the system is with the unified launcher:
+### Chat with a Politician
 
 ```bash
-# Clean chat mode
+# Standard chat mode
 python aipolitician.py chat biden
 
-# Debug mode
+# Debug mode with more information
 python aipolitician.py debug biden
 
-# Trace mode
+# Detailed trace mode
 python aipolitician.py trace biden
 
-# Disable RAG database (for any mode)
-python aipolitician.py chat biden --no-rag
+# Chat without RAG knowledge retrieval
+python aipolitician.py chat trump --no-rag
 ```
 
-For more detailed usage instructions, see the [Chat System](docs/chat_system.md) documentation.
+### Run a Debate Between Politicians
 
-## System Components
+```bash
+# Basic debate with default settings (Biden vs Trump)
+python aipolitician.py debate
+
+# Debate on a specific topic
+python aipolitician.py debate --topic "Climate Change"
+
+# Debate with a specific format
+python aipolitician.py debate --format "town_hall"
+
+# Debate without RAG
+python aipolitician.py debate --no-rag
+```
+
+## 🧠 System Architecture
+
+### Chat System Components
 
 1. **Context Agent**: Extracts topics from user input and retrieves relevant knowledge
 2. **Sentiment Agent**: Analyzes the sentiment and decides if deflection is needed
 3. **Response Agent**: Generates the final response using the politician's style
 
-For more details on how these components work together, see the [LangGraph Workflow](docs/langgraph_workflow.md) documentation.
+### Debate System Components
 
-## 🔄 Adding New Politicians
-
-To add a new politician to the system:
-
-1. Collect training data for the politician
-2. Process the data into the appropriate format
-3. Fine-tune a model for the politician
-4. Add the necessary chat model implementation
-5. Update the relevant configuration files
-
-For detailed instructions, see the [Model Training](docs/model_training.md) documentation.
+1. **Moderator Agent**: Controls the debate flow and manages transitions
+2. **Politician Agents**: Generate responses for each politician
+3. **Fact Checker**: Verifies factual claims made during the debate
+4. **Topic Manager**: Manages debate topics and subtopics
 
 ## 🤝 Contributing
 
@@ -184,4 +173,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Mistral AI](https://mistral.ai/) for the base models
 - [LangChain](https://www.langchain.com/) for the LangGraph framework
 - [ChromaDB](https://www.trychroma.com/) for the vector database
+- [SentenceTransformers](https://www.sbert.net/) for embedding models
 - [PEFT](https://github.com/huggingface/peft) for efficient fine-tuning
