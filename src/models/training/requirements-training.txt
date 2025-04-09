@@ -1,5 +1,5 @@
 torch==2.0.1
-transformers==4.36.0
+transformers==4.48.0
 tokenizers==0.15.2
 accelerate==0.25.0
 bitsandbytes==0.41.1
