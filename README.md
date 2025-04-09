@@ -13,53 +13,72 @@ Fine-tuned Mistral-7B language models that emulate Donald Trump's and Joe Biden'
 - **RAG System Integration**: Ensures factual accuracy by retrieving real information from specialized political databases
 - **Memory-Efficient Inference**: Optimized using 4-bit quantization for better performance on consumer hardware
 - **Interactive Chat Interface**: Simple command-line interface for conversing with either political figure
-- **Milvus Vector Database**: Semantic search capabilities for efficient information retrieval
+- **ChromaDB Vector Database**: Semantic search capabilities for efficient information retrieval
 
 ## 📁 Project Structure
 
-The project has been organized into a clean, modular structure:
-
 ```
 aipolitician/
-├── aipolitician.py        # Unified launcher script
-├── langgraph_politician.py # Main entry point
-├── requirements/           # Dependencies
-├── scripts/                # Helper scripts
-│   ├── chat_politician.py  # Clean chat mode
-│   ├── debug_politician.py # Debug mode with analysis info
-│   ├── trace_politician.py # Trace mode with detailed output
-│   └── manage_db.py        # Database management script
-└── src/                    # Core source code
-    ├── data/               # Data storage
-    │   ├── db/             # Database implementation
-    │   ├── scraper/        # Web scraper for data collection
-    │   └── pipeline/       # Data processing pipeline
-    └── models/             # Model definitions
-        ├── chat/           # Chat models
-        ├── langgraph/      # LangGraph implementation
-        │   ├── agents/     # Individual agents
-        │   │   ├── context_agent.py    # Context extraction
-        │   │   ├── sentiment_agent.py  # Sentiment analysis
-        │   │   └── response_agent.py   # Response generation
-        │   ├── config.py   # Configuration settings
-        │   ├── cli.py      # Command-line interface
-        │   └── workflow.py # Workflow definition
-        └── training/       # Training utilities
+├── aipolitician.py             # Unified launcher script
+├── langgraph_politician.py    # Main LangGraph entry point
+├── requirements/
+│   ├── requirements-base.txt
+│   ├── requirements-chat.txt
+│   ├── requirements-langgraph.txt
+│   ├── requirements-browser-fact-checker.txt
+│   ├── requirements-training.txt
+│   └── requirements-all.txt
+├── scripts/
+│   ├── chat/
+│   │   ├── chat_politician.py
+│   │   ├── debug_politician.py
+│   │   └── trace_politician.py
+│   ├── run_debate.py
+│   ├── test_debate.py
+│   └── test_debate_simple.py
+├── src/
+│   ├── __init__.py
+│   └── models/
+│       ├── __init__.py
+│       ├── chat/
+│       │   ├── __init__.py
+│       │   ├── chat_biden.py
+│       │   └── chat_trump.py
+│       ├── langgraph/
+│       │   ├── __init__.py
+│       │   ├── agents/
+│       │   │   ├── context_agent.py
+│       │   │   ├── response_agent.py
+│       │   │   └── sentiment_agent.py
+│       │   ├── debate/
+│       │   ├── utils/
+│       │   ├── api.py
+│       │   ├── cli.py
+│       │   ├── config.py
+│       │   └── workflow.py
+│       └── training/
+├── docs/
+│   ├── README.md
+│   ├── chat_system.md
+│   ├── langgraph_workflow.md
+│   ├── system_overview.md
+│   └── usage_guide.md
+├── .env.example
+├── .gitignore
+├── README.md
+└── setup.py
 ```
 
 ## 📚 Documentation
 
-Comprehensive documentation for each component is available in the `docs` folder:
+Comprehensive documentation for key components is available in the `docs` folder:
 
 - [System Overview](docs/system_overview.md) - High-level architecture and flow
+- [Usage Guide](docs/usage_guide.md) - How to use the system
 - [Chat System](docs/chat_system.md) - How to use the chat interface
 - [LangGraph Workflow](docs/langgraph_workflow.md) - Details on the LangGraph implementation
-- [Database System](docs/database_system.md) - Using the vector database for knowledge retrieval
-- [Scraper System](docs/scraper_system.md) - Collecting data from various sources
-- [Pipeline System](docs/pipeline_system.md) - Processing data for the knowledge database
-- [Model Training](docs/model_training.md) - Training politician-specific models
 
-## 🔗 Pretrained Models
+## 🔄 Pretrained Models
 
 The models are hosted on Hugging Face and can be accessed here:
 
@@ -72,10 +91,10 @@ These are LoRA adapters designed to be applied to the [Mistral-7B-Instruct-v0.2]
 
 ### Prerequisites
 - Python 3.8+ (recommended: Python 3.10)
-- CUDA 12.0+ (for GPU acceleration)
-- Docker and Docker Compose (for Milvus database)
+- Conda (for environment management)
+- CUDA 12.0+ (optional, for GPU acceleration)
 
-### Option 1: Install from Source
+### Option 1: Install from Source (Recommended)
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/aipolitician.git
@@ -86,31 +105,27 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install all dependencies
-pip install -r requirements/requirements-base.txt
-pip install -r requirements/requirements-chat.txt
-pip install -r requirements/requirements-langgraph.txt
+
 ```
-
-### Option 2: Install Specific Components
-```bash
-# Install only the chat interface dependencies
-pip install -r requirements/requirements-chat.txt
-
-# Install only the scraper dependencies 
-pip install -r requirements/requirements-scraper.txt
-
-# Install only the training dependencies
-pip install -r requirements/requirements-training.txt
+pip install -r requirements/requirements-base.txt -r requirements/requirements-chat.txt -r requirements/requirements-langgraph.txt
 ```
 
 ### Setting up the Database (for RAG features)
 
-See the [Database System](docs/database_system.md) documentation for detailed setup instructions.
+The AI Politician uses ChromaDB as its vector database for RAG features:
 
 ```bash
-# Start a local Milvus instance with Docker
-docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone
+# Install ChromaDB dependencies
+pip install -r requirements/requirements-langgraph.txt
+
+# Initialize the database
+cd src/data/db/chroma
+./setup.sh
 ```
+
+ChromaDB is used for retrieving relevant factual information to enhance the quality of responses.
+
+For more details, see the [ChromaDB setup instructions](docs/data/chroma/setup_instructions.md).
 
 ## 💬 Usage
 
@@ -168,5 +183,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [Mistral AI](https://mistral.ai/) for the base models
 - [LangChain](https://www.langchain.com/) for the LangGraph framework
-- [Milvus](https://milvus.io/) for the vector database
+- [ChromaDB](https://www.trychroma.com/) for the vector database
 - [PEFT](https://github.com/huggingface/peft) for efficient fine-tuning

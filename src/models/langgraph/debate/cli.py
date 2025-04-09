@@ -47,6 +47,8 @@ def parse_args():
                           help="Allow interruptions during the debate")
     run_parser.add_argument("--fact-check", action="store_true", default=True,
                           help="Enable fact checking")
+    run_parser.add_argument("--no-fact-check", action="store_true",
+                          help="Disable fact checking (overrides --fact-check)")
     run_parser.add_argument("--moderator-control", type=str, default="moderate",
                           choices=["strict", "moderate", "minimal"],
                           help="Level of moderator control")
@@ -424,10 +426,13 @@ def run_command(args):
         format_name = args.format.lower() if args.format else "head_to_head"
         
         # Determine whether to use RAG
-        use_rag = args.use_rag if hasattr(args, 'use_rag') else True
+        use_rag = not args.no_rag if hasattr(args, 'no_rag') else True
         
         # Determine if interruptions are enabled
         interruptions_enabled = args.allow_interruptions if hasattr(args, 'allow_interruptions') else False
+        
+        # Determine if fact checking should be enabled (--no-fact-check overrides --fact-check)
+        fact_check_enabled = not args.no_fact_check if hasattr(args, 'no_fact_check') else args.fact_check
         
         # Set up input for debate
         debate_input = DebateInput(
@@ -435,8 +440,7 @@ def run_command(args):
             participants=participants,
             format=DebateFormat(
                 name=format_name,
-                # Updated to enable fact-checking by default
-                fact_check_enabled=True,
+                fact_check_enabled=fact_check_enabled,
                 interruptions_enabled=interruptions_enabled
             ),
             trace=args.trace,
@@ -449,7 +453,7 @@ def run_command(args):
         # Run the debate
         print(f"Starting debate on topic: {topic}")
         print(f"Participants: {', '.join(participants)}")
-        print(f"Format: {format_name} (Interruptions: {'Enabled' if interruptions_enabled else 'Disabled'}, Fact-checking: {'Enabled' if True else 'Disabled'})")
+        print(f"Format: {format_name} (Interruptions: {'Enabled' if interruptions_enabled else 'Disabled'}, Fact-checking: {'Enabled' if fact_check_enabled else 'Disabled'})")
         print("Running debate, please wait...\n")
         
         try:

@@ -75,30 +75,32 @@ def check_env_variables() -> Tuple[int, int]:
     except ImportError:
         print_warning("dotenv package not installed. Skipping .env file loading.")
     
-    # Check essential environment variables
+    # Check environment variables
     env_vars = {
         "Required": [
-            "OPENAI_API_KEY"
+            # No strictly required environment variables
         ],
         "Optional": [
-            "MILVUS_HOST",
-            "MILVUS_PORT",
-            "MODEL_PROVIDER",
-            "MODEL_PATH"
+            "OPENAI_API_KEY",  # Optional for OpenAI models
+            "MODEL_PATH",      # Optional for local models
+            "MODEL_PROVIDER"   # Optional model provider configuration
         ]
     }
     
     present = 0
     missing = 0
     
-    print("Required Environment Variables:")
-    for var in env_vars["Required"]:
-        if os.environ.get(var):
-            print_result(f"{var} is set", True)
-            present += 1
-        else:
-            print_result(f"{var} is not set", False)
-            missing += 1
+    if env_vars["Required"]:
+        print("Required Environment Variables:")
+        for var in env_vars["Required"]:
+            if os.environ.get(var):
+                print_result(f"{var} is set", True)
+                present += 1
+            else:
+                print_result(f"{var} is not set", False)
+                missing += 1
+    else:
+        print("No required environment variables.")
     
     print("\nOptional Environment Variables:")
     for var in env_vars["Optional"]:
@@ -131,16 +133,14 @@ def check_dependencies() -> Tuple[int, int]:
     return installed, missing
 
 def check_database() -> bool:
-    """Check if Milvus database is accessible."""
+    """Check if ChromaDB is accessible."""
     try:
-        from pymilvus import connections
-        from src.data.db.milvus.connection import get_connection_params
+        import chromadb
+        from src.data.db.chroma.schema import connect_to_chroma, DEFAULT_DB_PATH
         
-        # Try to connect to Milvus
-        conn_params = get_connection_params()
-        connections.connect(**conn_params)
-        connections.disconnect(conn_params.get("alias", "default"))
-        return True
+        # Try to connect to ChromaDB
+        client = connect_to_chroma(db_path=DEFAULT_DB_PATH)
+        return client is not None
     except Exception as e:
         print(f"  Error: {str(e)}")
         return False
@@ -190,7 +190,7 @@ def check_system_resources() -> Dict[str, str]:
     except ImportError:
         resources["CUDA Available"] = "Unknown (torch not installed)"
     
-    # Check for Docker (used by Milvus)
+    # Check for Docker (optional for development tools)
     docker_available = check_command("docker --version")
     resources["Docker Available"] = "Yes" if docker_available else "No"
     
@@ -214,17 +214,19 @@ def main():
     # Check database
     print_header("Checking Database Connectivity")
     db_available = check_database()
-    print_result("Milvus database is accessible", db_available)
+    print_result("ChromaDB database is accessible", db_available)
     if not db_available:
         print_warning("  Database not available. RAG features will not work.")
-        print_warning("  Run: docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone")
+        print_warning("  Ensure you have the ChromaDB dependencies installed:")
+        print_warning("  pip install chromadb sentence-transformers")
     
     # Check model availability
     print_header("Checking Model Availability")
     model_available = check_model_availability()
     print_result("Model is accessible", model_available)
     if not model_available:
-        print_warning("  No model available. Set OPENAI_API_KEY or MODEL_PATH in your .env file.")
+        print_warning("  No model available. This is optional but recommended.")
+        print_warning("  For full functionality, set MODEL_PATH in your .env file or install local models.")
     
     # Check system resources
     print_header("System Resources")
@@ -234,10 +236,15 @@ def main():
     
     # Print overall summary
     print_header("Summary")
-    checks_passed = (missing == 0) and (missing_env == 0) and db_available and model_available
+    
+    # For database setup, we only need dependency and database checks to pass
+    # The model is optional for database functionality
+    checks_passed = (missing == 0) and (missing_env == 0) and db_available
     
     if checks_passed:
-        print(f"{Colors.GREEN}{Colors.BOLD}All checks passed! The system is properly set up.{Colors.RESET}")
+        print(f"{Colors.GREEN}{Colors.BOLD}All essential checks passed! The system is properly set up.{Colors.RESET}")
+        if not model_available:
+            print(f"{Colors.YELLOW}Note: No model was detected. This is optional but recommended for full functionality.{Colors.RESET}")
     else:
         print(f"{Colors.YELLOW}{Colors.BOLD}Some checks failed. Please address the issues above.{Colors.RESET}")
     

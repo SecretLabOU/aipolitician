@@ -58,5 +58,13 @@ TRUMP_ADAPTER_PATH = os.environ.get("TRUMP_ADAPTER_PATH", "nnat03/trump-mistral-
 BASE_MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2"
 
 # Response generation parameters
-MAX_RESPONSE_LENGTH = 512
-DEFAULT_TEMPERATURE = 0.7 
+MAX_RESPONSE_LENGTH = 768  # Increased from 512 to allow more natural, flowing responses
+DEFAULT_TEMPERATURE = 0.7  # Base temperature value
+
+# Biden-specific parameters
+BIDEN_TEMPERATURE = 0.8  # Higher temperature for more natural Biden speech patterns
+BIDEN_TOP_P = 0.92  # High nucleus sampling value to encourage natural variation
+
+# Trump-specific parameters
+TRUMP_TEMPERATURE = 0.7
+TRUMP_TOP_P = 0.95 
