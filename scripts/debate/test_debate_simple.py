@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Add the project root to the Python path
-root_dir = Path(__file__).parent.parent.absolute()
+root_dir = Path(__file__).parent.parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
 
 

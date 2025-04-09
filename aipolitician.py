@@ -10,6 +10,7 @@ Usage:
   python aipolitician.py chat biden     # Clean chat mode
   python aipolitician.py debug biden    # Debug mode with analysis info
   python aipolitician.py trace biden    # Trace mode with detailed output
+  python aipolitician.py debate         # Run a debate between politicians
   
   Add --no-rag to any command to disable the knowledge database.
 """
@@ -28,6 +29,7 @@ Examples:
   python aipolitician.py chat biden     # Clean chat experience
   python aipolitician.py debug biden    # Show debugging info
   python aipolitician.py trace biden    # Show detailed workflow tracing
+  python aipolitician.py debate         # Run a debate between politicians
         """
     )
     
@@ -48,6 +50,15 @@ Examples:
     trace_parser = subparsers.add_parser("trace", help="Trace mode with detailed output")
     trace_parser.add_argument("identity", choices=["biden", "trump"], help="Politician identity")
     trace_parser.add_argument("--no-rag", action="store_true", help="Disable RAG database")
+    
+    # Debate mode
+    debate_parser = subparsers.add_parser("debate", help="Run a debate between politicians")
+    debate_parser.add_argument("--topic", type=str, default="General Political Discussion", 
+                            help="Debate topic")
+    debate_parser.add_argument("--format", type=str, default="head_to_head",
+                            choices=["town_hall", "head_to_head", "panel"],
+                            help="Debate format")
+    debate_parser.add_argument("--no-rag", action="store_true", help="Disable RAG database")
     
     # Parse arguments
     args = parser.parse_args()
@@ -73,6 +84,13 @@ Examples:
     elif args.mode == "trace":
         script = str(script_dir / "chat" / "trace_politician.py")
         command = f"python {script} {args.identity}"
+        if args.no_rag:
+            command += " --no-rag"
+        os.system(command)
+    
+    elif args.mode == "debate":
+        script = str(script_dir / "debate" / "debate_politician.py")
+        command = f"python {script} --topic \"{args.topic}\" --format {args.format}"
         if args.no_rag:
             command += " --no-rag"
         os.system(command)

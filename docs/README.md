@@ -1,71 +1,32 @@
-# AI Politician Documentation
+# 📚 AI Politician Documentation
 
-This directory contains comprehensive documentation for the AI Politician system.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python%203.9+-blue.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/Mistral--7B-Powered-green.svg" alt="Models">
+  <img src="https://img.shields.io/badge/LangGraph-Workflow-orange.svg" alt="Framework">
+</p>
 
-## Documentation Index
+This directory contains comprehensive documentation for the AI Politician system, explaining how the chat, debate, and knowledge retrieval systems work together.
 
-### Overview
-- [System Overview](system_overview.md) - High-level overview of the system architecture
+## 📋 Documentation Index
 
-### Components
-- [Chat System](chat_system.md) - Documentation for the chat interface
-- [LangGraph Workflow](langgraph_workflow.md) - Documentation for the LangGraph workflow
-- [Database System](database_system.md) - Documentation for the Milvus vector database
-- [Scraper System](scraper_system.md) - Documentation for the data collection scraper
-- [Data Pipeline](pipeline_system.md) - Documentation for the data processing pipeline
-- [Model Training](model_training.md) - Documentation for model training and fine-tuning
+### Core Systems
 
-### Guides
-- [Installation Guide](installation.md) - Detailed installation instructions
-- [Usage Guide](usage_guide.md) - How to use the system's various components
+- [Chat System](chat.md) - The interactive chat interface with AI politicians
+- [Debate System](debate.md) - The AI politician debate simulation system
+- [RAG System](rag.md) - The Retrieval-Augmented Generation knowledge system
 
-## Quick Installation
+### Additional Resources
 
-To install the AI Politician system:
+- [Installation Guide](installation.md) - Detailed setup instructions
+- [Contributing Guide](contributing.md) - How to contribute to the project
+- [Training Guide](training.md) - How to train new politician models
 
-1. Clone the repository
-   ```bash
-   git clone https://github.com/yourusername/ai-politician.git
-   cd ai-politician
-   ```
+## 🚀 Quick Start
 
-2. Set up the environment
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+Get started with the AI Politician system quickly:
 
-3. Install base requirements
-   ```bash
-   pip install -r requirements/requirements-base.txt
-   ```
-
-4. Install component-specific requirements as needed
-   ```bash
-   # For all components
-   pip install -r requirements/requirements-all.txt
-   
-   # Or for specific components:
-   pip install -r requirements/requirements-chat.txt
-   pip install -r requirements/requirements-langgraph.txt
-   pip install -r requirements/requirements-scraper.txt
-   pip install -r requirements/requirements-training.txt
-   ```
-
-5. Set up environment variables by copying and modifying the example
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
-
-6. Set up the Milvus database (if using RAG)
-   ```bash
-   docker run -d --name milvus_standalone -p 19530:19530 -p 9091:9091 milvusdb/milvus:latest standalone
-   ```
-
-## Quick Start
-
-Start chatting with the AI politician:
+### Chat Mode
 
 ```bash
 # Chat with Biden
@@ -73,66 +34,116 @@ python aipolitician.py chat biden
 
 # Chat with Trump
 python aipolitician.py chat trump
+
+# Chat with debugging information
+python aipolitician.py debug biden
 ```
 
-See the [Usage Guide](usage_guide.md) for more detailed instructions on using all components.
-
-# AI Politician Database Documentation
-
-This directory contains comprehensive documentation for working with the AI Politician's ChromaDB vector database.
-
-## Documentation Files
-
-- [ChromaDB Database Guide](./chroma_database_guide.md) - Complete documentation for setting up, using, and maintaining the database
-- [ChromaDB Quick Reference](./chroma_quick_reference.md) - Common commands and code snippets for quick reference
-- [ChromaDB Schema Reference](./chroma_schema_reference.md) - Details about the database schema and data structure
-- [query_database.py](./query_database.py) - Executable script for querying the database from the command line
-
-## Database Location
-
-The ChromaDB database is located at:
-```
-/home/natalie/political_db
-```
-
-## Getting Started
-
-If you're new to this database, start with the following steps:
-
-1. Review the [ChromaDB Database Guide](./chroma_database_guide.md) for a complete overview
-2. Run `./query_database.py --list-all` to see the politicians in the database
-3. Try searching with `./query_database.py --query "climate change"` to find relevant politicians
-
-## Common Tasks
-
-### Viewing Database Contents
+### Debate Mode
 
 ```bash
-# List all politicians
-./query_database.py --list-all
+# Run a default debate
+python aipolitician.py debate
 
-# Get detailed information
-./query_database.py --list-all --detailed
+# Debate on a specific topic
+python aipolitician.py debate --topic "Climate Change"
+
+# Use a specific debate format
+python aipolitician.py debate --format "town_hall"
 ```
 
-### Searching the Database
+### Running Without Knowledge Retrieval
+
+For all modes, you can disable the RAG system if needed:
 
 ```bash
-# Search by topic
-./query_database.py --query "healthcare policy" --results 5
+# Chat without RAG
+python aipolitician.py chat biden --no-rag
 
-# Get politician by ID
-./query_database.py --id "<politician-id>"
+# Debate without RAG
+python aipolitician.py debate --no-rag
 ```
 
-### Database Setup
+## 📦 System Architecture
 
-```bash
-# Initialize the database
-cd ../src/data/db/chroma
-./setup.sh
+The AI Politician system consists of three main components:
+
+### 1. Chat System
+
+An interactive interface for one-on-one conversations with AI politicians. Features include:
+
+- **Context Agent**: Extracts topics and retrieves relevant knowledge
+- **Sentiment Agent**: Analyzes query sentiment and handles sensitive questions
+- **Response Agent**: Generates authentic-sounding politician responses
+- **Multiple Output Modes**: Regular, debug, and trace modes
+
+### 2. Debate System
+
+A simulation of political debates between AI politicians. Key features:
+
+- **Moderator Control**: An agent that manages the debate flow
+- **Multiple Debate Formats**: Town hall, head-to-head, and panel discussions
+- **Fact Checking**: Verification of factual claims made during debates
+- **Topic Management**: Intelligent transition between debate subtopics
+
+### 3. RAG System
+
+The knowledge retrieval system that enhances responses with factual information:
+
+- **ChromaDB Vector Database**: Stores and retrieves document embeddings
+- **SentenceTransformer**: Creates vector representations for semantic search
+- **Filtering System**: Retrieves politician-specific relevant information
+- **Context Formatting**: Structures retrieved knowledge for model prompts
+
+## 📊 Project Structure
+
+The AI Politician project is organized as follows:
+
+```
+aipolitician/
+├── aipolitician.py             # Unified entry point
+├── scripts/
+│   ├── chat/                   # Chat scripts
+│   │   ├── chat_politician.py
+│   │   ├── debug_politician.py
+│   │   └── trace_politician.py
+│   └── debate/                 # Debate scripts
+│       ├── debate_politician.py
+│       ├── debug_debate.py
+│       └── test_debate_simple.py
+├── src/
+│   ├── models/                 # Core model implementations
+│   │   ├── langgraph/          # LangGraph workflows
+│   │   │   ├── agents/         # Agent implementations
+│   │   │   └── debate/         # Debate-specific components
+│   └── data/                   # Data management
+│       └── db/                 # Database components
+│           └── chroma/         # ChromaDB implementation
+└── docs/                       # Documentation
+    ├── chat.md
+    ├── debate.md
+    └── rag.md
 ```
 
-## Support
+## 🔧 Troubleshooting
 
-If you encounter issues with the database, refer to the troubleshooting section in the [ChromaDB Database Guide](./chroma_database_guide.md) or contact the database administrator. 
+If you encounter issues:
+
+1. Check the specific documentation for the component you're using:
+   - [Chat Troubleshooting](chat.md#troubleshooting)
+   - [Debate Troubleshooting](debate.md#troubleshooting)
+   - [RAG Troubleshooting](rag.md#troubleshooting)
+
+2. Try running with the `--no-rag` flag to isolate knowledge retrieval issues:
+   ```bash
+   python aipolitician.py chat biden --no-rag
+   ```
+
+3. Use trace mode for detailed debugging information:
+   ```bash
+   python aipolitician.py trace biden
+   ```
+
+## 🤝 Contributing
+
+We welcome contributions to improve the AI Politician system. See the [Contributing Guide](contributing.md) for details on how to get started. 
