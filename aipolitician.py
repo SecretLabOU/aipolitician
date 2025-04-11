@@ -59,6 +59,7 @@ Examples:
                             choices=["town_hall", "head_to_head", "panel"],
                             help="Debate format")
     debate_parser.add_argument("--no-rag", action="store_true", help="Disable RAG database")
+    debate_parser.add_argument("--no-fact-check", action="store_true", help="Disable fact checking")
     
     # Parse arguments
     args = parser.parse_args()
@@ -93,6 +94,8 @@ Examples:
         command = f"python {script} --topic \"{args.topic}\" --format {args.format}"
         if args.no_rag:
             command += " --no-rag"
+        if args.no_fact_check:
+            command += " --no-fact-check"
         os.system(command)
     
     else:
