@@ -182,6 +182,22 @@ Your response should sound like natural speech that a real person would say, not
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = response.split("[/INST]")[-1].strip()
         
+        # Enhanced sanitization to clean up the response
+        import re
+        
+        # Remove any system tags
+        response = re.sub(r'<\/?SYS>|<\/?sys>', '', response)
+        
+        # Remove any remaining instruction markers or formatting tags
+        response = re.sub(r'<\/?[A-Za-z]+>|<<.*?>>', '', response)
+        
+        # Remove echoed identities or content patterns that might appear
+        response = re.sub(r'(BIDEN|TRUMP|User):\s.*?(\n|$)', '', response, flags=re.IGNORECASE)
+        
+        # Remove any lines that look like they're from the prompt
+        response = re.sub(r'User Question:.*?(\n|$)', '', response)
+        response = re.sub(r'Context Information:.*?(\n|$)', '', response)
+        
         # For Biden, clean up responses that still look like bullet points or numbered lists
         if politician_identity == PoliticianIdentity.BIDEN and (response.startswith("1.") or response.startswith("•")):
             lines = response.split("\n")
@@ -189,7 +205,7 @@ Your response should sound like natural speech that a real person would say, not
                 # Convert numbered/bulleted lists to conversational flow
                 response = "Look, here's what I believe. " + " ".join([line.strip().replace("1.", "First,").replace("2.", "Second,").replace("3.", "Third,").replace("4.", "Fourth,").replace("5.", "And finally,").replace("•", "") for line in lines])
         
-        return response
+        return response.strip()
     
     except Exception as e:
         print(f"Error during response generation: {str(e)}")

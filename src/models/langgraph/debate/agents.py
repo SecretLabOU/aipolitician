@@ -584,7 +584,8 @@ def generate_politician_debate_response(
         f"Relevant knowledge:\n{knowledge}\n\n"
         f"IMPORTANT: Respond directly to your opponents' points. Build on the conversation "
         f"rather than repeating yourself. Be specific in your references to what others have said. "
-        f"Provide a complete, thorough response in your authentic voice."
+        f"Provide a complete, thorough response in your authentic voice. DO NOT repeat or echo "
+        f"previous speakers' statements verbatim."
     )
     
     # Generate the response using the response agent
@@ -599,6 +600,24 @@ def generate_politician_debate_response(
     
     response = generate_response(input_state)
     
+    # Clean the response to remove any potential system tags or echoed content
+    import re
+    
+    # Remove any system tags
+    response = re.sub(r'<\/?SYS>|<\/?sys>', '', response)
+    
+    # Remove any echoed identity content (e.g., "BIDEN: something...")
+    for opp in opponents:
+        response = re.sub(rf'{opp.upper()}:\s.*?(\n|$)', '', response)
+        response = re.sub(rf'{opp}:\s.*?(\n|$)', '', response)
+    
+    # Remove any leftover XML-like tags
+    response = re.sub(r'<\/?[A-Za-z]+>|<<.*?>>', '', response)
+    
+    # Remove any lines that might be prompt remnants
+    response = re.sub(r'User Question:.*?(\n|$)', '', response)
+    response = re.sub(r'Context Information:.*?(\n|$)', '', response)
+    
     # Only truncate if response is significantly over the max length
     if len(response) > max_length + 300:
         # More gently truncate to preserve more content
@@ -610,7 +629,7 @@ def generate_politician_debate_response(
         else:
             response = response[:truncate_point-3] + "..."
     
-    return response
+    return response.strip()
 
 
 def identify_rebuttal_targets(state: Dict[str, Any], current_speaker: str) -> List[Tuple[str, str]]:
