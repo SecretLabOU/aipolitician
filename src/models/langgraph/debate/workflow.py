@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from datetime import datetime
 import random
+import re
 
 # Add the project root to the Python path
 root_dir = Path(__file__).parent.parent.parent.parent.parent.absolute()
@@ -723,13 +724,32 @@ Use your own policies and perspectives to address the issue.
         if isinstance(response_data, dict):
             # Extract just the response text from the response dictionary
             if 'response' in response_data:
-                return response_data['response']
+                response = response_data['response']
             else:
                 # If no 'response' key is found, use the entire string representation as fallback
-                return str(response_data)
+                response = str(response_data)
         else:
             # Assume it's already a string
-            return response_data
+            response = response_data
+            
+        # Clean up the response to remove any leftover system tags or echoed content
+        # Remove any <SYS> or </SYS> tags
+        response = re.sub(r'<\/?SYS>|<\/?sys>', '', response)
+        
+        # Remove any instances where the model might have echoed previous statements
+        for opponent in opponent_names:
+            # Clean up patterns like "OPPONENT: statement"
+            response = re.sub(rf'{opponent.upper()}:\s.*?(\n|$)', '', response)
+            response = re.sub(rf'{opponent}:\s.*?(\n|$)', '', response)
+        
+        # Remove any leftover instruction or formatting markers
+        response = re.sub(r'<\/?[A-Za-z]+>|<<.*?>>', '', response)
+        
+        # Remove any lines that look like they're from the prompt format
+        response = re.sub(r'User Question:.*?(\n|$)', '', response)
+        response = re.sub(r'Context Information:.*?(\n|$)', '', response)
+        
+        return response.strip()
     except Exception as e:
         print(f"Error generating response for {politician_name}: {e}")
         # Provide a fallback response
