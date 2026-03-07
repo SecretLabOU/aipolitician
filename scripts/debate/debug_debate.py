@@ -4,8 +4,8 @@ Helper script to run the AI Politician Debate System in debug mode.
 This script provides a version with additional debugging information.
 """
 import sys
-import os
 import logging
+import subprocess
 import argparse
 from pathlib import Path
 
@@ -15,6 +15,20 @@ sys.path.insert(0, str(root_dir))
 
 # Set logging level for debugging
 logging.basicConfig(level=logging.INFO)
+
+
+def run_script(command: list[str]) -> int:
+    """Run a command and return its exit status."""
+    try:
+        completed = subprocess.run(command, check=False)
+    except KeyboardInterrupt:
+        return 130
+    except OSError as exc:
+        print(f"Error: failed to execute command: {exc}", file=sys.stderr)
+        return 127
+    if completed.returncode < 0:
+        return 128 + abs(completed.returncode)
+    return completed.returncode
 
 def main():
     """Run the AI Politician Debate System with debugging enabled."""
@@ -32,11 +46,23 @@ def main():
     args = parser.parse_args()
     
     # Build the command to run the debate with debug options
-    script_path = os.path.join(root_dir, "langgraph_politician.py")
-    command = f"python {script_path} debate run --topic \"{args.topic}\" --participants \"{args.participants}\" --format {args.format} --trace"
+    script_path = root_dir / "langgraph_politician.py"
+    command = [
+        sys.executable,
+        str(script_path),
+        "debate",
+        "run",
+        "--topic",
+        args.topic,
+        "--participants",
+        args.participants,
+        "--format",
+        args.format,
+        "--trace",
+    ]
     
     if args.no_rag:
-        command += " --no-rag"
+        command.append("--no-rag")
     
     print("\n🔍 AI Politician Debate - DEBUG MODE")
     print("=" * 50)
@@ -47,7 +73,9 @@ def main():
     print("=" * 50, "\n")
     
     # Execute the command
-    os.system(command)
+    completed = run_script(command)
+    if completed:
+        raise SystemExit(completed)
 
 if __name__ == "__main__":
     main() 
