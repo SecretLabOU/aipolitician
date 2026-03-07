@@ -4,7 +4,6 @@ Helper script to run the AI Politician system in trace mode.
 This script provides a chat experience with detailed workflow tracing information.
 """
 import sys
-import os
 import logging
 import argparse
 from pathlib import Path
@@ -16,6 +15,8 @@ sys.path.insert(0, str(root_dir))
 # Set logging level to reduce verbosity for non-trace output
 logging.basicConfig(level=logging.ERROR)
 
+from scripts._subprocess_utils import run_script
+
 def main():
     """Run the AI Politician system in trace mode."""
     parser = argparse.ArgumentParser(description="Chat with AI Politician (Trace Mode)")
@@ -25,10 +26,10 @@ def main():
     args = parser.parse_args()
     
     # Build the command to run the system with tracing enabled
-    script_path = os.path.join(root_dir, "langgraph_politician.py")
-    command = f"python {script_path} chat --identity {args.identity} --trace"
+    script_path = root_dir / "langgraph_politician.py"
+    command = [sys.executable, str(script_path), "chat", "--identity", args.identity, "--trace"]
     if args.no_rag:
-        command += " --no-rag"
+        command.append("--no-rag")
     
     print("\n🔍 AI Politician - TRACE MODE")
     print("=" * 60)
@@ -40,7 +41,9 @@ def main():
     print("=" * 60, "\n")
     
     # Execute the command
-    os.system(command)
+    exit_code = run_script(command)
+    if exit_code:
+        raise SystemExit(exit_code)
 
 if __name__ == "__main__":
     main() 

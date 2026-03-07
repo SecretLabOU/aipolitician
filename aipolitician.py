@@ -14,7 +14,6 @@ Usage:
   
   Add --no-rag to any command to disable the knowledge database.
 """
-import os
 import sys
 import argparse
 import subprocess
@@ -23,8 +22,20 @@ from pathlib import Path
 
 def run_script(script_path: Path, script_args: list[str]) -> int:
     """Run a python script and return its exit code."""
-    command = ["python", str(script_path), *script_args]
-    completed = subprocess.run(command, check=False)
+    if not script_path.is_file():
+        print(f"Error: script not found: {script_path}", file=sys.stderr)
+        return 127
+
+    command = [sys.executable, str(script_path), *script_args]
+    try:
+        completed = subprocess.run(command, check=False)
+    except KeyboardInterrupt:
+        return 130
+    except OSError as exc:
+        print(f"Error: failed to launch {script_path}: {exc}", file=sys.stderr)
+        return 127
+    if completed.returncode < 0:
+        return 128 + abs(completed.returncode)
     return completed.returncode
 
 def main():
@@ -71,9 +82,12 @@ Examples:
     
     # Parse arguments
     args = parser.parse_args()
+    if args.mode is None:
+        parser.print_help()
+        return
     
     # Get script directory
-    script_dir = Path(__file__).parent / "scripts"
+    script_dir = Path(__file__).resolve().parent / "scripts"
     
     exit_code = 0
 
@@ -113,6 +127,8 @@ Examples:
         return
 
     if exit_code:
+        if exit_code == 130:
+            raise SystemExit(exit_code)
         mode = args.mode or "command"
         print(f"Error: {mode} exited with status {exit_code}", file=sys.stderr)
         raise SystemExit(exit_code)
