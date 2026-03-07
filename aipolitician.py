@@ -14,10 +14,18 @@ Usage:
   
   Add --no-rag to any command to disable the knowledge database.
 """
-import sys
 import os
+import sys
 import argparse
+import subprocess
 from pathlib import Path
+
+
+def run_script(script_path: Path, script_args: list[str]) -> int:
+    """Run a python script and return its exit code."""
+    command = ["python", str(script_path), *script_args]
+    completed = subprocess.run(command, check=False)
+    return completed.returncode
 
 def main():
     """Main entry point for the launcher."""
@@ -67,39 +75,47 @@ Examples:
     # Get script directory
     script_dir = Path(__file__).parent / "scripts"
     
+    exit_code = 0
+
     # Handle the specified mode
     if args.mode == "chat":
-        script = str(script_dir / "chat" / "chat_politician.py")
-        command = f"python {script} {args.identity}"
+        script = script_dir / "chat" / "chat_politician.py"
+        script_args = [args.identity]
         if args.no_rag:
-            command += " --no-rag"
-        os.system(command)
-    
+            script_args.append("--no-rag")
+        exit_code = run_script(script, script_args)
+
     elif args.mode == "debug":
-        script = str(script_dir / "chat" / "debug_politician.py")
-        command = f"python {script} {args.identity}"
+        script = script_dir / "chat" / "debug_politician.py"
+        script_args = [args.identity]
         if args.no_rag:
-            command += " --no-rag"
-        os.system(command)
-    
+            script_args.append("--no-rag")
+        exit_code = run_script(script, script_args)
+
     elif args.mode == "trace":
-        script = str(script_dir / "chat" / "trace_politician.py")
-        command = f"python {script} {args.identity}"
+        script = script_dir / "chat" / "trace_politician.py"
+        script_args = [args.identity]
         if args.no_rag:
-            command += " --no-rag"
-        os.system(command)
-    
+            script_args.append("--no-rag")
+        exit_code = run_script(script, script_args)
+
     elif args.mode == "debate":
-        script = str(script_dir / "debate" / "debate_politician.py")
-        command = f"python {script} --topic \"{args.topic}\" --format {args.format}"
+        script = script_dir / "debate" / "debate_politician.py"
+        script_args = ["--topic", args.topic, "--format", args.format]
         if args.no_rag:
-            command += " --no-rag"
+            script_args.append("--no-rag")
         if args.no_fact_check:
-            command += " --no-fact-check"
-        os.system(command)
-    
+            script_args.append("--no-fact-check")
+        exit_code = run_script(script, script_args)
+
     else:
         parser.print_help()
+        return
+
+    if exit_code:
+        mode = args.mode or "command"
+        print(f"Error: {mode} exited with status {exit_code}", file=sys.stderr)
+        raise SystemExit(exit_code)
 
 if __name__ == "__main__":
     main() 
